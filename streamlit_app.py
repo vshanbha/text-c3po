@@ -8,7 +8,7 @@ openai_api_key = st.text_input("OpenAI API Key", type="password")
 eng_form = st.form("eng_form")
 # Instantiate LLM model
 # llm = ChatOllama(model="mistral",temperature=0.2)
-llm = ChatOpenAI( openai_api_key=openai_api_key, temperature=0.2, max_tokens=300)
+llm = None
 
 def translate_DE(text):
     # Prompt
@@ -61,19 +61,21 @@ def translate_EN(text):
 
 with eng_form:
     selected_lang = eng_form.selectbox(
-        'Select Target Language',
-        ('English','German')
+        "Select Target Language",
+        ("German","English")
     )
     in_col, out_col = eng_form.columns(2)
-    topic_text = in_col.text_area('',placeholder='Enter Text:', height=300)
+    topic_text = in_col.text_area("Enter Text",placeholder="Enter Text:", height=300)
     submitted = eng_form.form_submit_button("Translate")
     output = ''
         
     if not openai_api_key:
         st.info("Please add your API key to continue.")
-    elif submitted:
-        if selected_lang == 'German':
-            output = translate_DE(topic_text)
-        elif selected_lang == 'English':
-            output = translate_EN(topic_text)
-        out_col.info(output)
+    else :
+        llm = ChatOpenAI( openai_api_key=openai_api_key, temperature=0.2, max_tokens=300)
+        if submitted:
+            if selected_lang == "German":
+                output = translate_DE(topic_text)
+            elif selected_lang == "English":
+                output = translate_EN(topic_text)
+            out_col.text_area("Output language {} ".format(selected_lang), value=output, height=300)
