@@ -1,25 +1,12 @@
-# 📦 Streamlit App Starter Kit 
-```
-⬆️ (Replace above with your app's name)
-```
+# 📦 Text Translator App created in Streamlit
 
-Description of the app ...
+Inspired by the Star Wars character C-3PO
 
 ## Demo App
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://app-starter-kit.streamlit.app/)
-
-## GitHub Codespaces
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/streamlit/app-starter-kit?quickstart=1)
+[![Text Translator App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://text-c3po.streamlit.app/)
 
 ## Section Heading
 
-This is filler text, please replace this with text for this section.
+More notes to be added later
 
-## Further Reading
-
-This is filler text, please replace this with a explanatory text about further relevant resources for this repo
-- Resource 1
-- Resource 2
-- Resource 3

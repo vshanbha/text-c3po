@@ -3,7 +3,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate
 from langchain_community.chat_models import ChatOllama
 
-st.title("English - German Translator App")
+st.title("Text Translator App")
 openai_api_key = st.text_input("OpenAI API Key", type="password")
 eng_form = st.form("eng_form")
 # Instantiate LLM model
