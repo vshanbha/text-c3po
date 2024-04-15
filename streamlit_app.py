@@ -4,7 +4,11 @@ from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTempla
 from langchain_community.chat_models import ChatOllama
 
 st.title("Text Translator App")
-openai_api_key = st.text_input("OpenAI API Key", type="password")
+print(st.secrets["apiKey"])
+if "apiKey" in st.secrets:
+    openai_api_key = st.secrets["apiKey"]
+else:
+    openai_api_key = st.text_input("OpenAI API Key", type="password")
 eng_form = st.form("eng_form")
 # Instantiate LLM model
 # llm = ChatOllama(model="mistral",temperature=0.2)
