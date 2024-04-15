@@ -4,9 +4,8 @@ from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTempla
 from langchain_community.chat_models import ChatOllama
 
 st.title("Text Translator App")
-print(st.secrets["apiKey"])
-if "apiKey" in st.secrets:
-    openai_api_key = st.secrets["apiKey"]
+if "API_KEY" in st.secrets:
+    openai_api_key = st.secrets["API_KEY"]
 else:
     openai_api_key = st.text_input("OpenAI API Key", type="password")
 eng_form = st.form("eng_form")
@@ -34,7 +33,7 @@ def translate_DE(text):
                                                     human_prompt])
     request = chat_prompt.format_prompt(text = text).to_messages()
     # Run LLM model
-    response = llm(request)
+    response = llm.invoke(request)
     # Print results
     print(response)
     return response.content
@@ -58,7 +57,7 @@ def translate_EN(text):
                                                     human_prompt])
     request = chat_prompt.format_prompt(text = text).to_messages()
     # Run LLM model
-    response = llm(request)
+    response = llm.invoke(request)
     # Print results
     print(response)
     return response.content
