@@ -5,7 +5,10 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
 
-
+st.set_page_config(
+    page_title='Text C-3PO - Translator App',
+    page_icon=':robot_face:'
+)
 st.title("Text Translator App")
 if "API_KEY" in st.secrets:
     openai_api_key = st.secrets["API_KEY"]
