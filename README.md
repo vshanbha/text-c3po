@@ -4,8 +4,8 @@ Created with Streamlit and Langchain
 Inspired by the Star Wars character C-3PO
 
 ## Demo App
+[![Text Translator App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://text-c3po.streamlit.app/)
 
-[![Text Translator App] (🤖)](https://text-c3po.streamlit.app/)
 
 ## Section Heading
 
