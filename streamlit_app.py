@@ -28,20 +28,22 @@ def translate(text, language):
     # Parser
     parser = JsonOutputParser(pydantic_object=Translation)
     # Prompt
-    prompt_string = """You are any language to {language} translator.
-                        Autodetect the language of {{ .Prompt }} as origin_language and respond strictly with translation in {language}.
-                        Provide multiple translations where possible with relevant commentary in the origin_language.
+    prompt_string = """You are translator who translates from many languages to {language} .
+                        Autodetect the origin languages in {{ .Prompt }}. 
+                        If multiple languages are detected store all detected languages as an array of strings in origin_language.
+                        Respond strictly with translation of complete {{ .Prompt }} in {language}.
+                        Provide multiple translations where possible with relevant commentary in the {language}.
                         Where possible provide both formal and informal versions.
+                        Translated output should be provided as a JSON schema per below instrucctions
+                        {format_instructions}
                         """
     system_prompt = SystemMessagePromptTemplate.from_template(prompt_string)
-    human_prompt0 = HumanMessagePromptTemplate.from_template('Translate to {language} language' )
-    human_prompt1 = HumanMessagePromptTemplate.from_template('{text}\n{format_instructions}' )
-    chat_prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt0, human_prompt1])
+    human_prompt = HumanMessagePromptTemplate.from_template('{text}' )
+    chat_prompt = ChatPromptTemplate.from_messages([system_prompt, human_prompt])
     request = chat_prompt.format_prompt(text = text, language = language,
                                         format_instructions = parser.get_format_instructions()).to_messages()
     # Run LLM model
     response = llm.invoke(request)
-    # Print results
     return parser.parse(response.content)
 
 with eng_form:
@@ -62,7 +64,16 @@ with eng_form:
         llm = ChatOpenAI( openai_api_key=openai_api_key, temperature=0.2, max_tokens=300)
         if submitted:
             output = translate(topic_text, selected_lang)
-            out = "Formal : {} \n\nInformal : {}\n\nNote: {}".format(output['formal'], output['informal'], output['commentary'])
-
+            # convert all keys to lower case
+            output = {k.lower(): v for k, v in output.items()}
+            # Print results
+            if 'error' in output and output['error']:
+                st.warning(output['error'])            
+            formal = output['formal'] if 'formal' in output else ''
+            informal = output['informal'] if 'informal' in output else ''
+            comment =  output['commentary'] if 'commentary' in output else ''
+            out = "Formal : {} \n\nInformal : {}\n\nNote: {}".format(formal, informal, comment)
             out_meta.text_area("Detected language {}".format(output['origin_language'])
                                    , value=out, height=300)
+            output
+            
