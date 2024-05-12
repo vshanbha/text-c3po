@@ -5,7 +5,7 @@ Inspired by the Star Wars character C-3PO
 
 ## Demo App
 
-[![Text Translator App](🤖)](https://text-c3po.streamlit.app/)
+[![Text Translator App 🤖] ](https://text-c3po.streamlit.app/)
 
 ## Section Heading
 
