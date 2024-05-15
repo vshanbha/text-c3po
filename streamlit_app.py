@@ -52,9 +52,12 @@ def translate(text, language):
 with eng_form:
     selected_lang = eng_form.selectbox(
         "Select Target Language",
-        ("German","English","Spanish","French", "Dutch",
+        ("English","German","Spanish","French", "Dutch",
          "Afrikaans","Portuguese", "Danish", "Swedish", "Greek",
-         "Hindi","Marathi","Telgu", "Tamil", "Kannada","Gujrati",)
+         "Chinese","Persian",
+         "Hindi","Marathi","Telgu", "Tamil", "Kannada","Gujrati",
+         "Bangla"
+         )
     )
     in_col, out_meta = eng_form.columns(2)
     topic_text = in_col.text_area("Enter Text",placeholder="Enter Text:", height=300)
