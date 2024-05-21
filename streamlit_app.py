@@ -1,7 +1,8 @@
 import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain.prompts.chat import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate
-from langchain_community.chat_models import ChatOllama
+
+# from langchain_community.chat_models import ChatOllama
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
 
