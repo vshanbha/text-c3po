@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model-quality research — text-c3po docs</title>
+<style>
+body{font-family:-apple-system,system-ui,sans-serif;max-width:860px;margin:0 auto;padding:1.5rem;line-height:1.6;color:#222}
+nav{border-bottom:1px solid #ddd;padding-bottom:.75rem;margin-bottom:1.5rem;font-size:.9rem}
+nav a{margin-right:.9rem;text-decoration:none;color:#0b5fff}
+nav a:hover{text-decoration:underline}
+pre{background:#f4f4f4;padding:1rem;overflow-x:auto;border-radius:6px}
+code{font-family:ui-monospace,monospace;font-size:.88em}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left}
+footer{margin-top:2rem;border-top:1px solid #ddd;padding-top:.75rem;font-size:.8rem;color:#666}
+</style>
+</head>
+<body>
+<nav><a href="index.html">Overview</a> <a href="blueprint.html">Blueprint</a> <a href="brief.html">Product brief</a> <a href="prd.html">PRD</a> <a href="design.html">Design</a> <a href="experience.html">Experience</a> <a href="architecture.html">Architecture</a> <a href="research-feasibility.html">Feasibility research</a> <a href="research-model-quality.html">Model-quality research</a> <a href="retrospective-e1.html">E1 retrospective</a></nav>
+<main><h1>Deep Recon — Model quality smoke (technical, E1 gate precursor)</h1>
+<p>Date: 2026-09-08 · Target: blueprint §5 E1 gate (5-lang × 5-sentence matrix, recorded in research.md)</p>
+<p>Method: /api/chat with format:json, temp 0. Prompt: Translate to {lang}, respond JSON {"text":"...","source_lang":"en"} only. 5 EN sentences → German + French, on lfm2.5:latest and mistral:latest. 20/20 calls succeeded, 20/20 JSON-valid.</p>
+<h2>Results</h2>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Lang</th>
+<th>JSON-valid</th>
+<th>Latency warm avg</th>
+<th>Sample</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>lfm2.5:latest</td>
+<td>German</td>
+<td>5/5</td>
+<td>~3.5s (cold 6.8s)</td>
+<td>Wo ist der Bahnhof? / Vielen Dank für Ihre Hilfe.</td>
+</tr>
+<tr>
+<td>lfm2.5:latest</td>
+<td>French</td>
+<td>5/5</td>
+<td>~3.5s</td>
+<td>Où se trouve la gare ? / Je voudrais un café, s'il vous plaît.</td>
+</tr>
+<tr>
+<td>mistral:latest</td>
+<td>German</td>
+<td>5/5</td>
+<td>~1.4s (cold 4.8s)</td>
+<td>Wo befindet sich der Bahnhof? / Die Sitzung beginnt um drei Uhr.</td>
+</tr>
+<tr>
+<td>mistral:latest</td>
+<td>French</td>
+<td>5/5</td>
+<td>~1.5s</td>
+<td>La réunion débute à trois heures. / Où se trouve la gare de trains ?</td>
+</tr>
+</tbody>
+</table>
+<p>Qualitative:
+- lfm2.5 consistent formal-Sie in German; mistral mixes informal opening with formal close, drops article (Ich hätte gerne Kaffee).
+- French both use polite vous-forms; mistral calque "gare de trains" vs native "la gare".
+- mistral ~2.3x faster warm; both fit utterance-level latency budget when paired with ASR ~0.4s/9s audio.</p>
+<h2>Implications for E1</h2>
+<ul>
+<li>Structured JSON contract holds 100% without parse-retry loop for both models.</li>
+<li>Default lfm2.5 justified on register consistency; mistral is speed alternative.</li>
+<li>Full harness must extend to all 23 blueprint languages and record per-language scores; repeatable so new Ollama models can be tested anytime.</li>
+<li>Backend stays model-agnostic; languages stay aspirational per blueprint §2.1.</li>
+</ul>
+<h2>Next</h2>
+<ul>
+<li>E1 story: build repeatable eval harness (5 sentences × N languages × M models → research.md table).</li>
+<li>E4 story: full 23-language matrix + latency budget verification (&lt;3s end-to-end per utterance).</li>
+</ul>
+<h2>E1 gate — 5x5 smoke (2026-09-08)</h2>
+<p>Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>de</th>
+<th>fr</th>
+<th>es</th>
+<th>hi</th>
+<th>zh</th>
+<th>Valid</th>
+<th>Score</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>lfm2.5:latest</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>25/25</td>
+<td>100%</td>
+<td>PASS</td>
+</tr>
+</tbody>
+</table>
+<p>No invalid cells — every model cell JSON-valid.</p>
+<h2>E1 gate — 5x5 smoke (2026-09-09)</h2>
+<p>Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>de</th>
+<th>fr</th>
+<th>es</th>
+<th>hi</th>
+<th>zh</th>
+<th>Valid</th>
+<th>Score</th>
+<th>Gate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>lfm2.5:latest</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>5/5</td>
+<td>25/25</td>
+<td>100%</td>
+<td>PASS</td>
+</tr>
+</tbody>
+</table>
+<p>No invalid cells — every model cell JSON-valid.</p></main>
+<footer>Generated from <code>_bmad-output/planning-artifacts/research/technical-model-quality-2026-09-08/research.md</code> on 2026-09-09. text-c3po v2 docs.</footer>
+</body>
+</html>

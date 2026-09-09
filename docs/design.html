@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design — text-c3po docs</title>
+<style>
+body{font-family:-apple-system,system-ui,sans-serif;max-width:860px;margin:0 auto;padding:1.5rem;line-height:1.6;color:#222}
+nav{border-bottom:1px solid #ddd;padding-bottom:.75rem;margin-bottom:1.5rem;font-size:.9rem}
+nav a{margin-right:.9rem;text-decoration:none;color:#0b5fff}
+nav a:hover{text-decoration:underline}
+pre{background:#f4f4f4;padding:1rem;overflow-x:auto;border-radius:6px}
+code{font-family:ui-monospace,monospace;font-size:.88em}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left}
+footer{margin-top:2rem;border-top:1px solid #ddd;padding-top:.75rem;font-size:.8rem;color:#666}
+</style>
+</head>
+<body>
+<nav><a href="index.html">Overview</a> <a href="blueprint.html">Blueprint</a> <a href="brief.html">Product brief</a> <a href="prd.html">PRD</a> <a href="design.html">Design</a> <a href="experience.html">Experience</a> <a href="architecture.html">Architecture</a> <a href="research-feasibility.html">Feasibility research</a> <a href="research-model-quality.html">Model-quality research</a> <a href="retrospective-e1.html">E1 retrospective</a></nav>
+<main><hr />
+<p>name: text-c3po
+description: Local-first desktop translator — one Flet window, three modes (text, live, file). Flet 0.86 Material is the UI system; this file specifies the brand-layer delta only.
+status: final
+updated: 2026-09-08
+colors:
+  background: '#F7F5F0'
+  surface: '#FFFFFF'
+  ink: '#1B1B1F'
+  muted: '#6B7280'
+  border: '#E2E0DA'
+  primary: '#1F5FA8'
+  primary-foreground: '#FFFFFF'
+  live: '#D64541'
+  live-foreground: '#FFFFFF'
+  success: '#1E7E34'
+  warning: '#B45309'
+  background-dark: '#14181D'
+  surface-dark: '#1E242B'
+  ink-dark: '#E8EAED'
+  muted-dark: '#9AA0A6'
+  border-dark: '#2E353D'
+  primary-dark: '#7AA7E0'
+  primary-foreground-dark: '#0A1A2A'
+typography:
+  display:
+    fontFamily: 'System'
+    fontSize: 20px
+    fontWeight: '600'
+    lineHeight: '1.25'
+  body:
+    fontFamily: 'System'
+    fontSize: 14px
+    fontWeight: '400'
+    lineHeight: '1.5'
+  label:
+    fontFamily: 'System'
+    fontSize: 13px
+    fontWeight: '500'
+    lineHeight: '1.4'
+  timestamp:
+    fontFamily: 'monospace'
+    fontSize: 12px
+    fontWeight: '400'
+    lineHeight: '1.4'
+rounded:
+  sm: 4px
+  md: 8px
+  lg: 12px
+  full: 9999px
+spacing:
+  '1': 4px
+  '2': 8px
+  '3': 12px
+  '4': 16px
+  '6': 24px
+  '8': 32px
+components:
+  mode-toggle:
+    background: '{colors.surface}'
+    foreground: '{colors.ink}'
+    active-background: '{colors.primary}'
+    active-foreground: '{colors.primary-foreground}'
+    radius: '{rounded.md}'
+  translate-button:
+    background: '{colors.primary}'
+    foreground: '{colors.primary-foreground}'
+    radius: '{rounded.md}'
+  output-card:
+    background: '{colors.surface}'
+    border: '{colors.border}'
+    radius: '{rounded.md}'
+  caption-row:
+    background: '{colors.surface}'
+    border: '{colors.border}'
+    radius: '{rounded.sm}'
+  status-dot-active:
+    background: '{colors.live}'
+    radius: '{rounded.full}'
+  status-dot-ok:
+    background: '{colors.success}'
+    radius: '{rounded.full}'</p>
+<hr />
+<h2>Brand &amp; Style</h2>
+<p>text-c3po is a quiet local tool, not a chat app. One native Flet window, three mode toggles, no browser chrome, no marketing surface. The aesthetic posture is <em>workbench calm</em>: warm paper background, one brand blue for "this acts," one record red that means "capture is live" and nothing else. Everything else inherits Flet 0.86 Material defaults — Dropdowns, TextFields, ListViews, ProgressBars ship unstyled. Customizing Material beyond this brand layer is explicitly against the discipline; Flet's defaults are the contract.</p>
+<h2>Colors</h2>
+<ul>
+<li><strong>Paper (<code>#F7F5F0</code> light / <code>#14181D</code> dark)</strong> is the app background. The window always reads as a desk, never as a feed.</li>
+<li><strong>Primary Blue (<code>#1F5FA8</code> light / <code>#7AA7E0</code> dark)</strong> is the single action color. Used on the mode toggle's active segment, the Translate / Start buttons, and links. Never used for status.</li>
+<li><strong>Live Red (<code>#D64541</code>)</strong> means exactly one thing: capture is running. Used on the Start/Stop toggle's active state and the capture status dot. Never used decoratively, never for errors (errors use Material <code>error</code> default), never for the model indicator.</li>
+<li><strong>Success Green (<code>#1E7E34</code>)</strong> is for healthy states only: Ollama connected, whisper-server ready. Amber (<code>#B45309</code>) is for degraded states: retrying, restarting, high latency.</li>
+<li><strong>Ink / Muted / Border</strong> carry all text and dividers. Muted text is for timestamps, commentary, and hints — never for primary output.</li>
+</ul>
+<p>Avoid: gradients, per-language colors, colored caption bubbles, red anywhere except live capture.</p>
+<h2>Typography</h2>
+<p>Body, label, and controls inherit Flet Material's system ramp. Only two roles are pinned:</p>
+<ul>
+<li><strong>Display</strong> (System 20 / semibold) — the mode header line ("Text — type, pick, translate"). One line per mode, never in dialogs.</li>
+<li><strong>Timestamp</strong> (monospace 12) — caption timestamps (<code>00:42</code>), latency readouts (<code>asr 0.4s</code>), model names in the status bar. Tabular figures keep the captions pane from jittering as rows append.</li>
+</ul>
+<p>Rules: translated output always renders at <code>{typography.body.fontSize}</code> or larger. Never shrink output to fit chrome; the output scrolls, the chrome doesn't.</p>
+<h2>Layout &amp; Spacing</h2>
+<p>Single fixed window, minimum 960×640, resizable larger. Spacing scale is <code>{spacing.1}</code>–<code>{spacing.8}</code> (4–32px); default gaps are <code>{spacing.4}</code> (16px) between blocks, <code>{spacing.2}</code> (8px) inside rows.</p>
+<ul>
+<li><strong>Top strip:</strong> mode toggle (<code>SegmentedButton</code>: Text / Live / File) left, Ollama status dot + model <code>Dropdown</code> right. One row, always visible, identical across modes.</li>
+<li><strong>Text mode:</strong> two-column above 1100px (input left, output cards right), single stacked column below. Input <code>TextField</code> (multiline, min 6 lines) → row of target-language <code>Dropdown</code> + model <code>Dropdown</code> + Translate <code>FilledButton</code> → three output cards (formal / informal / commentary) + origin-language caption.</li>
+<li><strong>Live mode:</strong> controls row (Start/Stop <code>FilledButton</code> toggle + device <code>Dropdown</code> + source <code>Dropdown</code> + target <code>Dropdown</code>) → status row (three dots: capture / whisper / model + latency text) → captions <code>ListView</code> filling remaining height, newest at bottom, auto-follow with scroll-back escape.</li>
+<li><strong>File mode:</strong> picker row (<code>FilePicker</code> button + chosen path label) → <code>ProgressBar</code> → results <code>ListView</code> reusing the caption-row pattern.</li>
+</ul>
+<p>Avoid: sidebars, drawers, tabs-inside-tabs, multi-window flows. If it doesn't fit the single window, it doesn't ship in v1.</p>
+<h2>Elevation &amp; Depth</h2>
+<p>Inherited from Flet Material — no custom shadows. Output cards and caption rows separate by 1px <code>{colors.border}</code> outlines, not elevation. The only raised element is the active Translate/Start button (Material default). Depth never encodes meaning; position and labels do.</p>
+<h2>Shapes</h2>
+<p><code>{rounded.sm}</code> (4px) for caption rows, text fields, and dropdowns. <code>{rounded.md}</code> (8px) for output cards, buttons, and the mode toggle. <code>{rounded.lg}</code> (12px) unused in v1 — reserved for future dialogs. <code>{rounded.full}</code> (pill) appears only on status dots and the session-state pill (Listening / Idle / Processing file).</p>
+<h2>Components</h2>
+<p>All Flet 0.86 Material widgets ship as-is except the brand-layer overrides below. Visual specs for unlisted widgets (SnackBar, Tooltip, ProgressRing) are inherited from Material untouched.</p>
+<ul>
+<li><strong>Mode toggle</strong> (<code>SegmentedButton</code>, 3 segments) — <code>{colors.surface}</code> track, active segment <code>{colors.primary}</code> fill with <code>{colors.primary-foreground}</code> label, <code>{rounded.md}</code>. One tap switches modes; state (model pick, session list) is preserved, never reset.</li>
+<li><strong>Translate button / Start-Stop toggle</strong> (<code>FilledButton</code>) — idle: <code>{colors.primary}</code> fill; live-capturing: <code>{colors.live}</code> fill with label flipping Start→Stop. The button label is the session state; no separate state banner.</li>
+<li><strong>Output card</strong> (<code>Container</code> + <code>Text</code> + copy <code>IconButton</code>) — <code>{colors.surface}</code> fill, 1px <code>{colors.border}</code>, <code>{rounded.md}</code>, <code>{spacing.4}</code> padding. Three cards in text mode: Formal, Informal, Commentary. Failed/empty card shows its error inline (same card, muted text) — never a blocking dialog.</li>
+<li><strong>Caption row</strong> (<code>ListTile</code>-equivalent in <code>ListView</code>) — monospace timestamp left (<code>{typography.timestamp}</code>, <code>{colors.muted}</code>), translated text right (<code>{typography.body}</code>). 1px bottom divider <code>{colors.border}</code>. No avatars, no bubbles, no per-speaker color (no diarization in v1).</li>
+<li><strong>Status dots</strong> (<code>Container</code> 10px circle) — capture: <code>{colors.live}</code> when recording / muted when idle; whisper: <code>{colors.success}</code> ready / <code>{colors.warning}</code> restarting; model: <code>{colors.success}</code> with model name beside it. Dots are always paired with a text label — color is never the only signal.</li>
+</ul>
+<h2>Do's and Don'ts</h2>
+<table>
+<thead>
+<tr>
+<th>Do</th>
+<th>Don't</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Inherit Flet Material defaults for everything not in the brand layer</td>
+<td>Restyle Dropdowns, SnackBars, or ProgressBars to "match the brand"</td>
+</tr>
+<tr>
+<td>Use <code>{colors.live}</code> only for capture-active</td>
+<td>Use red for errors, model state, or decoration</td>
+</tr>
+<tr>
+<td>Keep the top strip identical across all three modes</td>
+<td>Add per-mode headers, heroes, or onboarding copy</td>
+</tr>
+<tr>
+<td>Render errors inline in the card/row that failed + <code>SnackBar</code> with retry</td>
+<td>Block with <code>AlertDialog</code> for malformed JSON, missing device, or bad file</td>
+</tr>
+<tr>
+<td>One window, 960×640 minimum, output scrolls</td>
+<td>Open second windows, drawers, or nested tabs</td>
+</tr>
+<tr>
+<td>Pair every status dot with a text label</td>
+<td>Encode state in color alone</td>
+</tr>
+</tbody>
+</table></main>
+<footer>Generated from <code>_bmad-output/planning-artifacts/ux-designs/ux-text-c3po-2026-09-08/DESIGN.md</code> on 2026-09-09. text-c3po v2 docs.</footer>
+</body>
+</html>
