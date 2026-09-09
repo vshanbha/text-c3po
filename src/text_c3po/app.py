@@ -22,7 +22,7 @@ from text_c3po.services.translation import (
 )
 from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
-from text_c3po.ui.text_view import build_text_view
+from text_c3po.ui.text_view import SOURCE_TITLE, build_text_view
 from text_c3po.ui.top_strip import (
     build_appbar,
     build_toolbar,
@@ -167,7 +167,7 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
             origin = refs.get("origin_caption")
             if origin is not None:
                 try:
-                    origin.value = ""
+                    origin.value = SOURCE_TITLE
                 except Exception:
                     pass
             _show_retry_snackbar(page, on_retry)
@@ -203,7 +203,7 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                     origin_control.value = "Detected: {}".format(origin_value.strip())
             else:
                 if origin_control is not None:
-                    origin_control.value = ""
+                    origin_control.value = SOURCE_TITLE
                 failed = True
         except Exception:
             failed = True
