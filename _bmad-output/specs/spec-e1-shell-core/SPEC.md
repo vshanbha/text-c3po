@@ -15,7 +15,7 @@ sources:
 
 ## Why
 
-Shanb's v1 translator needs a cloud key and a browser; the live-translate PoC proves local speech→translate works but only as terminal scripts. E1 delivers the shippable local-first foundation — one native Flet window with Text mode fully working on-device — so every later epic (capture, captions, packaging) lands on a proven shell, translation service, and quality gate instead of scaffolding.
+vshanbha's v1 translator needs a cloud key and a browser; the live-translate PoC proves local speech→translate works but only as terminal scripts. E1 delivers the shippable local-first foundation — one native Flet window with Text mode fully working on-device — so every later epic (capture, captions, packaging) lands on a proven shell, translation service, and quality gate instead of scaffolding.
 
 ## Capabilities
 
@@ -58,7 +58,7 @@ Shanb's v1 translator needs a cloud key and a browser; the live-translate PoC pr
 
 ## Success signal
 
-Shanb pastes a paragraph in Text mode, picks a target language and model, gets formal/informal/commentary plus origin language, and the 5×5 smoke matrix is recorded — the shell, translation core, and repeatable gate all demonstrably work before E2 begins.
+vshanbha pastes a paragraph in Text mode, picks a target language and model, gets formal/informal/commentary plus origin language, and the 5×5 smoke matrix is recorded — the shell, translation core, and repeatable gate all demonstrably work before E2 begins.
 
 ## Assumptions
 

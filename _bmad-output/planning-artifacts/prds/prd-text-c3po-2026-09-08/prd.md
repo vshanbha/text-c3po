@@ -9,7 +9,7 @@ updated: 2026-09-08
 
 ## 0. Document Purpose
 
-For Shanb (solo builder) and downstream `bmad-ux`, `bmad-architecture`, and `bmad-create-epics-and-stories`. Structure: Glossary-anchored vocabulary; Features grouped by epic (E1–E4) with globally numbered FRs; cross-cutting NFRs in §8; inferences tagged `[ASSUMPTION: …]` and indexed in §11. Builds on `brief-text-c3po-2026-09-08/brief.md`, the two `technical-*` research reports, and `blueprint.md` — it does not re-argue their evidence.
+For vshanbha (solo builder) and downstream `bmad-ux`, `bmad-architecture`, and `bmad-create-epics-and-stories`. Structure: Glossary-anchored vocabulary; Features grouped by epic (E1–E4) with globally numbered FRs; cross-cutting NFRs in §8; inferences tagged `[ASSUMPTION: …]` and indexed in §11. Builds on `brief-text-c3po-2026-09-08/brief.md`, the two `technical-*` research reports, and `blueprint.md` — it does not re-argue their evidence.
 
 ## 1. Vision
 
@@ -32,9 +32,9 @@ Cloud-API users, teams needing shared history/TM, anyone needing token-streaming
 
 ### 2.3 Key User Journeys
 
-- **UJ-1. Shanb translates a paragraph before sending it.** At his Mac, Flet app open on Text mode, he pastes English, picks German, picks model lfm2.5, and gets formal/informal/commentary back as structured output.
-- **UJ-2. Shanb follows a live talk with captions.** In Live mode he picks BlackHole (or Built-in Mic), target language, presses Start, and watches timestamped translated utterances accumulate; he presses Stop and the session stays readable.
-- **UJ-3. Shanb translates a recorded clip.** In File mode he picks an audio/video file without any capture device present and gets the same ASR→translate captions as live.
+- **UJ-1. vshanbha translates a paragraph before sending it.** At his Mac, Flet app open on Text mode, he pastes English, picks German, picks model lfm2.5, and gets formal/informal/commentary back as structured output.
+- **UJ-2. vshanbha follows a live talk with captions.** In Live mode he picks BlackHole (or Built-in Mic), target language, presses Start, and watches timestamped translated utterances accumulate; he presses Stop and the session stays readable.
+- **UJ-3. vshanbha translates a recorded clip.** In File mode he picks an audio/video file without any capture device present and gets the same ASR→translate captions as live.
 
 ## 3. Glossary
 
@@ -258,7 +258,7 @@ System contains no `langchain-openai`, no `secrets.toml`, no API-key auth; READM
 
 ## 11. Success Metrics
 
-Success: Shanb uses the local app weekly for real text/live/file translation and never re-adds a cloud key. Validates FR-3, FR-10, FR-16.
+Success: vshanbha uses the local app weekly for real text/live/file translation and never re-adds a cloud key. Validates FR-3, FR-10, FR-16.
 
 - **SM-1:** E1 smoke matrix 5×5 passes with ≥95% JSON-valid per Model. Validates FR-3, FR-14.
 - **SM-2:** Median utterance end-to-end <3s on M4 reference path. Validates FR-7, FR-8, FR-10.

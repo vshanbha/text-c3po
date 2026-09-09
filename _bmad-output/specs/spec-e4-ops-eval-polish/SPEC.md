@@ -14,7 +14,7 @@ sources:
 
 ## Why
 
-E1–E3 produce a working app on Shanb's machine that nobody else can install, whose 23-language quality claims are unmeasured, and which still carries cloud-key remnants. E4 makes v2 installable and trustworthy: one-script setup, a full language-quality matrix, a signed mic-capable bundle, regression tests, published docs, and a codebase with zero cloud surface — the gates in §6 of the blueprint all close here.
+E1–E3 produce a working app on vshanbha's machine that nobody else can install, whose 23-language quality claims are unmeasured, and which still carries cloud-key remnants. E4 makes v2 installable and trustworthy: one-script setup, a full language-quality matrix, a signed mic-capable bundle, regression tests, published docs, and a codebase with zero cloud surface — the gates in §6 of the blueprint all close here.
 
 ## Capabilities
 

@@ -15,7 +15,7 @@ sources:
 
 ## Why
 
-E1 built the shell and E2 the pipeline, but Shanb still cannot follow a live talk: utterances exist with nowhere to appear and no Start/Stop control. E3 wires the E2 runtimes to the Flet live surface — captions pane, session controls, live status — so UJ-2 works end to end while the session controller keeps ordering and thread-safety guarantees.
+E1 built the shell and E2 the pipeline, but vshanbha still cannot follow a live talk: utterances exist with nowhere to appear and no Start/Stop control. E3 wires the E2 runtimes to the Flet live surface — captions pane, session controls, live status — so UJ-2 works end to end while the session controller keeps ordering and thread-safety guarantees.
 
 ## Capabilities
 
@@ -51,7 +51,7 @@ E1 built the shell and E2 the pipeline, but Shanb still cannot follow a live tal
 
 ## Success signal
 
-Shanb picks BlackHole (or mic), presses Start, watches timestamped translated captions accumulate, scrolls back and jumps to latest without losing place, presses Stop and keeps the readable ordered list — the live talk use-case demonstrably working in the window.
+vshanbha picks BlackHole (or mic), presses Start, watches timestamped translated captions accumulate, scrolls back and jumps to latest without losing place, presses Stop and keeps the readable ordered list — the live talk use-case demonstrably working in the window.
 
 ## Assumptions
 

@@ -19,15 +19,23 @@ ollama serve                      # or the Ollama desktop app
 python text-c3po/app.py
 ```
 
+Prefer `uv` (no activation step — it auto-uses the project `.venv`):
+
+```sh
+uv venv && uv pip install -r requirements.txt pytest   # one-time setup
+uv run python text-c3po/app.py
+```
+
 Live speech and file modes (whisper-server + sounddevice) land in E2/E3;
 their placeholders are visible in the UI.
 
 ## Testing
 
-- Fast unit checks (no Ollama, default): `pytest`
+- Fast unit checks (no Ollama, default): `pytest` — or `uv run pytest`
 - Manual Ollama-backed tests (opt-in, never CI): `pytest -m integration`
 - E1 translation gate, repeatable (serial, lfm2.5-first):  
   `python text-c3po/services/eval_harness.py --models lfm2.5:latest`  
+  (via uv: `uv run python text-c3po/services/eval_harness.py --models lfm2.5:latest`)
   Scores append to the model-quality `research.md` under
   `_bmad-output/planning-artifacts/research/`. Full policy (serial-only,
   memory-hog exclusions) is documented in `pyproject.toml` and the harness
