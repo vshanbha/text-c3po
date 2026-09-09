@@ -1,0 +1,59 @@
+- id: "1"
+  title: Scaffold Flet app shell and pinned requirements
+  description: >-
+    Create text-c3po/app.py entry plus ui/services/runtimes packages and
+    requirements.txt with the flet==0.86.5 pin confirmed against the changelog;
+    app launches to an empty single window per CAP-1.
+  invoke_dev_with: >-
+    Keep to the ARCHITECTURE-SPINE structural seed names; no translation or
+    Ollama code in this story.
+- id: "2"
+  title: Top strip with three-mode switching
+  description: >-
+    Add the always-visible top strip with Text/Live/File SegmentedButton;
+    Live and File show placeholder surfaces while Text hosts the input;
+    switching preserves process and model pick per CAP-1.
+  invoke_dev_with: >-
+    Follow DESIGN.md top-strip and EXPERIENCE.md mode-toggle rules; Text is
+    the launch default; minimum window 960x640.
+- id: "3"
+  title: Ship the 23-language constant and pickers
+  description: >-
+    Add text-c3po/languages.py with the 23 {code, name} pairs verbatim from
+    blueprint section 2.1 and bind target (plus source-override) Dropdowns
+    to it per CAP-5.
+- id: "4"
+  title: Ollama client with launch connectivity check
+  description: >-
+    Add runtimes/ollama_client probing 127.0.0.1:11434 at startup with
+    connected/not-running top-strip state and Retry action per CAP-2.
+  invoke_dev_with: >-
+    List models live from /api/tags; no hard-coded model names except the
+    lfm2.5 default rule owned by story 5.
+- id: "5"
+  title: Model picker with lfm2.5 default rule
+  description: >-
+    Add the top-strip model Dropdown listing exactly /api/tags output plus
+    Refresh; preselect lfm2.5 when present else first available per CAP-4.
+  invoke_dev_with: >-
+    Changing mid-session applies to the next call only, never retroactively.
+- id: "6"
+  title: Text translation service and Text mode wiring
+  description: >-
+    Add services/translation on ChatOllama with enforced JSON format and
+    JsonOutputParser to the full Translation schema; wire Text mode input,
+    Translate button, three output cards plus origin caption, inline
+    retryable errors, and empty-input guard per CAP-3.
+  invoke_dev_with: >-
+    Malformed JSON never reaches the UI raw; raw payload goes to logs.
+    Errors render inline in the failing card plus SnackBar retry, no dialogs.
+- id: "7"
+  title: E1 gate — 5-language by 5-sentence smoke harness
+  description: >-
+    Add services/eval_harness running the repeatable 5x5 matrix over
+    installed models reusing the translation service with model as parameter;
+    record JSON-validity scores to research.md per CAP-6 and SM-1.
+  done_checkpoint: true
+  invoke_dev_with: >-
+    E1 exit gate: >=95% JSON-valid per model. Harness must accept a new
+    model with no code changes; full 23-language matrix stays E4 scope.

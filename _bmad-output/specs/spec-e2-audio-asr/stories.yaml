@@ -1,0 +1,36 @@
+- id: "1"
+  title: Sounddevice device enumeration and picker source
+  description: >-
+    Add runtimes/audio_devices querying sounddevice each launch with no
+    hard-coded names; expose the list for the E3 device picker with
+    BlackHole present-only per CAP-1.
+- id: "2"
+  title: Port VAD chunker with unit tests
+  description: >-
+    Add services/vad re-implementing the PoC RMS-silence plus flush-on-2-silent-frames-or-max-utterance
+    logic emitting immutable 16 kHz mono s16le utterance bytes; cover both
+    flush paths with unit tests per CAP-2.
+  invoke_dev_with: >-
+    Re-implement from live-translate/transcribe.py patterns; no imports
+    from live-translate/.
+- id: "3"
+  title: Whisper process manager with health and restart
+  description: >-
+    Add runtimes/process_manager plus runtimes/whisper_client owning spawn
+    (ggml-small.bin default), readiness check, restart-on-crash with visible
+    status, and cleanup-on-exit; transcribe-only on 127.0.0.1:9001 per CAP-3.
+  invoke_dev_with: >-
+    Pipeline clients check whisper readiness before POSTing; utterances
+    missed during restart are labeled as gaps, never silently dropped.
+- id: "4"
+  title: File decode path into the shared ASR entry point
+  description: >-
+    Add ffmpeg decode feeding picked audio/video files into the same ASR
+    entry point as live utterances with readable pre-ASR errors for
+    unsupported containers; works with no device and BlackHole absent
+    per CAP-4.
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Assume mp3/wav/m4a/mp4 floor unless E2 answers PRD Q2 otherwise;
+    translation reuses the E1 service with lightweight {text, source_lang}
+    utterance payloads.
