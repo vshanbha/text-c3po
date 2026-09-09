@@ -51,11 +51,11 @@ def build_appbar(
     on_status_click=None,
     ollama_url=None,
 ) -> ft.AppBar:
-    """Return the Material AppBar: title plus model picker and status dot.
+    """Return the Material AppBar: title plus status dot and model picker.
 
-    Top-right cluster, most global first: model picker (compact: no label,
-    dense, hover explains), then the 10px status dot (click re-probes, hover
-    carries state plus the fix). The model list refreshes on every probe.
+    Top-right cluster: status dot first, then the model picker (compact: no
+    label, dense, hover explains). Clicking the dot re-probes; its hover
+    carries state plus the fix. The model list refreshes on every probe.
     """
     model_dropdown = build_model_dropdown(models or [], selected_model)
     # Compact for AppBar height: no label, narrow, dense; never combine
@@ -79,7 +79,7 @@ def build_appbar(
         content=ft.Container(
             content=dot,
             alignment=ft.alignment.Alignment.CENTER,
-            padding=ft.Padding.only(left=4, right=12),
+            padding=ft.Padding.only(left=4, right=16),
         ),
         tooltip=status_detail(bool(ollama_connected), ollama_url),
         mouse_cursor=ft.MouseCursor.CLICK,
@@ -89,7 +89,7 @@ def build_appbar(
         title=ft.Text("text-c3po"),
         center_title=False,
         bgcolor=ft.Colors.SURFACE_CONTAINER,
-        actions=[model_dropdown, status],
+        actions=[status, model_dropdown],
     )
     bar.data = {
         "model_dropdown": model_dropdown,
