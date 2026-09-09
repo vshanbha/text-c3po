@@ -447,11 +447,22 @@ def main(page: ft.Page) -> None:
                 if isinstance(result, dict) and result.get("cancelled"):
                     _set_translating(refs, page, False, "Stopped.")
                     return
+                # Completeness cue: char count of what actually rendered, so
+                # a short result is visible as a number, not a feeling.
+                try:
+                    shown = result.get("formal", "") if isinstance(result, dict) else ""
+                    tally = (
+                        "Translated · {} chars".format(len(shown))
+                        if isinstance(shown, str)
+                        else ""
+                    )
+                except Exception:
+                    tally = ""
                 try:
                     _render_translation_result(refs, page, result, on_translate_retry)
                 finally:
                     if is_current_request(my_seq, translate_seq["current"]):
-                        _set_translating(refs, page, False, "")
+                        _set_translating(refs, page, False, tally)
                     else:
                         try:
                             page.update()
