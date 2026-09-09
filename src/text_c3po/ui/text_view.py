@@ -159,9 +159,13 @@ def build_text_view() -> ft.Column:
     # "Detected: X" never moves anything) beside the target-plus-actions
     # cluster on md+ screens; below that the cluster takes its own full-width
     # row and wraps internally — everything stays reachable, nothing overlaps.
-    left_head = ft.Row(
-        [origin_caption],
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    # Centered in a row-height cell: the ResponsiveRow cell top-aligns short
+    # content, so the label rode high next to the tall labeled dropdown.
+    # Height matches a labeled Material dropdown (~62px, verified visually).
+    left_head = ft.Container(
+        content=ft.Row([origin_caption], spacing=8),
+        alignment=ft.alignment.Alignment.CENTER_LEFT,
+        height=62,
     )
     right_head = ft.Row(
         [target, style_toggle, translate_button, stop_button, progress, copy_current],
