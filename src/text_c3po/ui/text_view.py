@@ -21,20 +21,26 @@ SOURCE_TITLE = "Detect language"
 
 
 def _make_copy_handler(body):
-    """Return a click handler copying ``body``'s current text to the clipboard."""
-    import inspect
+    """Return a click handler copying the current body text to the clipboard.
+
+    ``body`` may be a control or a zero-arg callable resolving to one, so a
+    single header copy button can follow the visible Formal/Informal text.
+    """
 
     async def _on_copy(e):
         try:
+            target = body() if callable(body) else body
             control = getattr(e, "control", None)
             page = getattr(control, "page", None)
             clipboard = getattr(page, "clipboard", None)
             if page is None or clipboard is None:
                 return
-            text = body.value or ""
+            text = target.value or ""
             if not text.strip() or text.strip() == RETRY_HINT:
                 return
             result = clipboard.set(text)
+            import inspect
+
             if inspect.isawaitable(result):
                 await result
         except Exception:
@@ -43,34 +49,17 @@ def _make_copy_handler(body):
     return _on_copy
 
 
-def _tab_page(body):
-    """Return one tab page: selectable body text plus a trailing copy button."""
-    copy_button = ft.IconButton(
-        icon=ft.Icons.CONTENT_COPY,
-        tooltip="Copy translation",
-    )
-    copy_button.on_click = _make_copy_handler(body)
-    return ft.Column(
-        [
-            body,
-            ft.Row([copy_button], alignment=ft.MainAxisAlignment.END),
-        ],
-        scroll=ft.ScrollMode.AUTO,
-        expand=True,
-    )
-
-
 def build_text_view() -> ft.Column:
-    """Return the Text surface: language bar, two equal cards, action row.
+    """Return the Text surface: language bar, two equal cards, status line.
 
     DeepL-shaped on purpose: the panes share one height so long input no
     longer squeezes or clips the output, the input card carries its own
-    scroll plus a live char count, and Translate / Stop sit centered below
-    with progress + status beside them.
+    scroll plus a live char count, and Translate / Stop live in the language
+    bar so they are always visible without scrolling.
     """
     field = ft.TextField(
         multiline=True,
-        min_lines=14,
+        min_lines=8,
         max_lines=None,
         hint_text=INPUT_PLACEHOLDER,
         border=ft.InputBorder.NONE,
@@ -143,23 +132,35 @@ def build_text_view() -> ft.Column:
         on_click=_on_swap,
     )
 
-    formal_page = _tab_page(formal_text)
-    informal_page = _tab_page(informal_text)
-    informal_page.visible = False
+    informal_text.visible = False
+
+    def _visible_body():
+        try:
+            if formal_text.visible:
+                return formal_text
+        except Exception:
+            pass
+        return informal_text
+
+    copy_current = ft.IconButton(
+        icon=ft.Icons.CONTENT_COPY,
+        tooltip="Copy shown translation",
+    )
+    copy_current.on_click = _make_copy_handler(_visible_body)
 
     def _on_style_change(e=None) -> None:
-        """Formal/Informal toggle: flip which page shows (Material segmented)."""
+        """Formal/Informal toggle: flip which text shows (Material segmented)."""
         try:
             selected = e.control.selected or ["formal"]
         except Exception:
             selected = ["formal"]
         current = selected[0]
-        for name, page in (("formal", formal_page), ("informal", informal_page)):
+        for name, body in (("formal", formal_text), ("informal", informal_text)):
             try:
-                page.visible = name == current
+                body.visible = name == current
             except Exception:
                 pass
-        for control in (formal_page, informal_page):
+        for control in (formal_text, informal_text):
             try:
                 control.update()
             except Exception:
@@ -180,9 +181,14 @@ def build_text_view() -> ft.Column:
             ft.Row([source_title, origin_caption], spacing=8),
             swap_button,
             target,
+            translate_button,
+            stop_button,
+            progress,
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        wrap=True,
+        spacing=8,
     )
 
     left_card = ft.Card(
@@ -198,8 +204,8 @@ def build_text_view() -> ft.Column:
                 expand=True,
                 spacing=8,
             ),
-            padding=ft.Padding.all(16),
-            height=460,
+            padding=ft.Padding.all(12),
+            height=360,
         ),
         elevation=1,
     )
@@ -208,23 +214,25 @@ def build_text_view() -> ft.Column:
             content=ft.Column(
                 [
                     ft.Row(
-                        [style_toggle],
-                        alignment=ft.MainAxisAlignment.START,
+                        [style_toggle, copy_current],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    ft.Container(
-                        content=ft.Column(
-                            [formal_page, informal_page],
-                            expand=True,
-                            spacing=0,
-                        ),
-                        height=360,
+                    # Single scroll region: both texts share it, exactly one
+                    # visible, so the first line can never hide behind the
+                    # header or clip inside nested expanding panes.
+                    ft.Column(
+                        [formal_text, informal_text],
+                        scroll=ft.ScrollMode.AUTO,
+                        expand=True,
+                        spacing=0,
                     ),
                 ],
                 expand=True,
                 spacing=8,
             ),
-            padding=ft.Padding.all(16),
-            height=460,
+            padding=ft.Padding.all(12),
+            height=360,
         ),
         elevation=1,
     )
@@ -239,17 +247,16 @@ def build_text_view() -> ft.Column:
         except Exception:
             pass
 
-    actions = ft.Row(
-        [translate_button, stop_button, progress, status, hint],
+    status_line = ft.Row(
+        [status, hint],
         alignment=ft.MainAxisAlignment.CENTER,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         spacing=10,
-        wrap=True,
     )
 
     view = ft.Column(
-        [lang_bar, panes, actions],
-        spacing=12,
+        [lang_bar, panes, status_line],
+        spacing=8,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
     view.data = {
@@ -262,9 +269,8 @@ def build_text_view() -> ft.Column:
         "hint": hint,
         "char_count": char_count,
         "swap_button": swap_button,
+        "copy_button": copy_current,
         "style_toggle": style_toggle,
-        "formal_page": formal_page,
-        "informal_page": informal_page,
         "formal_text": formal_text,
         "informal_text": informal_text,
         "origin_caption": origin_caption,
