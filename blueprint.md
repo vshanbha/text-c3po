@@ -20,8 +20,9 @@ live-translate PoC, and cut all cloud dependencies:
   buttons/toggles to switch between text, live, and file — no separate
   apps or terminal windows for the end user.
 
-live-translate/ is a Proof-of-Concept only. All product code lives in
-text-c3po/. Patterns worth porting are re-implemented here; no cross-imports.
+The earlier live-translate proof-of-concept validated the approach. All
+product code lives in text-c3po/. Patterns worth porting are re-implemented
+here; no cross-imports.
 
 ## 2. Locked decisions
 
@@ -85,7 +86,7 @@ Flet desktop app (native window, no webserver)
 ├── Live mode  (button/toggle)
 │     sounddevice (Built-in Microphone | BlackHole) — device picker in UI
 │     → int16 PCM stream → VAD + chunking
-│       (ported from live-translate/transcribe.py:
+│       (ported from the proof-of-concept:
 │        RMS silence threshold, flush on 2 silent frames or max-utterance)
 │     → whisper-server POST /inference (16 kHz mono s16le WAV, transcribe only)
 │     → ChatOllama translation (lightweight JSON: text + source_lang)

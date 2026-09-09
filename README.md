@@ -5,18 +5,26 @@ Flet desktop app. Type text → local Ollama model → structured translation
 after the first model download, everything runs on loopback.
 
 Inspired by the Star Wars character C-3PO. Product direction lives in
-`blueprint.md`; planning artifacts in `_bmad-output/`.
+[blueprint.md](blueprint.md); planning artifacts in `_bmad-output/`.
+
+## Prerequisites
+
+All paths below need these installed first:
+
+- **Python 3.12** (check with `python3 --version`) including **pip**
+  (`python3 -m pip --version`)
+- **Ollama** ([ollama.com](https://ollama.com)) with at least one model
+  pulled: `ollama pull lfm2.5` (the default; any installed model works via
+  the in-app picker)
 
 ## Run
 
-Prereqs: Python 3.12, [Ollama](https://ollama.com) with a model pulled
-(`ollama pull lfm2.5` — the default; any installed model works via the
-in-app picker).
+With plain pip:
 
 ```sh
 pip install -r requirements.txt   # flet==0.86.5 (pinned), langchain-ollama
 ollama serve                      # or the Ollama desktop app
-python text-c3po/app.py
+python text-c3po/app.py           # use python3 if plain python is missing
 ```
 
 Prefer `uv` (no activation step — it auto-uses the project `.venv`):
@@ -46,7 +54,9 @@ their placeholders are visible in the UI.
 - `text-c3po/` — product code: `app.py` (Flet entry), `ui/`, `services/`
   (translation + eval harness), `runtimes/` (Ollama client), `languages.py`
   (23-language constant)
-- `live-translate/` — PoC only; patterns are re-implemented, never imported
+- Provenance: an earlier live-translate proof-of-concept validated the
+  speech-to-translation pipeline; its patterns are re-implemented here,
+  never imported
 - `_bmad-output/` — brief, PRD, UX, architecture spine, epic specs, eval
   research, sprint status, E1 retrospective
 - `docs/` — MkDocs Material site published to GitHub Pages (sources are
