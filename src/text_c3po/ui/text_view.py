@@ -68,7 +68,8 @@ def build_text_view() -> ft.Column:
         content_padding=ft.Padding.all(4),
     )
     target = build_target_dropdown()
-    target.width = 260
+    # Narrow: shares the header row with Translate plus the style toggle.
+    target.width = 200
     translate_button = ft.FilledButton(content=ft.Text("Translate"))
     stop_button = ft.OutlinedButton(content=ft.Text("Stop"))
     stop_button.visible = False
@@ -151,7 +152,7 @@ def build_text_view() -> ft.Column:
     # cost more vertical space than the two rows it replaced.
     left_head = ft.Row([source_title, origin_caption], spacing=8, expand=True)
     right_head = ft.Row(
-        [target, translate_button, stop_button, progress],
+        [target, style_toggle, translate_button, stop_button, progress],
         spacing=8,
         alignment=ft.MainAxisAlignment.END,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -195,24 +196,19 @@ def build_text_view() -> ft.Column:
         ),
         elevation=1,
     )
-    # Material floating pattern: the Formal/Informal toggle plus copy ride
-    # in a pill overlaid bottom-right of the output (FAB-like). Always
-    # spottable, zero layout rows, content scrolls beneath.
-    style_float = ft.Container(
-        content=ft.Row(
-            [style_toggle, copy_current],
-            spacing=4,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        ),
+    # Copy rides alone as a small floating icon (FAB-like): the wide toggle
+    # pill squeezed the text column, so the toggle moved to the header row.
+    copy_float = ft.Container(
+        content=copy_current,
         bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-        border_radius=24,
-        padding=ft.Padding.only(left=8, right=4, top=4, bottom=4),
+        border_radius=20,
+        padding=ft.Padding.all(4),
         shadow=ft.BoxShadow(blur_radius=8, color="#40000000"),
         right=12,
         bottom=12,
     )
     right_stack = ft.Stack(
-        controls=[right_card, style_float],
+        controls=[right_card, copy_float],
         height=360,
         expand=True,
     )
@@ -250,7 +246,7 @@ def build_text_view() -> ft.Column:
         "char_count": char_count,
         "copy_button": copy_current,
         "style_toggle": style_toggle,
-        "style_float": style_float,
+        "copy_float": copy_float,
         "formal_text": formal_text,
         "informal_text": informal_text,
         "origin_caption": origin_caption,
