@@ -81,7 +81,16 @@ def build_text_view() -> ft.Column:
     formal_text = ft.Text("", selectable=True, size=15)
     informal_text = ft.Text("", selectable=True, size=15)
     source_title = ft.Text(SOURCE_TITLE, weight=ft.FontWeight.W_600)
-    origin_caption = ft.Text("", size=12)
+    # Fixed slot: the detected text must never grow the row into the target
+    # picker — long names clip with … instead of pushing or overlapping.
+    origin_caption = ft.Text(
+        "",
+        size=12,
+        max_lines=1,
+        no_wrap=True,
+        overflow=ft.TextOverflow.ELLIPSIS,
+        width=160,
+    )
 
     def _update_count() -> None:
         try:
