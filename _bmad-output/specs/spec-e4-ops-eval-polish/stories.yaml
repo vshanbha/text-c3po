@@ -34,6 +34,13 @@
     Delete all langchain-openai code and secrets.toml, then refresh README
     and AGENTS.md with the true Flet run, smoke, and harness commands;
     grep plus absence check both return empty per CAP-5.
-  done_checkpoint: true
   invoke_dev_with: >-
     Never commit secrets; do not use streamlit run to verify v2.
+- id: "6"
+  title: Publish updated docs to GitHub Pages
+  description: >-
+    Replace the stub docs/index.html hosting experiment with a real docs
+    landing page reflecting current v2 content (run guide, eval research,
+    architecture); push to master updates the site via the existing
+    static.yml Pages workflow per CAP-6.
+  done_checkpoint: true

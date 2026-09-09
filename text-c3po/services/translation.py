@@ -33,6 +33,12 @@ MISSING_MODEL_MESSAGE = "Pick a model first."
 
 TRANSLATION_TEMPERATURE = 0.2
 
+# Small context window: single-sentence prompts need <2k tokens, and small
+# local models are memory- and latency-bound (a 128k default keeps ~8GB
+# resident and turns the 25-call gate into an hour). Never raise this
+# without re-running the gate; most small local models are like this.
+TRANSLATION_NUM_CTX = 4096
+
 
 class Translation(BaseModel):
     """Full text-mode translation schema (AD-5)."""
@@ -123,6 +129,7 @@ def translate_text(text, target_language, model):
             format="json",
             base_url=OLLAMA_BASE_URL,
             temperature=TRANSLATION_TEMPERATURE,
+            num_ctx=TRANSLATION_NUM_CTX,
         )
         parser = JsonOutputParser(pydantic_object=Translation)
         messages = _build_request(text, target_language, parser)

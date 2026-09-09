@@ -14,7 +14,7 @@ sources:
 
 ## Why
 
-E1–E3 produce a working app on Shanb's machine that nobody else can install, whose 23-language quality claims are unmeasured, and which still carries cloud-key remnants. E4 makes v2 installable and trustworthy: one-script setup, a full language-quality matrix, a signed mic-capable bundle, regression tests, and a codebase with zero cloud surface — the gates in §6 of the blueprint all close here.
+E1–E3 produce a working app on Shanb's machine that nobody else can install, whose 23-language quality claims are unmeasured, and which still carries cloud-key remnants. E4 makes v2 installable and trustworthy: one-script setup, a full language-quality matrix, a signed mic-capable bundle, regression tests, published docs, and a codebase with zero cloud surface — the gates in §6 of the blueprint all close here.
 
 ## Capabilities
 
@@ -33,6 +33,9 @@ E1–E3 produce a working app on Shanb's machine that nobody else can install, w
 - **CAP-5**
   - **intent:** System contains no cloud LLM surface and docs describe the true v2 run and eval commands.
   - **success:** `grep -ri openai` over product code and `secrets.toml` presence check both return empty; README/AGENTS.md document the wired run and harness commands.
+- **CAP-6**
+  - **intent:** Project documentation (run guide, eval research, architecture) is published to GitHub Pages, replacing the stub `docs/index.html` hosting experiment.
+  - **success:** Push to master updates the Pages site via the existing `static.yml` workflow; the landing page reflects the current v2 README content, not the old stub.
 
 ## Constraints
 
@@ -51,7 +54,7 @@ E1–E3 produce a working app on Shanb's machine that nobody else can install, w
 
 ## Success signal
 
-From a clean machine, `setup.sh` finishes in budget, the 23-language matrix is recorded, the installed bundle prompts for mic once and runs offline on loopback only, tests pass, and no OpenAI string or secrets file remains — v2 is installable, measured, and cloud-free.
+From a clean machine, `setup.sh` finishes in budget, the 23-language matrix is recorded, the installed bundle prompts for mic once and runs offline on loopback only, tests pass, the Pages site shows current v2 docs, and no OpenAI string or secrets file remains — v2 is installable, measured, documented, and cloud-free.
 
 ## Assumptions
 

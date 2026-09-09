@@ -1,0 +1,32 @@
+# Unit checks that stay green on every commit. Ollama-backed tests NEVER run
+# here by design: they are expensive on CPU/GPU and manual-only
+# (`pytest -m integration`, plus the eval-harness gate script). The default
+# pytest run deselects them via pyproject.toml; the explicit -m below makes
+# the exclusion obvious in CI logs too.
+name: Unit checks
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Syntax check (no deps, no Ollama)
+        run: python -m compileall -q text-c3po
+      - name: Unit tests (integration deselected)
+        # Exit 5 means "no tests collected" — success while the suite grows.
+        run: pytest -q -m "not integration" || [ $? -eq 5 ]
