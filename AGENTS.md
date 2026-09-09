@@ -8,7 +8,7 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 ## Policy
 
 - Never commit secrets or any API key; v2 removes cloud LLM by design.
-- Keep all product code inside `text-c3po/`; `live-translate/` is PoC only, re-implement patterns, no cross-imports.
+- Keep all product code inside `text-c3po/`; patterns from the earlier live-translate proof-of-concept are re-implemented here, never imported.
 - After first-run model download keep zero outbound; loopback to 127.0.0.1:11434 and 127.0.0.1:9001 only.
 
 ## Where things are
