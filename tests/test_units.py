@@ -353,7 +353,7 @@ def test_streaming_stop_event_returns_cancelled(monkeypatch):
     assert tr._ACTIVE_STREAMS == set()
 
 
-def test_text_view_deepl_refs_and_swap():
+def test_text_view_refs_and_char_count():
     from text_c3po.ui.text_view import build_text_view
 
     view = build_text_view()
@@ -367,7 +367,6 @@ def test_text_view_deepl_refs_and_swap():
         "status_text",
         "hint",
         "char_count",
-        "swap_button",
         "copy_button",
         "style_toggle",
         "formal_text",
@@ -375,12 +374,37 @@ def test_text_view_deepl_refs_and_swap():
         "origin_caption",
     ):
         assert key in refs
-    refs["input_field"].value = "hello"
-    refs["formal_text"].value = "Hallo"
-    refs["swap_button"].on_click(None)
-    assert refs["input_field"].value == "Hallo"
-    assert refs["formal_text"].value == "hello"
-    assert refs["char_count"].value.startswith("5 / ")
+    assert "swap_button" not in refs  # no source selection: target-only UI
+    refs["input_field"].value = "hello world, this is a test"
+    refs["input_field"].on_change(None)
+    assert refs["char_count"].value.startswith("27 / ")
+
+
+def test_render_result_detected_language_wording():
+    from text_c3po.app import _render_translation_result
+
+    class Fake:
+        def __init__(self):
+            self.value = ""
+
+    class FakePage:
+        def update(self):
+            pass
+
+    refs = {
+        "formal_text": Fake(),
+        "informal_text": Fake(),
+        "origin_caption": Fake(),
+    }
+    _render_translation_result(
+        refs,
+        FakePage(),
+        {"formal": "Hallo", "informal": "Hi", "origin_language": "English"},
+        lambda: None,
+    )
+    assert refs["formal_text"].value == "Hallo"
+    assert refs["informal_text"].value == "Hi"
+    assert refs["origin_caption"].value == "Detected: English"
 
 
 def test_style_toggle_flips_pages_without_tabs():

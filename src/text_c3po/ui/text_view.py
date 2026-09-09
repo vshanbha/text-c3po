@@ -1,9 +1,9 @@
 """Text mode surface: DeepL-like side-by-side panes (CAP-3).
 
-Pure UI: language bar on top (Detect language … target picker with a swap
-action), two equal cards below (input left with live char count, Formal /
-Informal output right under a Material segmented toggle), and a centered Translate / Stop action row with
-progress + status. Every control is exposed via ``view.data`` refs so
+Pure UI: language bar on top (detected source left, target picker plus
+Translate/Stop right), two equal cards below (input left with live char
+count, Formal/Informal output right under a Material segmented toggle),
+and a slim status line. Every control is exposed via ``view.data`` refs so
 ``app.py`` can attach handlers and read values at call time. Imports only
 the language pickers plus Flet; never the lower Ollama/audio layers.
 """
@@ -101,37 +101,6 @@ def build_text_view() -> ft.Column:
 
     field.on_change = _on_field_change
 
-    def _on_swap(e=None) -> None:
-        """Swap input with the Formal output (client-side, no LLM call)."""
-        try:
-            left = field.value or ""
-        except Exception:
-            left = ""
-        try:
-            right = formal_text.value or ""
-        except Exception:
-            right = ""
-        try:
-            field.value = right
-        except Exception:
-            pass
-        try:
-            formal_text.value = left
-        except Exception:
-            pass
-        _update_count()
-        for control in (field, formal_text, char_count):
-            try:
-                control.update()
-            except Exception:
-                pass
-
-    swap_button = ft.IconButton(
-        icon=ft.Icons.SWAP_HORIZ,
-        tooltip="Swap input and Formal output",
-        on_click=_on_swap,
-    )
-
     informal_text.visible = False
 
     def _visible_body():
@@ -179,11 +148,11 @@ def build_text_view() -> ft.Column:
     lang_bar = ft.Row(
         [
             ft.Row([source_title, origin_caption], spacing=8),
-            swap_button,
-            target,
-            translate_button,
-            stop_button,
-            progress,
+            ft.Row(
+                [target, translate_button, stop_button, progress],
+                spacing=8,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
         ],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -268,7 +237,6 @@ def build_text_view() -> ft.Column:
         "status_text": status,
         "hint": hint,
         "char_count": char_count,
-        "swap_button": swap_button,
         "copy_button": copy_current,
         "style_toggle": style_toggle,
         "formal_text": formal_text,

@@ -200,7 +200,7 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
         try:
             if isinstance(origin_value, str) and origin_value.strip():
                 if origin_control is not None:
-                    origin_control.value = "origin: {}".format(origin_value.strip())
+                    origin_control.value = "Detected: {}".format(origin_value.strip())
             else:
                 if origin_control is not None:
                     origin_control.value = ""

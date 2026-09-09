@@ -108,7 +108,7 @@ def build_toolbar(
         [
             ft.Row([toggle], spacing=0),
             ft.Row(
-                [status, model_dropdown],
+                [model_dropdown, status],
                 spacing=8,
                 wrap=True,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
