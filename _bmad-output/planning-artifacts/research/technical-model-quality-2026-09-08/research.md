@@ -49,3 +49,13 @@ Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 language
 | lfm2.5:latest | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
 
 No invalid cells — every model cell JSON-valid.
+
+## E1 gate — 5x5 smoke (2026-09-09)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|
+| lfm2.5:latest | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
+
+No invalid cells — every model cell JSON-valid.

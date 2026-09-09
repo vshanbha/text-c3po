@@ -159,3 +159,224 @@ def test_probe_helpers_never_raise_without_daemon(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", boom)
     assert check_ollama() == (False, [])
     assert list_models() == []
+
+
+def test_apply_mode_visibility_exactly_one():
+    from text_c3po.app import apply_mode_visibility
+
+    class Fake:
+        def __init__(self):
+            self.visible = False
+
+    views = {"text": Fake(), "live": Fake(), "file": Fake()}
+    assert apply_mode_visibility(views, "live") == "live"
+    assert views["live"].visible is True
+    assert views["text"].visible is False
+    assert views["file"].visible is False
+    apply_mode_visibility(views, "file")
+    assert views["file"].visible is True
+    assert views["live"].visible is False
+
+
+def test_find_project_root_points_at_repo():
+    import os
+
+    from text_c3po.paths import ensure_src_on_path, find_project_root
+
+    root = find_project_root()
+    assert os.path.isdir(os.path.join(root, "src", "text_c3po"))
+    src = ensure_src_on_path()
+    assert src.endswith("src")
+
+
+def test_is_current_request_generation():
+    from text_c3po.app import is_current_request
+
+    assert is_current_request(3, 3) is True
+    assert is_current_request(2, 3) is False
+
+
+def test_set_translating_toggles_stop_and_progress():
+    from text_c3po.app import _set_translating
+
+    class Fake:
+        def __init__(self):
+            self.disabled = False
+            self.visible = False
+            self.value = ""
+
+    class FakePage:
+        def __init__(self):
+            self.updated = 0
+
+        def update(self):
+            self.updated += 1
+
+    refs = {
+        "translate_button": Fake(),
+        "stop_button": Fake(),
+        "progress_ring": Fake(),
+        "status_text": Fake(),
+    }
+    page = FakePage()
+    _set_translating(refs, page, True, "Translating…")
+    assert refs["translate_button"].disabled is True
+    assert refs["stop_button"].visible is True
+    assert refs["progress_ring"].visible is True
+    assert refs["status_text"].value == "Translating…"
+    _set_translating(refs, page, False, "")
+    assert refs["translate_button"].disabled is False
+    assert refs["stop_button"].visible is False
+    assert page.updated >= 2
+
+
+def test_cancel_inflight_never_raises_and_closes():
+    from text_c3po.services.translation import _ACTIVE_LLMS, cancel_inflight
+
+    class FakeClient:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    class FakeLLM:
+        def __init__(self):
+            self._client = FakeClient()
+
+    fake = FakeLLM()
+    try:
+        _ACTIVE_LLMS.add(fake)
+        assert cancel_inflight() >= 1
+        assert fake._client.closed is True
+    finally:
+        _ACTIVE_LLMS.discard(fake)
+    assert cancel_inflight() == 0
+
+
+def _make_fake_llm(chunks, closed_box):
+    class FakeStream:
+        def __init__(self):
+            self._it = iter(chunks)
+            self.closed = False
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return next(self._it)
+
+        def close(self):
+            self.closed = True
+            closed_box["closed"] = True
+
+    class FakeClient:
+        def close(self):
+            pass
+
+    class FakeLLM:
+        def __init__(self, *args, **kwargs):
+            self._client = FakeClient()
+            closed_box["kwargs"] = kwargs
+
+        def stream(self, messages):
+            s = FakeStream()
+            closed_box["stream"] = s
+            return s
+
+    return FakeLLM
+
+
+def test_streaming_accumulates_split_json_single_prompt(monkeypatch):
+    import threading
+
+    import text_c3po.services.translation as tr
+
+    closed_box = {}
+    calls = {"prompts": 0}
+
+    class Chunk:
+        def __init__(self, content):
+            self.content = content
+
+    parts = [
+        '{"formal": "Hal',
+        'lo", "informal": "Hi", "origin_language": "English"}',
+    ]
+    monkeypatch.setattr(
+        tr, "ChatOllama", _make_fake_llm([Chunk(p) for p in parts], closed_box)
+    )
+    orig_build = tr._build_request
+
+    def counting_build(text, lang, parser):
+        calls["prompts"] += 1
+        return orig_build(text, lang, parser)
+
+    monkeypatch.setattr(tr, "_build_request", counting_build)
+    seen = []
+    result = tr.translate_text(
+        "Hello",
+        "German",
+        "m",
+        on_token=lambda piece, total: seen.append((piece, total)),
+        stop_event=threading.Event(),
+    )
+    assert result.get("formal") == "Hallo"
+    assert result.get("origin_language") == "English"
+    assert calls["prompts"] == 1  # one prompt, streamed — not multiple calls
+    assert "".join(p for p, _ in seen) == "".join(parts)
+    assert tr._ACTIVE_LLMS == set()
+    assert tr._ACTIVE_STREAMS == set()
+
+
+def test_streaming_stop_event_returns_cancelled(monkeypatch):
+    import threading
+
+    import text_c3po.services.translation as tr
+
+    closed_box = {}
+
+    class Chunk:
+        def __init__(self, content):
+            self.content = content
+
+    monkeypatch.setattr(
+        tr,
+        "ChatOllama",
+        _make_fake_llm([Chunk('{"formal": "x"}')], closed_box),
+    )
+    event = threading.Event()
+    event.set()  # stopped before first token
+    result = tr.translate_text("Hello", "German", "m", stop_event=event)
+    assert result.get("cancelled") is True
+    assert tr._ACTIVE_LLMS == set()
+    assert tr._ACTIVE_STREAMS == set()
+
+
+def test_text_view_deepl_refs_and_swap():
+    from text_c3po.ui.text_view import build_text_view
+
+    view = build_text_view()
+    refs = view.data
+    for key in (
+        "input_field",
+        "target_dropdown",
+        "translate_button",
+        "stop_button",
+        "progress_ring",
+        "status_text",
+        "hint",
+        "char_count",
+        "swap_button",
+        "tabs",
+        "formal_text",
+        "informal_text",
+        "origin_caption",
+    ):
+        assert key in refs
+    refs["input_field"].value = "hello"
+    refs["formal_text"].value = "Hallo"
+    refs["swap_button"].on_click(None)
+    assert refs["input_field"].value == "Hallo"
+    assert refs["formal_text"].value == "hello"
+    assert refs["char_count"].value.startswith("5 / ")

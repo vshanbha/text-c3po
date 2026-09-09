@@ -42,34 +42,50 @@ import sys
 
 # src layout: every product import here is absolute (``text_c3po.*``).
 # Supported invocations (all from the project root):
-# - ``PYTHONPATH=src python -m text_c3po.services.eval_harness ...``
+# - ``python -m text_c3po.services.eval_harness ...`` (installed, preferred)
 # - ``python src/text_c3po/services/eval_harness.py ...`` (script form)
 # - headless ``import text_c3po.services.eval_harness`` with src/ on sys.path
 #   (pytest provides this via pythonpath). Never raises for a missing dep:
 #   the ImportError surfaces to the caller per the headless-import contract.
 #
-# __file__ is not trustworthy here (relative invocations have been observed
-# to report doubled paths), so src/ is located by existence: the nearest
-# ancestor holding src/text_c3po/services/eval_harness.py on disk.
-def _find_project_root():
-    here = os.path.dirname(os.path.realpath(__file__))
-    path = here
-    for _ in range(8):
-        if os.path.isfile(
-            os.path.join(path, "src", "text_c3po", "services", "eval_harness.py")
-        ):
-            return path
-        parent = os.path.dirname(path)
-        if parent == path:
-            break
-        path = parent
-    return os.path.abspath(os.getcwd())  # best-effort fallback
+# Root resolution lives in text_c3po.paths (A6 shared helper) so E2 reuses
+# one implementation instead of copying __file__ joins. Kept here as a thin
+# alias for story-7 callers that import _find_project_root directly.
+try:
+    from text_c3po.paths import (
+        ensure_src_on_path,
+        find_project_root as _find_project_root,
+    )
+except ImportError:  # script-form before install: locate src by existence
+    import os
+    import sys
+
+    def _find_project_root():
+        here = os.path.dirname(os.path.realpath(__file__))
+        path = here
+        for _ in range(8):
+            if os.path.isfile(
+                os.path.join(path, "src", "text_c3po", "services", "eval_harness.py")
+            ):
+                return path
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+        return os.path.abspath(os.getcwd())
+
+    def ensure_src_on_path():
+        import os
+        import sys
+
+        src_root = os.path.join(_find_project_root(), "src")
+        if src_root not in sys.path:
+            sys.path.insert(0, src_root)
+        return src_root
 
 
 _PROJECT_ROOT = _find_project_root()
-_SRC_ROOT = os.path.join(_PROJECT_ROOT, "src")
-if _SRC_ROOT not in sys.path:
-    sys.path.insert(0, _SRC_ROOT)
+_SRC_ROOT = ensure_src_on_path()
 
 from text_c3po.runtimes.ollama_client import (
     OLLAMA_BASE_URL,

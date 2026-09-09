@@ -19,27 +19,28 @@ All paths below need these installed first:
 
 ## Run
 
-All commands run from the repo root. The package lives under `src/`, so
-Python commands carry `PYTHONPATH=src`:
+All commands run from the repo root. First install the local package once
+(no PYTHONPATH needed afterwards):
 
 With plain pip (one-time setup):
 
 ```sh
-pip install -r requirements.txt pytest   # flet==0.86.5 (pinned), langchain-ollama
+pip install -e .   # flet==0.86.5 (pinned), langchain-ollama; exposes `text-c3po`
 ```
 
 Then:
 
 ```sh
 ollama serve                                  # or the Ollama desktop app
-PYTHONPATH=src python -m text_c3po.app        # use python3 if plain python is missing
+text-c3po                                     # or: python -m text_c3po.app
 ```
 
-Prefer `uv` (no activation step — it auto-uses the project `.venv`):
+Prefer `uv` (no activation step — it auto-uses the project `.venv`).
+The trailing dot matters — it means "install this folder":
 
 ```sh
-uv venv && uv pip install -r requirements.txt pytest   # one-time setup
-PYTHONPATH=src uv run python -m text_c3po.app
+uv pip install --editable .   # one-time setup (same as: uv pip install -e .)
+uv run text-c3po              # or: uv run python -m text_c3po.app
 ```
 
 Live speech and file modes (whisper-server + sounddevice) land in E2/E3;
@@ -50,7 +51,7 @@ their placeholders are visible in the UI.
 - Fast unit checks (no Ollama, default): `pytest` — or `uv run pytest`
 - Manual Ollama-backed tests (opt-in, never CI): `pytest -m integration`
 - E1 translation gate, repeatable (serial, lfm2.5-first):  
-  `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest`
+  `python -m text_c3po.services.eval_harness --models lfm2.5:latest`
   Scores append to the model-quality `research.md` under
   `_bmad-output/planning-artifacts/research/`. Full policy (serial-only,
   memory-hog exclusions) is documented in `pyproject.toml` and the harness
@@ -59,7 +60,7 @@ their placeholders are visible in the UI.
 ## Layout
 
 - `src/text_c3po/` — product code (src layout): `app.py` (Flet entry;
-  run `PYTHONPATH=src python -m text_c3po.app`), `ui/`, `services/`
+  run `text-c3po`), `ui/`, `services/`
   (translation + eval harness), `runtimes/` (Ollama client), `languages.py`
   (23-language constant)
 - `tests/` — fast unit tests (run `pytest` from the repo root)
