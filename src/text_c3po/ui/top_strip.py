@@ -39,9 +39,14 @@ def build_appbar(
     on_retry=None,
     on_refresh_models=None,
 ) -> ft.AppBar:
-    """Return the Material AppBar: title plus retry/refresh icon actions."""
-    retry = ft.IconButton(
-        icon=ft.Icons.SYNC,
+    """Return the Material AppBar: title plus labeled Retry/Models actions.
+
+    Labels instead of icon-only buttons: icon meaning is undiscoverable
+    without hovering, and these two are the app's lifeline when Ollama is
+    down or the model list changes.
+    """
+    retry = ft.TextButton(
+        text="Retry",
         tooltip="Retry Ollama connection",
         on_click=on_retry,
     )
@@ -50,8 +55,8 @@ def build_appbar(
             retry.autofocus = not ollama_connected
         except Exception:
             pass
-    refresh = ft.IconButton(
-        icon=ft.Icons.REFRESH,
+    refresh = ft.TextButton(
+        text="Models",
         tooltip="Refresh model list",
         on_click=on_refresh_models,
     )

@@ -368,9 +368,8 @@ def test_text_view_deepl_refs_and_swap():
         "hint",
         "char_count",
         "swap_button",
+        "copy_button",
         "style_toggle",
-        "formal_page",
-        "informal_page",
         "formal_text",
         "informal_text",
         "origin_caption",
@@ -392,8 +391,9 @@ def test_style_toggle_flips_pages_without_tabs():
     assert "tabs" not in refs
     toggle = refs["style_toggle"]
     assert list(toggle.selected) == ["formal"]
-    assert refs["formal_page"].visible is True
-    assert refs["informal_page"].visible is False
+    assert refs["formal_text"].visible is True
+    assert refs["informal_text"].visible is False
+    assert refs["copy_button"].tooltip == "Copy shown translation"
 
     class FakeControl:
         def __init__(self, selected):
@@ -404,8 +404,8 @@ def test_style_toggle_flips_pages_without_tabs():
             self.control = FakeControl(selected)
 
     toggle.on_change(FakeEvent(["informal"]))
-    assert refs["formal_page"].visible is False
-    assert refs["informal_page"].visible is True
+    assert refs["formal_text"].visible is False
+    assert refs["informal_text"].visible is True
     toggle.on_change(FakeEvent(["formal"]))
-    assert refs["formal_page"].visible is True
-    assert refs["informal_page"].visible is False
+    assert refs["formal_text"].visible is True
+    assert refs["informal_text"].visible is False

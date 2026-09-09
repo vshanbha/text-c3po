@@ -197,7 +197,7 @@ def main(page: ft.Page) -> None:
     page.theme = ft.Theme(color_scheme_seed="blue")
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = "#EDF1F6"
-    page.padding = 16
+    page.padding = 12
     page.spacing = 8
     # Single page-level scroller: views size to content, so a long paste or
     # tall output scrolls the window instead of clipping without a scrollbar.
@@ -319,6 +319,26 @@ def main(page: ft.Page) -> None:
         stop_event = threading.Event()
         translate_stop["event"] = stop_event
         snapshot = (raw_text, target_value, model_value)
+        # New results stream into the Formal text: flip the toggle there
+        # first so the first line is always where the user looks.
+        try:
+            style_toggle = refs.get("style_toggle")
+            if style_toggle is not None:
+                style_toggle.selected = ["formal"]
+        except Exception:
+            pass
+        try:
+            formal_control = refs.get("formal_text")
+            if formal_control is not None:
+                formal_control.visible = True
+        except Exception:
+            pass
+        try:
+            informal_control = refs.get("informal_text")
+            if informal_control is not None:
+                informal_control.visible = False
+        except Exception:
+            pass
         _set_translating(refs, page, True, "Translating…")
 
         def _work() -> None:
