@@ -79,7 +79,7 @@ def build_appbar(
         content=ft.Container(
             content=dot,
             alignment=ft.alignment.Alignment.CENTER,
-            padding=ft.Padding.only(left=4, right=16),
+            padding=ft.Padding.only(left=4, right=12),
         ),
         tooltip=status_detail(bool(ollama_connected), ollama_url),
         mouse_cursor=ft.MouseCursor.CLICK,
