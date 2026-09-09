@@ -436,15 +436,71 @@ def test_toolbar_status_is_clickable_retry_with_hover_detail():
     assert set(strip.data.keys()) == {
         "toggle",
         "dot",
-        "label",
         "status",
         "model_dropdown",
     }
     status = strip.data["status"]
     assert "127.0.0.1:11434" in (status.tooltip or "")
-    assert "click" in (status.tooltip or "").lower()
     status.on_tap(None)
     assert tapped == [True]
+
+
+def test_status_dot_down_is_error_red_with_fix_in_hover():
+    from text_c3po.ui.top_strip import (
+        ERROR_DOT,
+        SUCCESS_DOT,
+        refresh_ollama_status,
+        status_detail,
+    )
+
+    assert "connected" in status_detail(True, "http://x").lower()
+    down = status_detail(False)
+    assert "ollama serve" in down and "click" in down.lower()
+
+    class FakeDot:
+        def __init__(self):
+            self.bgcolor = None
+
+    class FakeStatus:
+        def __init__(self):
+            self.tooltip = None
+
+    class FakeStrip:
+        def __init__(self, dot, status):
+            self.data = {"dot": dot, "status": status}
+
+    dot, status = FakeDot(), FakeStatus()
+    refresh_ollama_status(FakeStrip(dot, status), True, None, "http://x")
+    assert dot.bgcolor == SUCCESS_DOT and "connected" in status.tooltip.lower()
+    refresh_ollama_status(FakeStrip(dot, status), False)
+    assert dot.bgcolor == ERROR_DOT and "ollama serve" in status.tooltip
+
+
+def test_disconnect_snackbar_carries_fix_and_retry():
+    from text_c3po.app import _show_snackbar
+
+    seen = []
+
+    class FakeOverlay(list):
+        pass
+
+    class FakePage:
+        def __init__(self):
+            self.overlay = FakeOverlay()
+            self.updated = 0
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    _show_snackbar(page, "Ollama disconnected — start it.", lambda: seen.append(True))
+    assert len(page.overlay) == 1
+    snack = page.overlay[0]
+    assert "disconnected" in snack.content.value.lower()
+    assert snack.action == "Retry"
+    snack.on_action(None)
+    assert seen == [True]
+    assert page.updated >= 1
 
 
 def test_ollama_state_changed_only_on_flip():
@@ -465,7 +521,6 @@ def test_toolbar_and_text_view_construct():
     assert set(strip.data.keys()) == {
         "toggle",
         "dot",
-        "label",
         "status",
         "model_dropdown",
     }
