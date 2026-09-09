@@ -368,7 +368,9 @@ def test_text_view_deepl_refs_and_swap():
         "hint",
         "char_count",
         "swap_button",
-        "tabs",
+        "style_toggle",
+        "formal_page",
+        "informal_page",
         "formal_text",
         "informal_text",
         "origin_caption",
@@ -380,3 +382,30 @@ def test_text_view_deepl_refs_and_swap():
     assert refs["input_field"].value == "Hallo"
     assert refs["formal_text"].value == "hello"
     assert refs["char_count"].value.startswith("5 / ")
+
+
+def test_style_toggle_flips_pages_without_tabs():
+    from text_c3po.ui.text_view import build_text_view
+
+    view = build_text_view()
+    refs = view.data
+    assert "tabs" not in refs
+    toggle = refs["style_toggle"]
+    assert list(toggle.selected) == ["formal"]
+    assert refs["formal_page"].visible is True
+    assert refs["informal_page"].visible is False
+
+    class FakeControl:
+        def __init__(self, selected):
+            self.selected = selected
+
+    class FakeEvent:
+        def __init__(self, selected):
+            self.control = FakeControl(selected)
+
+    toggle.on_change(FakeEvent(["informal"]))
+    assert refs["formal_page"].visible is False
+    assert refs["informal_page"].visible is True
+    toggle.on_change(FakeEvent(["formal"]))
+    assert refs["formal_page"].visible is True
+    assert refs["informal_page"].visible is False
