@@ -97,3 +97,8 @@ plus gate re-run (lfm2.5 25/25 PASS, recorded in research.md).
   --editable .`, `uv run text-c3po`); shared paths helper for project root.
 - UI: DeepL-like text view; Formal/Informal tabs replaced by a Material
   SegmentedButton toggle (compact header row, pages flip visibility).
+
+## CAP-3 ruling (2026-09-09)
+
+Commentary formally cut as legacy: CAP-3 accepted on
+formal/informal/origin_language. E1 verdict: PASS.
