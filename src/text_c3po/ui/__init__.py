@@ -5,10 +5,16 @@ from .language_pickers import build_source_dropdown, build_target_dropdown
 from .live_view import build_live_view
 from .model_picker import build_model_dropdown, refresh_model_options
 from .text_view import build_text_view
-from .top_strip import build_top_strip, refresh_model_picker, refresh_ollama_status
+from .top_strip import (
+    build_appbar,
+    build_toolbar,
+    refresh_model_picker,
+    refresh_ollama_status,
+)
 
 __all__ = [
-    "build_top_strip",
+    "build_appbar",
+    "build_toolbar",
     "refresh_ollama_status",
     "refresh_model_picker",
     "build_model_dropdown",

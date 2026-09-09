@@ -13,7 +13,8 @@ from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
 from text_c3po.ui.text_view import build_text_view
 from text_c3po.ui.top_strip import (
-    build_top_strip,
+    build_appbar,
+    build_toolbar,
     refresh_model_picker,
     refresh_ollama_status,
 )
@@ -46,9 +47,9 @@ def _show_retry_snackbar(page, on_retry) -> None:
 
 
 def _render_translation_result(refs, page, result, on_retry) -> None:
-    """Render a translate_text result into the three cards plus origin caption.
+    """Render a translate_text result into the Formal/Informal tabs plus origin caption.
 
-    Present fields display; only a missing/blank field's card shows the retry
+    Present fields display; only a missing/blank field's tab shows the retry
     hint. Any failure also raises the SnackBar retry; retry re-issues the same
     prompt without retyping.
     """
@@ -57,7 +58,7 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
         if not isinstance(result, dict):
             result = {"error": RETRY_CARD_HINT, "retryable": True}
         if result.get("error"):
-            for key in ("formal_text", "informal_text", "commentary_text"):
+            for key in ("formal_text", "informal_text"):
                 control = refs.get(key)
                 if control is not None:
                     try:
@@ -76,7 +77,6 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
         pairs = (
             ("formal_text", "formal"),
             ("informal_text", "informal"),
-            ("commentary_text", "commentary"),
         )
         for ref_key, field in pairs:
             control = refs.get(ref_key)
@@ -121,6 +121,16 @@ def main(page: ft.Page) -> None:
     page.title = "text-c3po"
     page.window.min_width = WINDOW_MIN_WIDTH
     page.window.min_height = WINDOW_MIN_HEIGHT
+    # Material theme (DESIGN.md brand layer): primary blue seed, light mode,
+    # comfortable page padding. All Material controls (buttons, dropdowns,
+    # segmented toggle, fields, cards, snackbar) pick this up automatically.
+    page.theme = ft.Theme(color_scheme_seed="blue")
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.padding = 12
+    page.spacing = 8
+    # Single page-level scroller: views size to content, so a long paste or
+    # tall output scrolls the window instead of clipping without a scrollbar.
+    page.scroll = ft.ScrollMode.AUTO
 
     text_view = build_text_view()
     live_view = build_live_view()
@@ -140,7 +150,7 @@ def main(page: ft.Page) -> None:
     startup_models = list(_startup_models) if isinstance(_startup_models, list) else []
     selected_model = pick_default_model(startup_models)
     current_model = {"value": selected_model}
-    strip_holder: dict = {}
+    chrome: dict = {}
 
     def on_model_change(e=None) -> None:
         try:
@@ -152,16 +162,17 @@ def main(page: ft.Page) -> None:
 
     def _reprobe_and_refresh(e=None) -> None:
         ok, fresh = check_ollama()
-        strip = strip_holder.get("strip")
-        if strip is None:
+        toolbar = chrome.get("toolbar")
+        appbar = chrome.get("appbar")
+        if toolbar is None:
             return
-        refresh_ollama_status(strip, ok)
+        refresh_ollama_status(toolbar, ok, appbar)
         if ok:
             fresh_models = list(fresh) if isinstance(fresh, list) else []
             prior = current_model.get("value")
             if prior not in fresh_models:
                 try:
-                    refs = strip.data if isinstance(strip.data, dict) else {}
+                    refs = toolbar.data if isinstance(toolbar.data, dict) else {}
                     dropdown = refs.get("model_dropdown")
                     dropdown_value = dropdown.value if dropdown is not None else None
                     if dropdown_value in fresh_models:
@@ -171,7 +182,7 @@ def main(page: ft.Page) -> None:
             selected = (
                 prior if prior in fresh_models else pick_default_model(fresh_models)
             )
-            refresh_model_picker(strip, fresh_models, selected)
+            refresh_model_picker(toolbar, fresh_models, selected)
             current_model["value"] = selected
         page.update()
 
@@ -260,19 +271,24 @@ def main(page: ft.Page) -> None:
     except Exception:
         pass
 
-    strip = build_top_strip(
-        on_mode_change,
+    appbar = build_appbar(
         ollama_connected=connected,
         on_retry=on_retry,
+        on_refresh_models=on_refresh_models,
+    )
+    page.appbar = appbar
+    toolbar = build_toolbar(
+        on_mode_change,
+        ollama_connected=connected,
         models=startup_models,
         selected_model=selected_model,
         on_model_change=on_model_change,
-        on_refresh_models=on_refresh_models,
     )
-    strip_holder["strip"] = strip
-    page.add(strip, text_view, live_view, file_view)
+    chrome["appbar"] = appbar
+    chrome["toolbar"] = toolbar
+    page.add(toolbar, text_view, live_view, file_view)
     page.update()
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.run(main)

@@ -12,7 +12,7 @@ def build_live_view() -> ft.Column:
     return ft.Column(
         [
             ft.Text("Live"),
-            ft.Row([source, target]),
+            ft.Row([source, target], wrap=True),
             ft.Text("Press Start and speak \u2014 captions appear here."),
         ]
     )
