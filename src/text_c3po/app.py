@@ -113,11 +113,18 @@ def _set_translating(refs, page, busy: bool, status: str = "") -> None:
         pass
 
 
-def _show_retry_snackbar(page, on_retry) -> None:
-    """Render the retry SnackBar; never raises (AD-12: inline plus SnackBar)."""
+DISCONNECT_SNACKBAR_HINT = "Ollama disconnected — start it with `ollama serve`."
+
+
+def _show_snackbar(page, message, on_retry) -> None:
+    """Render a SnackBar with a Retry action; never raises.
+
+    Material's transient-error pattern: the dot shows state, this carries
+    the words plus the one-tap fix.
+    """
     try:
         snack = ft.SnackBar(
-            content=ft.Text(RETRY_CARD_HINT),
+            content=ft.Text(message),
             action="Retry",
             on_action=lambda e: on_retry(),
         )
@@ -131,6 +138,11 @@ def _show_retry_snackbar(page, on_retry) -> None:
         page.update()
     except Exception:
         pass
+
+
+def _show_retry_snackbar(page, on_retry) -> None:
+    """Render the retry SnackBar; never raises (AD-12: inline plus SnackBar)."""
+    _show_snackbar(page, RETRY_CARD_HINT, on_retry)
 
 
 def _render_translation_result(refs, page, result, on_retry) -> None:
@@ -253,7 +265,7 @@ def main(page: ft.Page) -> None:
         appbar = chrome.get("appbar")
         if toolbar is None:
             return
-        refresh_ollama_status(toolbar, ok, appbar)
+        refresh_ollama_status(toolbar, ok, appbar, OLLAMA_BASE_URL)
         if ok:
             fresh_models = list(fresh) if isinstance(fresh, list) else []
             prior = current_model.get("value")
@@ -530,8 +542,13 @@ def main(page: ft.Page) -> None:
                 continue
             try:
                 if ollama_state_changed(poll_state["last"], ok, fresh_models):
+                    went_down = poll_state["last"][0] and not ok
                     poll_state["last"] = (ok, fresh_models)
                     _reprobe_and_refresh()
+                    if went_down:
+                        # Material transient-error pattern: dot already red,
+                        # this carries the words plus the one-tap fix.
+                        _show_snackbar(page, DISCONNECT_SNACKBAR_HINT, on_retry)
             except Exception:
                 return
 

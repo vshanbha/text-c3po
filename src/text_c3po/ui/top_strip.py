@@ -1,11 +1,10 @@
 """Top chrome: Material AppBar plus compact mode toolbar (CAP-1/CAP-2/CAP-4).
 
-The AppBar owns the title and the two icon actions (re-probe Ollama,
-refresh the model list). The toolbar below owns the full-width
-Text/Live/File SegmentedButton plus a compact status row (dot, label,
-model Dropdown). Mutable refs live in toolbar.data (toggle, dot, label,
-model_dropdown) and appbar.data (retry, refresh_models) so app.py can
-refresh them in place.
+The AppBar owns the title only. The toolbar below owns the full-width
+Text/Live/File SegmentedButton plus a compact status row (dot, model
+Dropdown): the dot alone signals state, and its hover tooltip carries the
+detail plus the fix. Mutable refs live in toolbar.data (toggle, dot,
+status, model_dropdown) so app.py can refresh them in place.
 """
 
 import flet as ft
@@ -13,25 +12,35 @@ import flet as ft
 from .model_picker import build_model_dropdown, refresh_model_options
 
 SUCCESS_DOT = "#1E7E34"
-WARNING_DOT = "#B45309"
+# Material 3 error red (light scheme): a down server is an error state, so
+# the dot reads as one — never amber, never the only signal (tooltip text
+# plus a SnackBar on disconnect carry the words).
+ERROR_DOT = "#B3261E"
 
-CONNECTED_TEXT = "Ollama connected"
-NOT_RUNNING_TEXT = "Ollama isn't running. Start `ollama serve`, then Retry."
+CONNECTED_DETAIL = "Ollama connected at {}."
+DOWN_DETAIL = (
+    "Ollama isn't running — start it with `ollama serve`, then click to re-check."
+)
 
 
 def _status_dot(connected: bool) -> ft.Container:
-    """Return the 10px status circle: green when connected, amber otherwise."""
+    """Return the 10px status circle: green when connected, M3 error red otherwise."""
     return ft.Container(
         width=10,
         height=10,
         border_radius=5,
-        bgcolor=SUCCESS_DOT if connected else WARNING_DOT,
+        bgcolor=SUCCESS_DOT if connected else ERROR_DOT,
     )
 
 
-def _status_label(connected: bool) -> ft.Text:
-    """Return the status text paired with the dot (color is never the only signal)."""
-    return ft.Text(CONNECTED_TEXT if connected else NOT_RUNNING_TEXT)
+def status_detail(connected: bool, ollama_url=None) -> str:
+    """Hover text for the dot: state plus what-to-do when down."""
+    if connected:
+        try:
+            return CONNECTED_DETAIL.format(ollama_url or "loopback")
+        except Exception:
+            return "Ollama connected."
+    return DOWN_DETAIL
 
 
 def build_appbar(
@@ -65,9 +74,10 @@ def build_toolbar(
 ) -> ft.Column:
     """Return the compact toolbar: full-width mode toggle plus status row.
 
-    The Ollama dot/label is the retry control (click re-probes; full detail
-    on hover) and the model list refreshes on every probe — no separate
-    buttons. ``ollama_url`` is a plain display string so ui/ never imports
+    The dot alone signals Ollama state (click re-probes; hover tooltip
+    carries the detail plus the fix) and the model list refreshes on every
+    probe — no separate buttons, no status sentence eating width.
+    ``ollama_url`` is a plain display string so ui/ never imports
     runtimes (layering rule); app.py passes it in.
     """
     toggle = ft.SegmentedButton(
@@ -82,18 +92,9 @@ def build_toolbar(
         expand=True,
     )
     dot = _status_dot(bool(ollama_connected))
-    label = _status_label(bool(ollama_connected))
-    try:
-        detail = "Ollama at {} — click to re-check".format(ollama_url or "loopback")
-    except Exception:
-        detail = "Ollama status — click to re-check"
-    try:
-        label.tooltip = detail
-    except Exception:
-        pass
     status = ft.GestureDetector(
-        content=ft.Row([dot, label], spacing=8),
-        tooltip=detail,
+        content=dot,
+        tooltip=status_detail(bool(ollama_connected), ollama_url),
         mouse_cursor=ft.MouseCursor.CLICK,
         on_tap=on_status_click,
     )
@@ -118,32 +119,30 @@ def build_toolbar(
     bar.data = {
         "toggle": toggle,
         "dot": dot,
-        "label": label,
         "status": status,
         "model_dropdown": model_dropdown,
     }
     return bar
 
 
-def refresh_ollama_status(strip, connected: bool, appbar=None) -> None:
-    """Refresh the toolbar dot/label pair in place (caller updates the page)."""
+def refresh_ollama_status(strip, connected: bool, appbar=None, ollama_url=None) -> None:
+    """Refresh the toolbar dot plus its hover detail (caller updates the page).
+
+    ``appbar`` stays for call compat and is ignored (title-only bar).
+    """
     refs = strip.data if isinstance(getattr(strip, "data", None), dict) else {}
     dot = refs.get("dot")
-    label = refs.get("label")
+    status = refs.get("status")
     if dot is not None:
-        dot.bgcolor = SUCCESS_DOT if connected else WARNING_DOT
-    if label is not None:
-        label.value = CONNECTED_TEXT if connected else NOT_RUNNING_TEXT
-    if appbar is not None:
-        bar_refs = (
-            appbar.data if isinstance(getattr(appbar, "data", None), dict) else {}
-        )
-        retry = bar_refs.get("retry")
-        if retry is not None:
-            try:
-                retry.autofocus = not connected
-            except Exception:
-                pass
+        try:
+            dot.bgcolor = SUCCESS_DOT if connected else ERROR_DOT
+        except Exception:
+            pass
+    if status is not None:
+        try:
+            status.tooltip = status_detail(connected, ollama_url)
+        except Exception:
+            pass
 
 
 def refresh_model_picker(strip, models, selected=None) -> None:
