@@ -59,7 +59,7 @@ Proposed remediation and process lessons for E2–E4; none auto-applied. Owners 
 - **A4 — Manual-only integration tests (owner: E2 spec + implementers).** Keep the `pyproject.toml` policy: plain `pytest` runs fast unit tests only; Ollama/whisper-server paths are `@pytest.mark.integration`, serial-only, manual invocation. Extend the marking to E2 audio/ASR tests; the eval harness stays a manual script, never CI.
 - **A5 — Serial lfm2.5-first execution (owner: E2–E4 implementers).** Keep the `eval_harness.py` / `pyproject.toml` policy: one LLM request at a time, gate on the default product model first, memory hogs out of the matrix. Revisit only with hardware evidence.
 - **A6 — Reuse the cwd-anchored root pattern in E2 (owner: E2 implementers).** File-decode and whisper-server paths must resolve from the working directory (`_find_project_root` pattern), never from `__file__`-relative joins. Source: F4.
-- **A7 — Native Mac window eyeball still owed (owner: Shanb / orchestrator).** Fold a real `python text-c3po/app.py` pass (Ollama stopped/started plus Retry, mode round-trip) into E3 acceptance or an E2 checkpoint; headless FakePage builds are not a substitute forever.
+- **A7 — Native Mac window eyeball still owed (owner: vshanbha / orchestrator).** Fold a real `python text-c3po/app.py` pass (Ollama stopped/started plus Retry, mode round-trip) into E3 acceptance or an E2 checkpoint; headless FakePage builds are not a substitute forever.
 - **A8 — Carried code defers (owner: E3 spec).** Story 3 V3 mode-switch visibility assertion lands in the next change touching `app.py`; the Flet threading/timeout model for live calls (story 6 defer) gets a spike decision before E3 live-call wiring.
 
 ## Acceptance verdict
@@ -68,7 +68,7 @@ Proposed remediation and process lessons for E2–E4; none auto-applied. Owners 
 
 ## Open questions
 
-1. Does Shanb accept the unrun native eyeball (A7) riding into E3, or is a Mac pass wanted before E2 starts? The answer moves A7 between epics.
+1. Does vshanbha accept the unrun native eyeball (A7) riding into E3, or is a Mac pass wanted before E2 starts? The answer moves A7 between epics.
 2. Are action items A1–A8 accepted as tracked? Stories mode performs no `sprint-status.yaml` write, so tracking lives in this document until the orchestrator dispatches them.
 
 ## Assumptions

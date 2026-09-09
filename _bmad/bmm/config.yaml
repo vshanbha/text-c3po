@@ -9,7 +9,7 @@ implementation_artifacts: "{project-root}/_bmad-output/implementation-artifacts"
 project_knowledge: "{project-root}/docs"
 
 # Core Configuration Values
-user_name: Shanb
+user_name: vshanbha
 project_name: text-c3po
 communication_language: English
 document_output_language: English

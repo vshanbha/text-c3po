@@ -15,7 +15,7 @@ sources:
 
 ## Foundation
 
-Single-surface desktop app: one native Flet window (minimum 960×640), no webserver, no browser, no accounts. UI system is **Flet 0.86 Material** — `DESIGN.md` is the visual identity reference and names the brand-layer delta (paper background, primary blue, live red, display + timestamp type roles); this spine is the behavior. Single tenant, single user (Shanb, solo builder), memory-only sessions, zero outbound after first-run model download (loopback to Ollama `:11434` and whisper-server `:9001` only). Backend is model-agnostic across the 23-language constant; quality variance is surfaced by the eval harness, never gated in the UI.
+Single-surface desktop app: one native Flet window (minimum 960×640), no webserver, no browser, no accounts. UI system is **Flet 0.86 Material** — `DESIGN.md` is the visual identity reference and names the brand-layer delta (paper background, primary blue, live red, display + timestamp type roles); this spine is the behavior. Single tenant, single user (vshanbha, solo builder), memory-only sessions, zero outbound after first-run model download (loopback to Ollama `:11434` and whisper-server `:9001` only). Backend is model-agnostic across the 23-language constant; quality variance is surfaced by the eval harness, never gated in the UI.
 
 ## Information Architecture
 
@@ -119,19 +119,19 @@ macOS specifics: packaged bundle carries `NSMicrophoneUsageDescription`; first L
 
 ## Key Flows
 
-### Flow 1 — Translate before sending (Shanb, Tuesday morning, UJ-1)
+### Flow 1 — Translate before sending (vshanbha, Tuesday morning, UJ-1)
 
-1. Shanb opens the app; Text mode is up, top strip shows Ollama connected + lfm2.5 preselected.
+1. vshanbha opens the app; Text mode is up, top strip shows Ollama connected + lfm2.5 preselected.
 2. He pastes an English paragraph, picks German as target, hits Translate (`Ctrl+Enter`).
 3. Three cards render: formal (Sie), informal, and commentary noting the register choice, plus an "origin: English" caption.
-4. **Climax:** Shanb copies the formal card with one tap and pastes it into his message — the structured output meant he never had to guess which register the model used; the app told him, side by side.
+4. **Climax:** vshanbha copies the formal card with one tap and pastes it into his message — the structured output meant he never had to guess which register the model used; the app told him, side by side.
 5. He switches to Live mode and back; his input and results are still there.
 
 Failure: model returns malformed JSON → the commentary card shows "Couldn't parse that one. Retry." Formal/informal still display. Retry re-issues without retyping.
 
-### Flow 2 — Follow a live talk (Shanb, afternoon tech talk over BlackHole, UJ-2)
+### Flow 2 — Follow a live talk (vshanbha, afternoon tech talk over BlackHole, UJ-2)
 
-1. Shanb flips to Live mode, picks BlackHole (present), source auto-detect, target English, and presses Start — the button turns red and reads Stop.
+1. vshanbha flips to Live mode, picks BlackHole (present), source auto-detect, target English, and presses Start — the button turns red and reads Stop.
 2. Timestamped translated utterances append in order; status row shows capture live, whisper 0.4s, model lfm2.5.
 3. He scrolls back to re-read an earlier caption; auto-follow pauses. A "Jump to latest" chip appears.
 4. **Climax:** He taps "Jump to latest" mid-talk and lands exactly on the current utterance as the next caption streams in — he lost nothing by looking back; the session held its place and caught him up in one tap.
@@ -139,9 +139,9 @@ Failure: model returns malformed JSON → the commentary card shows "Couldn't pa
 
 Failure: whisper subprocess crashes mid-talk → dot turns amber, "Speech engine restarted — catching up…" Captions resume; missed utterances are not backfilled and the gap is labeled, not hidden.
 
-### Flow 3 — Translate a recorded clip (Shanb, evening, no BlackHole, UJ-3)
+### Flow 3 — Translate a recorded clip (vshanbha, evening, no BlackHole, UJ-3)
 
-1. Shanb opens File mode on a machine with no BlackHole and no mic plugged in — the surface doesn't care.
+1. vshanbha opens File mode on a machine with no BlackHole and no mic plugged in — the surface doesn't care.
 2. He picks a `.m4a` lecture clip; the path label confirms it and progress starts.
 3. Caption rows accumulate with timestamps, same row pattern as live.
 4. **Climax:** The last row lands with the final timestamp and progress completes — the same pipeline that served the live talk just served a file, with no device to configure and no second UI to learn.
