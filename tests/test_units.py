@@ -542,5 +542,5 @@ def test_toolbar_and_text_view_construct():
     view = build_text_view()
     assert view.data["stop_button"].visible is False
     assert view.data["progress_ring"].visible is False
-    assert view.data["style_float"].bottom == 12
-    assert view.data["style_float"].right == 12
+    assert view.data["copy_float"].bottom == 12
+    assert view.data["copy_float"].right == 12

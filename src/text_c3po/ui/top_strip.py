@@ -74,7 +74,13 @@ def build_appbar(
             pass
     dot = _status_dot(bool(ollama_connected))
     status = ft.GestureDetector(
-        content=dot,
+        # Padded off the screen edge: a bare 10px dot otherwise reads as
+        # attached to the border.
+        content=ft.Container(
+            content=dot,
+            alignment=ft.alignment.Alignment.CENTER,
+            padding=ft.Padding.only(left=4, right=12),
+        ),
         tooltip=status_detail(bool(ollama_connected), ollama_url),
         mouse_cursor=ft.MouseCursor.CLICK,
         on_tap=on_status_click,
