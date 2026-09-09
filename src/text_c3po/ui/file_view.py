@@ -12,7 +12,7 @@ def build_file_view() -> ft.Column:
     return ft.Column(
         [
             ft.Text("File"),
-            ft.Row([source, target]),
+            ft.Row([source, target], wrap=True),
             ft.Text("Pick a file to begin \u2014 results appear here."),
         ]
     )

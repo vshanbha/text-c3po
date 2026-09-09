@@ -1,11 +1,11 @@
-"""Text mode surface: input plus target picker plus Translate plus output cards (CAP-3).
+"""Text mode surface: input on the left, Formal/Informal tabs right (CAP-3).
 
 Pure UI: mounts the multiline input field, the target-language picker row
-with the Translate button, the three independent output cards (each a
-Container with a title, body text, and copy button), and the origin-language
-caption. Every control is exposed via ``view.data`` refs so ``app.py`` can
-attach the Translate handler and read values at call time. Imports only the
-language pickers plus Flet; never the lower Ollama/audio layers (AD-1/AD-2).
+with the Translate button, and a tabbed output pane (Formal plus Informal,
+each with a copy button) plus the origin-language caption. Every control is
+exposed via ``view.data`` refs so ``app.py`` can attach the Translate
+handler and read values at call time. Imports only the language pickers
+plus Flet; never the lower Ollama/audio layers (AD-1/AD-2).
 """
 
 import inspect
@@ -16,8 +16,6 @@ from .language_pickers import build_target_dropdown
 
 EMPTY_HINT = "Type or paste something first."
 RETRY_HINT = "Couldn't parse that one. Retry."
-
-CARD_BORDER_COLOR = "#E2E0DA"
 
 
 def _make_copy_handler(body):
@@ -42,68 +40,114 @@ def _make_copy_handler(body):
     return _on_copy
 
 
-def _output_card(title, body):
-    """Return one output card: Container plus title Text plus body plus copy button."""
+def _tab_page(body):
+    """Return one tab page: selectable body text plus a trailing copy button.
+
+    Scrolls internally; the TabBarView gives it a bounded height.
+    """
     copy_button = ft.IconButton(
         icon=ft.Icons.CONTENT_COPY,
-        tooltip="Copy {}".format(title.lower()),
+        tooltip="Copy translation",
     )
     copy_button.on_click = _make_copy_handler(body)
-    card = ft.Container(
-        content=ft.Column(
-            [
-                ft.Row([ft.Text(title), copy_button]),
-                body,
-            ]
-        ),
-        border=ft.Border.all(1, CARD_BORDER_COLOR),
-        border_radius=8,
-        padding=16,
+    return ft.Column(
+        [
+            body,
+            ft.Row([copy_button], alignment=ft.MainAxisAlignment.END),
+        ],
+        scroll=ft.ScrollMode.AUTO,
     )
-    card.data = {"title": title, "body": body, "copy_button": copy_button}
-    return card
 
 
 def build_text_view() -> ft.Column:
-    """Return the Text surface with input, Translate, three cards, origin caption."""
+    """Return the Text surface: input column left, tabbed output right.
+
+    Natural height throughout — the page scrolls as one unit, so the input
+    never squeezes the output. Halves share the width; the redundant
+    per-mode header is gone (AppBar plus toggle carry the context).
+    """
     field = ft.TextField(
         multiline=True,
-        min_lines=6,
+        min_lines=4,
+        max_lines=8,
         hint_text=EMPTY_HINT,
+        filled=True,
     )
     target = build_target_dropdown()
+    # Fixed width (see top_strip: expand collapses inside wrapping Rows).
+    target.width = 260
     translate_button = ft.FilledButton(content=ft.Text("Translate"))
     hint = ft.Text("")
     formal_text = ft.Text("", selectable=True)
     informal_text = ft.Text("", selectable=True)
-    commentary_text = ft.Text("", selectable=True)
     origin_caption = ft.Text("")
-    formal_card = _output_card("Formal", formal_text)
-    informal_card = _output_card("Informal", informal_text)
-    commentary_card = _output_card("Commentary", commentary_text)
+    tabs = ft.Tabs(
+        length=2,
+        selected_index=0,
+        content=ft.Column(
+            [
+                ft.TabBar(
+                    tabs=[
+                        ft.Tab(label="Formal"),
+                        ft.Tab(label="Informal"),
+                    ]
+                ),
+                # Fixed height: TabBarView requires a bounded height, and an
+                # explicit pane keeps long translations scrolling in place
+                # instead of pushing the page around.
+                ft.Column(
+                    [
+                        ft.TabBarView(
+                            controls=[
+                                _tab_page(formal_text),
+                                _tab_page(informal_text),
+                            ],
+                            expand=True,
+                        ),
+                    ],
+                    height=420,
+                ),
+            ]
+        ),
+    )
+    left = ft.Column(
+        [
+            field,
+            ft.Row([target, translate_button], wrap=True),
+            hint,
+        ],
+        expand=1,
+        spacing=8,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+    right = ft.Column(
+        [
+            tabs,
+            origin_caption,
+        ],
+        expand=1,
+        spacing=8,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
     view = ft.Column(
         [
-            ft.Text("Text"),
-            field,
-            ft.Row([target, translate_button]),
-            hint,
-            formal_card,
-            informal_card,
-            commentary_card,
-            origin_caption,
-        ]
+            ft.Row(
+                [left, right],
+                spacing=12,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+            ),
+        ],
+        spacing=8,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
     )
     view.data = {
         "input_field": field,
         "target_dropdown": target,
         "translate_button": translate_button,
         "hint": hint,
-        "formal_card": formal_card,
-        "informal_card": informal_card,
-        "commentary_card": commentary_card,
+        "tabs": tabs,
         "formal_text": formal_text,
         "informal_text": informal_text,
-        "commentary_text": commentary_text,
         "origin_caption": origin_caption,
     }
     return view

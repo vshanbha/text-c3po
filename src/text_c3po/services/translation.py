@@ -11,6 +11,7 @@ passed as a parameter.
 """
 
 import logging
+import re
 from typing import List, Union
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -41,21 +42,20 @@ TRANSLATION_NUM_CTX = 4096
 
 
 class Translation(BaseModel):
-    """Full text-mode translation schema (AD-5)."""
+    """Text-mode translation schema (AD-5): formal/informal plus origin."""
 
     formal: str = Field(description="Formal version of the translated output")
     informal: str = Field(description="Informal version of the translated output")
-    commentary: str = Field(description="Special commentary about the translation")
     origin_language: Union[str, List[str]] = Field(
         description="Autodetected language(s) of the input text"
     )
 
 
-_SYSTEM_TEMPLATE = """You are a translator who translates from many languages to {language}.
-Autodetect the origin language in the input text.
+_SYSTEM_TEMPLATE = """You are a translator. Translate the input text below into {language}.
+This input is one part of a longer document; translate only this part, preserving its full meaning.
+The ENTIRE output must be written in {language} — every sentence, no exceptions, no English paraphrase.
 Respond strictly with the translation of the complete input text in {language}.
 Where possible provide both formal and informal versions.
-Provide multiple translations where possible with relevant commentary in {language}.
 Translated output must follow the JSON schema per the below instructions.
 {format_instructions}"""
 
@@ -87,7 +87,7 @@ def _as_text(value):
 
 
 def _normalize(parsed):
-    """Return the four schema fields as a plain dict, or None when shapeless."""
+    """Return the schema fields as a plain dict, or None when shapeless."""
     try:
         items = parsed.items()
     except Exception:
@@ -101,28 +101,21 @@ def _normalize(parsed):
     return {
         "formal": _as_text(lowered.get("formal", "")),
         "informal": _as_text(lowered.get("informal", "")),
-        "commentary": _as_text(lowered.get("commentary", "")),
         "origin_language": _as_text(lowered.get("origin_language", "")),
     }
 
 
-def translate_text(text, target_language, model):
-    """Translate ``text`` into ``target_language`` with the given Ollama ``model``.
-
-    Returns a parsed ``{formal, informal, commentary, origin_language}`` dict
-    on success, or ``{error, retryable}`` on any transport/parse failure.
-    Never raises and never returns raw model payloads.
-    """
+def _split_paragraphs(text):
+    """Split on blank lines; always returns at least the stripped input."""
     try:
-        if not isinstance(text, str) or not text.strip():
-            return {"error": EMPTY_INPUT_MESSAGE, "retryable": False}
-        if not isinstance(target_language, str) or not target_language.strip():
-            return {"error": MISSING_TARGET_MESSAGE, "retryable": False}
-        if not isinstance(model, str) or not model.strip():
-            return {"error": MISSING_MODEL_MESSAGE, "retryable": False}
+        parts = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     except Exception:
-        return {"error": RETRY_MESSAGE, "retryable": True}
+        return [text]
+    return parts or [text.strip() or text]
 
+
+def _translate_single(text, target_language, model, parser):
+    """One LLM round trip; returns the normalized dict or {error, retryable}."""
     try:
         llm = ChatOllama(
             model=model,
@@ -131,7 +124,6 @@ def translate_text(text, target_language, model):
             temperature=TRANSLATION_TEMPERATURE,
             num_ctx=TRANSLATION_NUM_CTX,
         )
-        parser = JsonOutputParser(pydantic_object=Translation)
         messages = _build_request(text, target_language, parser)
     except Exception as exc:
         logger.error("translate_text setup failure: %r", exc)
@@ -165,4 +157,53 @@ def translate_text(text, target_language, model):
             "translate_text unexpected payload shape; raw payload: %r", raw[:2000]
         )
         return {"error": RETRY_MESSAGE, "retryable": True}
+    return normalized
+
+
+def translate_text(text, target_language, model):
+    """Translate ``text`` into ``target_language`` with the given Ollama ``model``.
+
+    Long inputs are split into paragraphs first: each chunk gets its own
+    small round trip (fast on small models, no tail cutoff), and the parts
+    are rejoined with blank lines. Single-paragraph inputs take exactly one
+    call, identical to before.
+
+    Returns a parsed ``{formal, informal, origin_language}`` dict on
+    success, or ``{error, retryable}`` on any transport/parse failure
+    (a failing chunk fails the whole call). Never raises and never returns
+    raw model payloads.
+    """
+    try:
+        if not isinstance(text, str) or not text.strip():
+            return {"error": EMPTY_INPUT_MESSAGE, "retryable": False}
+        if not isinstance(target_language, str) or not target_language.strip():
+            return {"error": MISSING_TARGET_MESSAGE, "retryable": False}
+        if not isinstance(model, str) or not model.strip():
+            return {"error": MISSING_MODEL_MESSAGE, "retryable": False}
+    except Exception:
+        return {"error": RETRY_MESSAGE, "retryable": True}
+
+    try:
+        parser = JsonOutputParser(pydantic_object=Translation)
+        chunks = _split_paragraphs(text)
+    except Exception as exc:
+        logger.error("translate_text setup failure: %r", exc)
+        return {"error": RETRY_MESSAGE, "retryable": True}
+
+    formals = []
+    informals = []
+    origin = ""
+    for chunk in chunks:
+        result = _translate_single(chunk, target_language, model, parser)
+        if not isinstance(result, dict) or "error" in result:
+            return result
+        formals.append(result.get("formal", ""))
+        informals.append(result.get("informal", ""))
+        if not origin:
+            origin = result.get("origin_language", "")
+    return {
+        "formal": "\n\n".join(formals),
+        "informal": "\n\n".join(informals),
+        "origin_language": origin,
+    }
     return normalized
