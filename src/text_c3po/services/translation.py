@@ -381,4 +381,15 @@ def translate_text(text, target_language, model, on_token=None, stop_event=None)
     )
     if not isinstance(result, dict):
         return {"error": RETRY_MESSAGE, "retryable": True}
+    try:
+        if isinstance(result.get("formal"), str):
+            logger.info(
+                "translate_text ok: in=%d chars out=%d chars model=%s target=%s",
+                len(text),
+                len(result["formal"]),
+                model,
+                target_language,
+            )
+    except Exception:
+        pass
     return result
