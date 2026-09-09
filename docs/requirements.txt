@@ -1,0 +1,3 @@
+# Docs-site dependencies only (MkDocs Material). App deps stay in
+# requirements.txt. CI installs this to build the Pages site.
+mkdocs-material
