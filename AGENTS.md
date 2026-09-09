@@ -28,7 +28,7 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 
 - Pin `flet==exact` in `requirements.txt` until 1.0 ships; read the changelog before any upgrade.
 - Talk to Ollama via langchain-ollama ChatOllama with JSON format enforced; list runtime models from `/api/tags`, suggested default lfm2.5.
-- Keep translation context small (`num_ctx=4096` in the service): single-sentence prompts need under 2k tokens and small local models are memory/latency-bound; never raise without re-running the gate.
+- Run translation with thinking disabled (`reasoning=False` in the service): the reasoning trace costs ~10s per call with zero translation gain. Do not override `num_ctx` — the server default applies (lfm2.5 loads at 128K fully on GPU here); pinning a small value forces a model reload per call. Never add either back without re-running the gate.
 - The translation contract is language names ("German"), never picker codes ("de"); UI layers convert via `languages.name_for_code` at call time so manual use matches the gated test path.
 - Ship the 23-language code and name constant from blueprint section 2.1; keep the backend model-agnostic.
 - Spawn `whisper-server` as a subprocess on 127.0.0.1:9001 with transcribe only; do the translation in the LLM.

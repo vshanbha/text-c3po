@@ -2,7 +2,7 @@
 
 Pure UI: language bar on top (Detect language … target picker with a swap
 action), two equal cards below (input left with live char count, Formal /
-Informal tabs right), and a centered Translate / Stop action row with
+Informal output right under a Material segmented toggle), and a centered Translate / Stop action row with
 progress + status. Every control is exposed via ``view.data`` refs so
 ``app.py`` can attach handlers and read values at call time. Imports only
 the language pickers plus Flet; never the lower Ollama/audio layers.
@@ -143,29 +143,36 @@ def build_text_view() -> ft.Column:
         on_click=_on_swap,
     )
 
-    tabs = ft.Tabs(
-        length=2,
-        selected_index=0,
-        content=ft.Column(
-            [
-                ft.TabBar(
-                    tabs=[
-                        ft.Tab(label="Formal"),
-                        ft.Tab(label="Informal"),
-                    ]
-                ),
-                ft.Container(
-                    content=ft.TabBarView(
-                        controls=[
-                            _tab_page(formal_text),
-                            _tab_page(informal_text),
-                        ],
-                        expand=True,
-                    ),
-                    height=360,
-                ),
-            ]
-        ),
+    formal_page = _tab_page(formal_text)
+    informal_page = _tab_page(informal_text)
+    informal_page.visible = False
+
+    def _on_style_change(e=None) -> None:
+        """Formal/Informal toggle: flip which page shows (Material segmented)."""
+        try:
+            selected = e.control.selected or ["formal"]
+        except Exception:
+            selected = ["formal"]
+        current = selected[0]
+        for name, page in (("formal", formal_page), ("informal", informal_page)):
+            try:
+                page.visible = name == current
+            except Exception:
+                pass
+        for control in (formal_page, informal_page):
+            try:
+                control.update()
+            except Exception:
+                pass
+
+    style_toggle = ft.SegmentedButton(
+        segments=[
+            ft.Segment("formal", label="Formal"),
+            ft.Segment("informal", label="Informal"),
+        ],
+        selected=["formal"],
+        allow_empty_selection=False,
+        on_change=_on_style_change,
     )
 
     lang_bar = ft.Row(
@@ -199,7 +206,20 @@ def build_text_view() -> ft.Column:
     right_card = ft.Card(
         content=ft.Container(
             content=ft.Column(
-                [tabs],
+                [
+                    ft.Row(
+                        [style_toggle],
+                        alignment=ft.MainAxisAlignment.START,
+                    ),
+                    ft.Container(
+                        content=ft.Column(
+                            [formal_page, informal_page],
+                            expand=True,
+                            spacing=0,
+                        ),
+                        height=360,
+                    ),
+                ],
                 expand=True,
                 spacing=8,
             ),
@@ -242,7 +262,9 @@ def build_text_view() -> ft.Column:
         "hint": hint,
         "char_count": char_count,
         "swap_button": swap_button,
-        "tabs": tabs,
+        "style_toggle": style_toggle,
+        "formal_page": formal_page,
+        "informal_page": informal_page,
         "formal_text": formal_text,
         "informal_text": informal_text,
         "origin_caption": origin_caption,
