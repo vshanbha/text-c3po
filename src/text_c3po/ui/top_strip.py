@@ -1,10 +1,10 @@
-"""Top chrome: Material AppBar plus compact mode toolbar (CAP-1/CAP-2/CAP-4).
+"""Top chrome: Material AppBar plus mode toolbar (CAP-1/CAP-2/CAP-4).
 
-The AppBar owns the title only. The toolbar below owns the full-width
-Text/Live/File SegmentedButton plus a compact status row (dot, model
-Dropdown): the dot alone signals state, and its hover tooltip carries the
-detail plus the fix. Mutable refs live in toolbar.data (toggle, dot,
-status, model_dropdown) so app.py can refresh them in place.
+The AppBar owns the title plus, top-right, the model picker and the Ollama
+status dot (click re-probes; hover carries detail plus the fix). The toolbar
+below is just the full-width Text/Live/File SegmentedButton. Mutable refs
+live in appbar.data (model_dropdown, dot, status) and toolbar.data (toggle)
+so app.py can refresh them in place.
 """
 
 import flet as ft
@@ -45,41 +45,58 @@ def status_detail(connected: bool, ollama_url=None) -> str:
 
 def build_appbar(
     ollama_connected: bool = False,
-    on_retry=None,
-    on_refresh_models=None,
-) -> ft.AppBar:
-    """Return the Material AppBar: title only.
-
-    Retry/Models used to live here as buttons; they now live on the toolbar
-    status row (click the Ollama status to re-check, model list refreshes on
-    every probe), so the bar carries no actions. Params stay for call compat.
-    """
-    bar = ft.AppBar(
-        title=ft.Text("text-c3po"),
-        center_title=False,
-        bgcolor=ft.Colors.SURFACE_CONTAINER,
-    )
-    bar.data = {}
-    return bar
-
-
-def build_toolbar(
-    on_mode_change,
-    ollama_connected: bool = False,
     models=None,
     selected_model=None,
     on_model_change=None,
     on_status_click=None,
     ollama_url=None,
-) -> ft.Column:
-    """Return the compact toolbar: full-width mode toggle plus status row.
+) -> ft.AppBar:
+    """Return the Material AppBar: title plus model picker and status dot.
 
-    The dot alone signals Ollama state (click re-probes; hover tooltip
-    carries the detail plus the fix) and the model list refreshes on every
-    probe — no separate buttons, no status sentence eating width.
-    ``ollama_url`` is a plain display string so ui/ never imports
-    runtimes (layering rule); app.py passes it in.
+    Top-right cluster, most global first: model picker (compact: no label,
+    dense, hover explains), then the 10px status dot (click re-probes, hover
+    carries state plus the fix). The model list refreshes on every probe.
     """
+    model_dropdown = build_model_dropdown(models or [], selected_model)
+    # Compact for AppBar height: no label, narrow, dense; never combine
+    # expand with wrapping rows (expanded child collapses to zero size).
+    try:
+        model_dropdown.label = None
+        model_dropdown.width = 200
+        model_dropdown.dense = True
+        model_dropdown.tooltip = "Ollama model — applies to the next call"
+    except Exception:
+        pass
+    if on_model_change is not None:
+        try:
+            model_dropdown.on_change = on_model_change
+        except Exception:
+            pass
+    dot = _status_dot(bool(ollama_connected))
+    status = ft.GestureDetector(
+        content=dot,
+        tooltip=status_detail(bool(ollama_connected), ollama_url),
+        mouse_cursor=ft.MouseCursor.CLICK,
+        on_tap=on_status_click,
+    )
+    bar = ft.AppBar(
+        title=ft.Text("text-c3po"),
+        center_title=False,
+        bgcolor=ft.Colors.SURFACE_CONTAINER,
+        actions=[model_dropdown, status],
+    )
+    bar.data = {
+        "model_dropdown": model_dropdown,
+        "dot": dot,
+        "status": status,
+    }
+    return bar
+
+
+def build_toolbar(
+    on_mode_change,
+) -> ft.Column:
+    """Return the mode toolbar: full-width Text/Live/File SegmentedButton."""
     toggle = ft.SegmentedButton(
         segments=[
             ft.Segment("text", label="Text"),
@@ -91,46 +108,23 @@ def build_toolbar(
         on_change=on_mode_change,
         expand=True,
     )
-    dot = _status_dot(bool(ollama_connected))
-    status = ft.GestureDetector(
-        content=dot,
-        tooltip=status_detail(bool(ollama_connected), ollama_url),
-        mouse_cursor=ft.MouseCursor.CLICK,
-        on_tap=on_status_click,
-    )
-    model_dropdown = build_model_dropdown(models or [], selected_model)
-    # Fixed width: never combine expand with a wrapping Row — the expanded
-    # child collapses to zero size. Wrap stays so narrow windows reflow.
-    model_dropdown.width = 260
-    if on_model_change is not None:
-        model_dropdown.on_change = on_model_change
     bar = ft.Column(
-        [
-            ft.Row([toggle], spacing=0),
-            ft.Row(
-                [model_dropdown, status],
-                spacing=8,
-                wrap=True,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-        ],
-        spacing=8,
+        [ft.Row([toggle], spacing=0)],
+        spacing=0,
     )
-    bar.data = {
-        "toggle": toggle,
-        "dot": dot,
-        "status": status,
-        "model_dropdown": model_dropdown,
-    }
+    bar.data = {"toggle": toggle}
     return bar
 
 
-def refresh_ollama_status(strip, connected: bool, appbar=None, ollama_url=None) -> None:
-    """Refresh the toolbar dot plus its hover detail (caller updates the page).
+def refresh_ollama_status(
+    holder, connected: bool, appbar=None, ollama_url=None
+) -> None:
+    """Refresh the status dot plus its hover detail (caller updates the page).
 
-    ``appbar`` stays for call compat and is ignored (title-only bar).
+    ``holder`` is any control with .data holding dot/status — the AppBar
+    since the cluster moved there. ``appbar`` stays for call compat.
     """
-    refs = strip.data if isinstance(getattr(strip, "data", None), dict) else {}
+    refs = holder.data if isinstance(getattr(holder, "data", None), dict) else {}
     dot = refs.get("dot")
     status = refs.get("status")
     if dot is not None:

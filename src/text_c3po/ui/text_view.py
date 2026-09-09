@@ -182,39 +182,48 @@ def build_text_view() -> ft.Column:
     )
     right_card = ft.Card(
         content=ft.Container(
+            # Body starts at the card top: no header row, so the first line
+            # can never sit beside chrome or hide behind it.
             content=ft.Column(
-                [
-                    ft.Row(
-                        [style_toggle, copy_current],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    ),
-                    # Single scroll region: both texts share it, exactly one
-                    # visible, so the first line can never hide behind the
-                    # header or clip inside nested expanding panes.
-                    ft.Column(
-                        [formal_text, informal_text],
-                        scroll=ft.ScrollMode.AUTO,
-                        expand=True,
-                        spacing=0,
-                    ),
-                ],
+                [formal_text, informal_text],
+                scroll=ft.ScrollMode.AUTO,
                 expand=True,
-                spacing=8,
+                spacing=0,
             ),
             padding=ft.Padding.all(12),
             height=360,
         ),
         elevation=1,
     )
+    # Material floating pattern: the Formal/Informal toggle plus copy ride
+    # in a pill overlaid bottom-right of the output (FAB-like). Always
+    # spottable, zero layout rows, content scrolls beneath.
+    style_float = ft.Container(
+        content=ft.Row(
+            [style_toggle, copy_current],
+            spacing=4,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+        border_radius=24,
+        padding=ft.Padding.only(left=8, right=4, top=4, bottom=4),
+        shadow=ft.BoxShadow(blur_radius=8, color="#40000000"),
+        right=12,
+        bottom=12,
+    )
+    right_stack = ft.Stack(
+        controls=[right_card, style_float],
+        height=360,
+        expand=True,
+    )
     panes = ft.Row(
-        [left_card, right_card],
+        [left_card, right_stack],
         spacing=12,
         vertical_alignment=ft.CrossAxisAlignment.START,
     )
-    for card in (left_card, right_card):
+    for pane in (left_card, right_stack):
         try:
-            card.expand = 1
+            pane.expand = 1
         except Exception:
             pass
 
@@ -241,6 +250,7 @@ def build_text_view() -> ft.Column:
         "char_count": char_count,
         "copy_button": copy_current,
         "style_toggle": style_toggle,
+        "style_float": style_float,
         "formal_text": formal_text,
         "informal_text": informal_text,
         "origin_caption": origin_caption,

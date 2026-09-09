@@ -435,38 +435,34 @@ def test_style_toggle_flips_pages_without_tabs():
     assert refs["informal_text"].visible is False
 
 
-def test_appbar_is_title_only():
-    # Retry/Models live on the toolbar status row now; the bar carries no
-    # actions. Still constructs on flet 0.86.5 (see TextButton lesson).
+def test_appbar_hosts_model_and_status_top_right():
+    # Model picker plus status dot live top-right; dot click re-probes,
+    # hover carries detail plus the fix. Constructs on flet 0.86.5.
     from text_c3po.ui.top_strip import build_appbar
 
-    bar = build_appbar(ollama_connected=False, on_retry=None, on_refresh_models=None)
-    assert list(bar.actions or []) == []
-    assert bar.data == {}
-
-
-def test_toolbar_status_is_clickable_retry_with_hover_detail():
-    # The dot/label is the retry control: click re-probes, hover explains.
-    from text_c3po.ui.top_strip import build_toolbar
-
     tapped = []
-    strip = build_toolbar(
-        lambda e: None,
+    bar = build_appbar(
         ollama_connected=True,
         models=["m"],
+        selected_model="m",
+        on_model_change=lambda e: None,
         on_status_click=lambda e: tapped.append(True),
         ollama_url="http://127.0.0.1:11434",
     )
-    assert set(strip.data.keys()) == {
-        "toggle",
-        "dot",
-        "status",
-        "model_dropdown",
-    }
-    status = strip.data["status"]
+    assert set(bar.data.keys()) == {"model_dropdown", "dot", "status"}
+    dropdown, status = bar.data["model_dropdown"], bar.data["status"]
+    assert dropdown.value == "m" and dropdown.dense is True
+    assert "model" in (dropdown.tooltip or "").lower()
     assert "127.0.0.1:11434" in (status.tooltip or "")
     status.on_tap(None)
     assert tapped == [True]
+
+
+def test_toolbar_is_toggle_only():
+    from text_c3po.ui.top_strip import build_toolbar
+
+    strip = build_toolbar(lambda e: None)
+    assert set(strip.data.keys()) == {"toggle"}
 
 
 def test_status_dot_down_is_error_red_with_fix_in_hover():
@@ -541,13 +537,10 @@ def test_toolbar_and_text_view_construct():
     from text_c3po.ui.text_view import build_text_view
     from text_c3po.ui.top_strip import build_toolbar
 
-    strip = build_toolbar(lambda e: None, ollama_connected=True, models=["m"])
-    assert set(strip.data.keys()) == {
-        "toggle",
-        "dot",
-        "status",
-        "model_dropdown",
-    }
+    strip = build_toolbar(lambda e: None)
+    assert set(strip.data.keys()) == {"toggle"}
     view = build_text_view()
     assert view.data["stop_button"].visible is False
     assert view.data["progress_ring"].visible is False
+    assert view.data["style_float"].bottom == 12
+    assert view.data["style_float"].right == 12

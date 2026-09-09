@@ -261,17 +261,16 @@ def main(page: ft.Page) -> None:
 
     def _reprobe_and_refresh(e=None) -> None:
         ok, fresh = check_ollama()
-        toolbar = chrome.get("toolbar")
-        appbar = chrome.get("appbar")
-        if toolbar is None:
+        holder = chrome.get("appbar")
+        if holder is None:
             return
-        refresh_ollama_status(toolbar, ok, appbar, OLLAMA_BASE_URL)
+        refresh_ollama_status(holder, ok, None, OLLAMA_BASE_URL)
         if ok:
             fresh_models = list(fresh) if isinstance(fresh, list) else []
             prior = current_model.get("value")
             if prior not in fresh_models:
                 try:
-                    refs = toolbar.data if isinstance(toolbar.data, dict) else {}
+                    refs = holder.data if isinstance(holder.data, dict) else {}
                     dropdown = refs.get("model_dropdown")
                     dropdown_value = dropdown.value if dropdown is not None else None
                     if dropdown_value in fresh_models:
@@ -281,14 +280,11 @@ def main(page: ft.Page) -> None:
             selected = (
                 prior if prior in fresh_models else pick_default_model(fresh_models)
             )
-            refresh_model_picker(toolbar, fresh_models, selected)
+            refresh_model_picker(holder, fresh_models, selected)
             current_model["value"] = selected
         page.update()
 
     def on_retry(e=None) -> None:
-        _reprobe_and_refresh(e)
-
-    def on_refresh_models(e=None) -> None:
         _reprobe_and_refresh(e)
 
     # Generation counter: each Translate bumps it; Stop bumps it too so the
@@ -506,19 +502,14 @@ def main(page: ft.Page) -> None:
 
     appbar = build_appbar(
         ollama_connected=connected,
-        on_retry=on_retry,
-        on_refresh_models=on_refresh_models,
-    )
-    page.appbar = appbar
-    toolbar = build_toolbar(
-        on_mode_change,
-        ollama_connected=connected,
         models=startup_models,
         selected_model=selected_model,
         on_model_change=on_model_change,
         on_status_click=on_retry,
         ollama_url=OLLAMA_BASE_URL,
     )
+    page.appbar = appbar
+    toolbar = build_toolbar(on_mode_change)
     chrome["appbar"] = appbar
     chrome["toolbar"] = toolbar
     page.add(toolbar, text_view, live_view, file_view)
