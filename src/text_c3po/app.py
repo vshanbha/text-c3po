@@ -10,7 +10,11 @@ import time
 import flet as ft
 
 from text_c3po.languages import name_for_code
-from text_c3po.runtimes.ollama_client import check_ollama, pick_default_model
+from text_c3po.runtimes.ollama_client import (
+    OLLAMA_BASE_URL,
+    check_ollama,
+    pick_default_model,
+)
 from text_c3po.services.translation import (
     cancel_inflight,
     extract_partial_formal,
@@ -50,6 +54,19 @@ def apply_mode_visibility(views, current):
         except Exception:
             pass
     return current
+
+
+def ollama_state_changed(prev, ok, models) -> bool:
+    """True when a fresh probe differs from the last rendered state.
+
+    Pure helper for the background poll: the toolbar only re-renders (and
+    the model picker only refreshes) on an actual flip, so idle polling
+    never flickers the UI.
+    """
+    try:
+        return prev != (bool(ok), list(models or []))
+    except Exception:
+        return True
 
 
 def is_current_request(captured, current) -> bool:
@@ -304,6 +321,26 @@ def main(page: ft.Page) -> None:
                 hint.value = ""
             except Exception:
                 pass
+        # Never fire into a dead server: fast loopback probe first. This also
+        # self-heals a stale green dot the moment the user acts.
+        try:
+            alive, _ = check_ollama()
+        except Exception:
+            alive = False
+        if not alive:
+            _reprobe_and_refresh()
+            if hint is not None:
+                try:
+                    hint.value = (
+                        "Ollama isn't running — start it, then press Translate again."
+                    )
+                except Exception:
+                    pass
+            try:
+                page.update()
+            except Exception:
+                pass
+            return
         try:
             target_value = (
                 target_dropdown.value if target_dropdown is not None else None
@@ -467,11 +504,38 @@ def main(page: ft.Page) -> None:
         models=startup_models,
         selected_model=selected_model,
         on_model_change=on_model_change,
+        on_status_click=on_retry,
+        ollama_url=OLLAMA_BASE_URL,
     )
     chrome["appbar"] = appbar
     chrome["toolbar"] = toolbar
     page.add(toolbar, text_view, live_view, file_view)
     page.update()
+
+    # Stale-status fix: Ollama can die after launch while the dot stays
+    # green. A daemon poll re-probes loopback and re-renders only on a flip,
+    # so shutdowns and restarts surface within seconds, never on next click.
+    poll_state = {"last": (connected, startup_models)}
+
+    def _poll_ollama() -> None:
+        while True:
+            try:
+                time.sleep(15)
+            except Exception:
+                return
+            try:
+                ok, fresh = check_ollama()
+                fresh_models = list(fresh) if isinstance(fresh, list) else []
+            except Exception:
+                continue
+            try:
+                if ollama_state_changed(poll_state["last"], ok, fresh_models):
+                    poll_state["last"] = (ok, fresh_models)
+                    _reprobe_and_refresh()
+            except Exception:
+                return
+
+    threading.Thread(target=_poll_ollama, daemon=True).start()
 
 
 if __name__ == "__main__":

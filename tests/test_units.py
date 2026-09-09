@@ -411,17 +411,48 @@ def test_style_toggle_flips_pages_without_tabs():
     assert refs["informal_text"].visible is False
 
 
-def test_appbar_builds_with_labeled_actions():
-    # Regression: AppBar actions must construct on flet 0.86.5 (a wrong
-    # TextButton kwarg crashed the app at launch with no test failing).
+def test_appbar_is_title_only():
+    # Retry/Models live on the toolbar status row now; the bar carries no
+    # actions. Still constructs on flet 0.86.5 (see TextButton lesson).
     from text_c3po.ui.top_strip import build_appbar
 
     bar = build_appbar(ollama_connected=False, on_retry=None, on_refresh_models=None)
-    labels = [getattr(a, "content", None) for a in bar.actions]
-    assert labels == ["Retry", "Models"]
-    tips = [getattr(a, "tooltip", None) for a in bar.actions]
-    assert tips == ["Retry Ollama connection", "Refresh model list"]
-    assert set(bar.data.keys()) == {"retry", "refresh_models"}
+    assert list(bar.actions or []) == []
+    assert bar.data == {}
+
+
+def test_toolbar_status_is_clickable_retry_with_hover_detail():
+    # The dot/label is the retry control: click re-probes, hover explains.
+    from text_c3po.ui.top_strip import build_toolbar
+
+    tapped = []
+    strip = build_toolbar(
+        lambda e: None,
+        ollama_connected=True,
+        models=["m"],
+        on_status_click=lambda e: tapped.append(True),
+        ollama_url="http://127.0.0.1:11434",
+    )
+    assert set(strip.data.keys()) == {
+        "toggle",
+        "dot",
+        "label",
+        "status",
+        "model_dropdown",
+    }
+    status = strip.data["status"]
+    assert "127.0.0.1:11434" in (status.tooltip or "")
+    assert "click" in (status.tooltip or "").lower()
+    status.on_tap(None)
+    assert tapped == [True]
+
+
+def test_ollama_state_changed_only_on_flip():
+    from text_c3po.app import ollama_state_changed
+
+    assert ollama_state_changed((True, ["m"]), True, ["m"]) is False
+    assert ollama_state_changed((True, ["m"]), False, []) is True
+    assert ollama_state_changed((True, ["m"]), True, ["m", "n"]) is True
 
 
 def test_toolbar_and_text_view_construct():
@@ -431,7 +462,13 @@ def test_toolbar_and_text_view_construct():
     from text_c3po.ui.top_strip import build_toolbar
 
     strip = build_toolbar(lambda e: None, ollama_connected=True, models=["m"])
-    assert set(strip.data.keys()) == {"toggle", "dot", "label", "model_dropdown"}
+    assert set(strip.data.keys()) == {
+        "toggle",
+        "dot",
+        "label",
+        "status",
+        "model_dropdown",
+    }
     view = build_text_view()
     assert view.data["stop_button"].visible is False
     assert view.data["progress_ring"].visible is False

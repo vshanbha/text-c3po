@@ -39,34 +39,18 @@ def build_appbar(
     on_retry=None,
     on_refresh_models=None,
 ) -> ft.AppBar:
-    """Return the Material AppBar: title plus labeled Retry/Models actions.
+    """Return the Material AppBar: title only.
 
-    Labels instead of icon-only buttons: icon meaning is undiscoverable
-    without hovering, and these two are the app's lifeline when Ollama is
-    down or the model list changes.
+    Retry/Models used to live here as buttons; they now live on the toolbar
+    status row (click the Ollama status to re-check, model list refreshes on
+    every probe), so the bar carries no actions. Params stay for call compat.
     """
-    retry = ft.TextButton(
-        content="Retry",
-        tooltip="Retry Ollama connection",
-        on_click=on_retry,
-    )
-    if retry is not None:
-        try:
-            retry.autofocus = not ollama_connected
-        except Exception:
-            pass
-    refresh = ft.TextButton(
-        content="Models",
-        tooltip="Refresh model list",
-        on_click=on_refresh_models,
-    )
     bar = ft.AppBar(
         title=ft.Text("text-c3po"),
         center_title=False,
         bgcolor=ft.Colors.SURFACE_CONTAINER,
-        actions=[retry, refresh],
     )
-    bar.data = {"retry": retry, "refresh_models": refresh}
+    bar.data = {}
     return bar
 
 
@@ -76,8 +60,16 @@ def build_toolbar(
     models=None,
     selected_model=None,
     on_model_change=None,
+    on_status_click=None,
+    ollama_url=None,
 ) -> ft.Column:
-    """Return the compact toolbar: full-width mode toggle plus status row."""
+    """Return the compact toolbar: full-width mode toggle plus status row.
+
+    The Ollama dot/label is the retry control (click re-probes; full detail
+    on hover) and the model list refreshes on every probe — no separate
+    buttons. ``ollama_url`` is a plain display string so ui/ never imports
+    runtimes (layering rule); app.py passes it in.
+    """
     toggle = ft.SegmentedButton(
         segments=[
             ft.Segment("text", label="Text"),
@@ -91,6 +83,20 @@ def build_toolbar(
     )
     dot = _status_dot(bool(ollama_connected))
     label = _status_label(bool(ollama_connected))
+    try:
+        detail = "Ollama at {} — click to re-check".format(ollama_url or "loopback")
+    except Exception:
+        detail = "Ollama status — click to re-check"
+    try:
+        label.tooltip = detail
+    except Exception:
+        pass
+    status = ft.GestureDetector(
+        content=ft.Row([dot, label], spacing=8),
+        tooltip=detail,
+        mouse_cursor=ft.MouseCursor.CLICK,
+        on_tap=on_status_click,
+    )
     model_dropdown = build_model_dropdown(models or [], selected_model)
     # Fixed width: never combine expand with a wrapping Row — the expanded
     # child collapses to zero size. Wrap stays so narrow windows reflow.
@@ -101,7 +107,7 @@ def build_toolbar(
         [
             ft.Row([toggle], spacing=0),
             ft.Row(
-                [dot, label, model_dropdown],
+                [status, model_dropdown],
                 spacing=8,
                 wrap=True,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -113,6 +119,7 @@ def build_toolbar(
         "toggle": toggle,
         "dot": dot,
         "label": label,
+        "status": status,
         "model_dropdown": model_dropdown,
     }
     return bar
