@@ -11,7 +11,7 @@ passed as a parameter.
 """
 
 import logging
-import re
+import threading
 from typing import List, Union
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -34,11 +34,71 @@ MISSING_MODEL_MESSAGE = "Pick a model first."
 
 TRANSLATION_TEMPERATURE = 0.2
 
-# Small context window: single-sentence prompts need <2k tokens, and small
-# local models are memory- and latency-bound (a 128k default keeps ~8GB
-# resident and turns the 25-call gate into an hour). Never raise this
-# without re-running the gate; most small local models are like this.
-TRANSLATION_NUM_CTX = 4096
+# Context window: deliberately NOT overridden. An earlier revision pinned
+# num_ctx=4096 on the theory that small local models are memory-bound, but
+# live `ollama ps` shows lfm2.5 loaded at 128K fully on GPU (7.6 GB) — the
+# premise was wrong for this hardware. Worse, pinning a small value forces an
+# Ollama model reload whenever it differs from the loaded context, adding
+# seconds to every Translate. Let the server/model default decide.
+
+# Hung Ollama must not freeze the caller forever: sync httpx timeout (s)
+# forwarded via sync_client_kwargs (ollama Client -> httpx). UI also runs
+# translate off the Flet UI thread (see app.on_translate).
+TRANSLATION_TIMEOUT_S = 60.0
+
+# Stop support: every live ChatOllama registers here so Stop can close its
+# underlying HTTP client mid-request. Python threads can't be killed, so this
+# is the real abort — the blocked stream fails fast instead of running to
+# the 60s timeout. Stale results are still ignored by generation in app.py.
+# Streaming is the transport, JSON stays the contract: one prompt per chunk,
+# tokens accumulate, the full string parses once at the end.
+_ACTIVE_LOCK = threading.Lock()
+_ACTIVE_LLMS: set = set()
+_ACTIVE_STREAMS: set = set()
+
+
+def _close_stream(stream) -> None:
+    """Best-effort generator close so the server sees the disconnect."""
+    try:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
+    except Exception:
+        pass
+
+
+def cancel_inflight() -> int:
+    """Abort all in-flight translations; return how many streams were hit.
+
+    Closes active stream iterators first (server aborts mid-generation on
+    disconnect), then the underlying HTTP clients (frees the blocked worker).
+    Never raises. Call from the UI Stop handler before bumping the
+    generation counter — the worker then returns ``{"cancelled": True}`` and
+    its late result is dropped by is_current_request().
+    """
+    try:
+        with _ACTIVE_LOCK:
+            streams = list(_ACTIVE_STREAMS)
+            live = list(_ACTIVE_LLMS)
+    except Exception:
+        return 0
+    hit = 0
+    for stream in streams:
+        try:
+            _close_stream(stream)
+            hit += 1
+        except Exception:
+            pass
+    for llm in live:
+        try:
+            client = getattr(llm, "_client", None)
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+                hit += 1
+        except Exception:
+            pass
+    return hit
 
 
 class Translation(BaseModel):
@@ -105,24 +165,91 @@ def _normalize(parsed):
     }
 
 
-def _split_paragraphs(text):
-    """Split on blank lines; always returns at least the stripped input."""
+def extract_partial_formal(raw) -> str:
+    """Best-effort live preview: the ``formal`` value prefix in partial JSON.
+
+    Streaming tokens accumulate as raw JSON which won't parse until complete,
+    so the UI shows this instead of a char count — real words as they arrive.
+    Returns "" when no usable prefix exists yet. Preview only; the final
+    cards always render from the fully parsed contract.
+    """
     try:
-        parts = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        if not isinstance(raw, str) or not raw:
+            return ""
+        marker = '"formal"'
+        idx = raw.find(marker)
+        if idx < 0:
+            return ""
+        rest = raw[idx + len(marker) :]
+        colon = rest.find(":")
+        if colon < 0:
+            return ""
+        rest = rest[colon + 1 :].lstrip()
+        if rest.startswith('"'):
+            rest = rest[1:]
+        else:
+            return ""
+        # Drop a trailing dangling escape (chunk cut mid-\\u / \\") so the
+        # preview never shows a stray backslash.
+        if rest.endswith("\\"):
+            rest = rest[:-1]
+        try:
+            rest = rest.replace('\\"', '"').replace("\\n", " ")
+        except Exception:
+            pass
+        return rest.strip()
     except Exception:
-        return [text]
-    return parts or [text.strip() or text]
+        return ""
 
 
-def _translate_single(text, target_language, model, parser):
-    """One LLM round trip; returns the normalized dict or {error, retryable}."""
+def _chunk_text(chunk) -> str:
+    """Extract display text from a stream chunk (str or content blocks)."""
+    try:
+        content = getattr(chunk, "content", "")
+    except Exception:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            try:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict):
+                    parts.append(str(block.get("text", "")))
+                else:
+                    parts.append(str(getattr(block, "text", "") or ""))
+            except Exception:
+                pass
+        return "".join(parts)
+    try:
+        return str(content or "")
+    except Exception:
+        return ""
+
+
+def _translate_single(
+    text, target_language, model, parser, on_token=None, stop_event=None
+):
+    """One streaming LLM round trip; same single prompt, JSON parsed at end.
+
+    Tokens accumulate into one string; ``on_token(piece, total_chars)`` fires
+    per chunk for progress (never allowed to raise). If ``stop_event`` is set
+    mid-stream the iterator is closed — the server sees the disconnect and
+    aborts — and ``{"cancelled": True}`` returns. Otherwise the full string
+    parses through the unchanged JSON contract.
+    """
     try:
         llm = ChatOllama(
             model=model,
             format="json",
             base_url=OLLAMA_BASE_URL,
             temperature=TRANSLATION_TEMPERATURE,
-            num_ctx=TRANSLATION_NUM_CTX,
+            # No thinking phase: translation is a direct rewrite, and the
+            # reasoning trace costs ~10s per call with zero quality gain.
+            reasoning=False,
+            sync_client_kwargs={"timeout": TRANSLATION_TIMEOUT_S},
         )
         messages = _build_request(text, target_language, parser)
     except Exception as exc:
@@ -130,15 +257,68 @@ def _translate_single(text, target_language, model, parser):
         return {"error": RETRY_MESSAGE, "retryable": True}
 
     try:
-        response = llm.invoke(messages)
-    except Exception as exc:
-        logger.error("translate_text transport failure: %r", exc)
-        return {"error": RETRY_MESSAGE, "retryable": True}
-
-    try:
-        raw = getattr(response, "content", "")
+        with _ACTIVE_LOCK:
+            _ACTIVE_LLMS.add(llm)
     except Exception:
-        raw = ""
+        pass
+    try:
+        try:
+            stream = llm.stream(messages)
+        except Exception as exc:
+            logger.error("translate_text transport failure: %r", exc)
+            return {"error": RETRY_MESSAGE, "retryable": True}
+        try:
+            with _ACTIVE_LOCK:
+                _ACTIVE_STREAMS.add(stream)
+        except Exception:
+            pass
+        pieces = []
+        try:
+            for chunk in stream:
+                try:
+                    stopped = bool(stop_event is not None and stop_event.is_set())
+                except Exception:
+                    stopped = False
+                if stopped:
+                    _close_stream(stream)
+                    return {"cancelled": True}
+                try:
+                    piece = _chunk_text(chunk)
+                except Exception:
+                    piece = ""
+                if piece:
+                    pieces.append(piece)
+                    if callable(on_token):
+                        try:
+                            on_token(piece, sum(len(p) for p in pieces))
+                        except Exception:
+                            pass
+        except GeneratorExit:
+            return {"cancelled": True}
+        except Exception as exc:
+            try:
+                stopped = bool(stop_event is not None and stop_event.is_set())
+            except Exception:
+                stopped = False
+            if stopped:
+                return {"cancelled": True}
+            logger.error("translate_text transport failure: %r", exc)
+            return {"error": RETRY_MESSAGE, "retryable": True}
+        finally:
+            try:
+                with _ACTIVE_LOCK:
+                    _ACTIVE_STREAMS.discard(stream)
+            except Exception:
+                pass
+            _close_stream(stream)
+    finally:
+        try:
+            with _ACTIVE_LOCK:
+                _ACTIVE_LLMS.discard(llm)
+        except Exception:
+            pass
+
+    raw = "".join(pieces)
     if not isinstance(raw, str):
         try:
             raw = str(raw)
@@ -160,18 +340,20 @@ def _translate_single(text, target_language, model, parser):
     return normalized
 
 
-def translate_text(text, target_language, model):
+def translate_text(text, target_language, model, on_token=None, stop_event=None):
     """Translate ``text`` into ``target_language`` with the given Ollama ``model``.
 
-    Long inputs are split into paragraphs first: each chunk gets its own
-    small round trip (fast on small models, no tail cutoff), and the parts
-    are rejoined with blank lines. Single-paragraph inputs take exactly one
-    call, identical to before.
+    Exactly one prompt, one streamed call, whatever the length: tokens stream
+    in — ``on_token(piece, total_chars)`` per piece for live progress — and
+    the accumulated string parses once through the unchanged JSON schema.
+    (An earlier revision split long input into one call per paragraph; live
+    measurement showed the per-call first-token wait dominating, and a single
+    call translates cleanly, so the splitter was removed.)
 
     Returns a parsed ``{formal, informal, origin_language}`` dict on
-    success, or ``{error, retryable}`` on any transport/parse failure
-    (a failing chunk fails the whole call). Never raises and never returns
-    raw model payloads.
+    success, ``{error, retryable}`` on any transport/parse failure, or
+    ``{cancelled: True}`` when ``stop_event`` fires mid-stream. Never raises
+    and never returns raw model payloads.
     """
     try:
         if not isinstance(text, str) or not text.strip():
@@ -185,25 +367,18 @@ def translate_text(text, target_language, model):
 
     try:
         parser = JsonOutputParser(pydantic_object=Translation)
-        chunks = _split_paragraphs(text)
     except Exception as exc:
         logger.error("translate_text setup failure: %r", exc)
         return {"error": RETRY_MESSAGE, "retryable": True}
 
-    formals = []
-    informals = []
-    origin = ""
-    for chunk in chunks:
-        result = _translate_single(chunk, target_language, model, parser)
-        if not isinstance(result, dict) or "error" in result:
-            return result
-        formals.append(result.get("formal", ""))
-        informals.append(result.get("informal", ""))
-        if not origin:
-            origin = result.get("origin_language", "")
-    return {
-        "formal": "\n\n".join(formals),
-        "informal": "\n\n".join(informals),
-        "origin_language": origin,
-    }
-    return normalized
+    result = _translate_single(
+        text.strip(),
+        target_language,
+        model,
+        parser,
+        on_token=on_token,
+        stop_event=stop_event,
+    )
+    if not isinstance(result, dict):
+        return {"error": RETRY_MESSAGE, "retryable": True}
+    return result

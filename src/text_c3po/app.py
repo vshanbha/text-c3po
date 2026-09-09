@@ -4,11 +4,18 @@ Mounts the always-visible top strip plus the Text/Live/File mode views.
 Views are built once and toggled visible so input text survives switches.
 """
 
+import threading
+import time
+
 import flet as ft
 
 from text_c3po.languages import name_for_code
 from text_c3po.runtimes.ollama_client import check_ollama, pick_default_model
-from text_c3po.services.translation import translate_text
+from text_c3po.services.translation import (
+    cancel_inflight,
+    extract_partial_formal,
+    translate_text,
+)
 from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
 from text_c3po.ui.text_view import build_text_view
@@ -24,6 +31,69 @@ WINDOW_MIN_HEIGHT = 640
 
 RETRY_CARD_HINT = "Couldn't parse that one. Retry."
 EMPTY_INPUT_HINT = "Type or paste something first."
+
+
+def apply_mode_visibility(views, current):
+    """Pure mode-switch helper (A8 V3 close-out): exactly one view visible.
+
+    Mutates ``view.visible`` for each entry and returns ``current`` so the
+    on_mode_change handler stays a one-liner. Unit-tested with fakes; the
+    prior story-2 branching shipped without this assertion.
+    """
+    try:
+        items = views.items()
+    except Exception:
+        return current
+    for name, view in items:
+        try:
+            view.visible = name == current
+        except Exception:
+            pass
+    return current
+
+
+def is_current_request(captured, current) -> bool:
+    """True when a background result still owns the UI (cancel-by-generation).
+
+    Stop (or a newer Translate) bumps the generation; the stale worker drops
+    its result instead of overwriting the new state.
+    """
+    try:
+        return captured == current
+    except Exception:
+        return False
+
+
+def _set_translating(refs, page, busy: bool, status: str = "") -> None:
+    """Toggle Translate/Stop/progress/status in one place; never raises."""
+    try:
+        translate_button = refs.get("translate_button")
+        stop_button = refs.get("stop_button")
+        progress = refs.get("progress_ring")
+        status_text = refs.get("status_text")
+        if translate_button is not None:
+            try:
+                translate_button.disabled = busy
+            except Exception:
+                pass
+        if stop_button is not None:
+            try:
+                stop_button.visible = busy
+            except Exception:
+                pass
+        if progress is not None:
+            try:
+                progress.visible = busy
+            except Exception:
+                pass
+        if status_text is not None:
+            try:
+                status_text.value = status
+            except Exception:
+                pass
+        page.update()
+    except Exception:
+        pass
 
 
 def _show_retry_snackbar(page, on_retry) -> None:
@@ -126,7 +196,8 @@ def main(page: ft.Page) -> None:
     # segmented toggle, fields, cards, snackbar) pick this up automatically.
     page.theme = ft.Theme(color_scheme_seed="blue")
     page.theme_mode = ft.ThemeMode.LIGHT
-    page.padding = 12
+    page.bgcolor = "#EDF1F6"
+    page.padding = 16
     page.spacing = 8
     # Single page-level scroller: views size to content, so a long paste or
     # tall output scrolls the window instead of clipping without a scrollbar.
@@ -142,8 +213,7 @@ def main(page: ft.Page) -> None:
     def on_mode_change(e: ft.ControlEvent) -> None:
         selected = e.control.selected or ["text"]
         current = selected[0]
-        for name, view in views.items():
-            view.visible = name == current
+        apply_mode_visibility(views, current)
         page.update()
 
     connected, _startup_models = check_ollama()
@@ -192,7 +262,18 @@ def main(page: ft.Page) -> None:
     def on_refresh_models(e=None) -> None:
         _reprobe_and_refresh(e)
 
+    # Generation counter: each Translate bumps it; Stop bumps it too so the
+    # running worker's result becomes stale and is dropped, never rendered.
+    # The per-request stop Event is the true abort: the streaming loop polls
+    # it between tokens and closes the connection, so Ollama stops generating.
+    translate_seq = {"current": 0}
+    translate_stop = {"event": None}
+
     def on_translate(e=None) -> None:
+        # UI thread: validate, show progress + Stop, then run the LLM call on
+        # a daemon worker so the window never freezes. translate_text itself
+        # carries a 60s httpx timeout; Stop only ignores the late result (the
+        # HTTP call itself is not aborted) and frees the UI for a new request.
         refs = text_view.data if isinstance(text_view.data, dict) else {}
         input_field = refs.get("input_field")
         hint = refs.get("hint")
@@ -223,41 +304,121 @@ def main(page: ft.Page) -> None:
                 hint.value = ""
             except Exception:
                 pass
-        if translate_button is not None:
+        try:
+            target_value = (
+                target_dropdown.value if target_dropdown is not None else None
+            )
+        except Exception:
+            target_value = None
+        # Picker values are codes ("de"); the translation contract (and
+        # the gated test path) is language names ("German").
+        target_value = name_for_code(target_value)
+        model_value = current_model.get("value")
+        translate_seq["current"] += 1
+        my_seq = translate_seq["current"]
+        stop_event = threading.Event()
+        translate_stop["event"] = stop_event
+        snapshot = (raw_text, target_value, model_value)
+        _set_translating(refs, page, True, "Translating…")
+
+        def _work() -> None:
             try:
-                translate_button.disabled = True
+                text, target, model = snapshot
+                progress = {"chars": 0, "at": 0.0, "raw": []}
+
+                def on_token(piece, total) -> None:
+                    # Live words, not a char count: the formal value prefix
+                    # streams into its tab as it arrives; the final parsed
+                    # JSON replaces it at the end.
+                    if not is_current_request(my_seq, translate_seq["current"]):
+                        return
+                    try:
+                        progress["raw"].append(piece)
+                    except Exception:
+                        pass
+                    now = time.monotonic()
+                    if total - progress["chars"] < 60 and now - progress["at"] < 0.2:
+                        return
+                    progress["chars"] = total
+                    progress["at"] = now
+                    try:
+                        preview = extract_partial_formal("".join(progress["raw"]))
+                    except Exception:
+                        preview = ""
+                    try:
+                        status_text = refs.get("status_text")
+                        if status_text is not None:
+                            status_text.value = (
+                                "Translating…"
+                                if not preview
+                                else "Translating… {} chars".format(total)
+                            )
+                    except Exception:
+                        pass
+                    if preview:
+                        try:
+                            formal_control = refs.get("formal_text")
+                            if formal_control is not None:
+                                formal_control.value = preview + "…"
+                        except Exception:
+                            pass
+                    try:
+                        page.update()
+                    except Exception:
+                        pass
+
+                try:
+                    result = translate_text(
+                        text,
+                        target,
+                        model,
+                        on_token=on_token,
+                        stop_event=stop_event,
+                    )
+                except Exception:
+                    result = {"error": RETRY_CARD_HINT, "retryable": True}
+                if not is_current_request(my_seq, translate_seq["current"]):
+                    return  # stopped or superseded: drop, never render
+                if isinstance(result, dict) and result.get("cancelled"):
+                    _set_translating(refs, page, False, "Stopped.")
+                    return
+                try:
+                    _render_translation_result(refs, page, result, on_translate_retry)
+                finally:
+                    if is_current_request(my_seq, translate_seq["current"]):
+                        _set_translating(refs, page, False, "")
+                    else:
+                        try:
+                            page.update()
+                        except Exception:
+                            pass
             except Exception:
                 pass
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def on_stop_translate(e=None) -> None:
+        # Full stop: signal the streaming loop, close the connection so the
+        # server aborts mid-generation, then bump the generation so any late
+        # result is dropped. The worker thread itself can't be killed, but it
+        # holds no connection afterwards and the UI is free immediately.
+        refs = text_view.data if isinstance(text_view.data, dict) else {}
         try:
-            page.update()
+            event = translate_stop.get("event")
+            if event is not None:
+                try:
+                    event.set()
+                except Exception:
+                    pass
         except Exception:
             pass
         try:
-            try:
-                target_value = (
-                    target_dropdown.value if target_dropdown is not None else None
-                )
-            except Exception:
-                target_value = None
-            # Picker values are codes ("de"); the translation contract (and
-            # the gated test path) is language names ("German").
-            target_value = name_for_code(target_value)
-            model_value = current_model.get("value")
-            result = translate_text(raw_text, target_value, model_value)
+            cancel_inflight()
         except Exception:
-            result = {"error": RETRY_CARD_HINT, "retryable": True}
-        try:
-            _render_translation_result(refs, page, result, on_translate_retry)
-        finally:
-            if translate_button is not None:
-                try:
-                    translate_button.disabled = False
-                except Exception:
-                    pass
-            try:
-                page.update()
-            except Exception:
-                pass
+            pass
+        translate_seq["current"] += 1
+        translate_stop["event"] = None
+        _set_translating(refs, page, False, "Stopped.")
 
     def on_translate_retry(e=None) -> None:
         _reprobe_and_refresh(e)
@@ -268,6 +429,9 @@ def main(page: ft.Page) -> None:
         translate_control = translate_refs.get("translate_button")
         if translate_control is not None:
             translate_control.on_click = on_translate
+        stop_control = translate_refs.get("stop_button")
+        if stop_control is not None:
+            stop_control.on_click = on_stop_translate
     except Exception:
         pass
 
@@ -291,4 +455,9 @@ def main(page: ft.Page) -> None:
 
 
 if __name__ == "__main__":
+    ft.run(main)
+
+
+def run() -> None:
+    """Console-script entry point (``text-c3po``): launch the Flet window."""
     ft.run(main)
