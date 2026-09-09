@@ -17,6 +17,8 @@ RETRY_HINT = "Couldn't parse that one. Retry."
 INPUT_PLACEHOLDER = "Type or paste text to translate"
 INPUT_SOFT_LIMIT = 5000
 
+SOURCE_TITLE = "Detect language"
+
 
 def _make_copy_handler(body):
     """Return a click handler copying the current body text to the clipboard.
@@ -112,6 +114,11 @@ def build_text_view() -> ft.Column:
     field.on_change = _on_field_change
 
     informal_text.visible = False
+    # Left anchor: static title plus the detected-result slot. The title's
+    # real job is structural — it holds the left edge so the control cluster
+    # sits over the right pane; the slot fills with "Detected: X" after
+    # Translate without shifting the row.
+    source_title = ft.Text(SOURCE_TITLE, weight=ft.FontWeight.W_600)
 
     def _visible_body():
         try:
@@ -162,14 +169,18 @@ def build_text_view() -> ft.Column:
     # folds even when content fits, so no wrap: at the 960 minimum this row
     # fits (verified by screenshot); below-minimum widths clip instead of
     # overlapping, and the native window enforces the min.
+    left_head = ft.Row([source_title, origin_caption], spacing=8)
     right_head = ft.Row(
         [target, style_toggle, translate_button, stop_button, progress, copy_current],
         spacing=8,
         alignment=ft.MainAxisAlignment.END,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        # Flex: the cluster hugs the right edge (over the output pane) no
+        # matter how wide the left anchor is.
+        expand=True,
     )
     lang_bar = ft.Row(
-        [origin_caption, right_head],
+        [left_head, right_head],
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         spacing=8,
     )
