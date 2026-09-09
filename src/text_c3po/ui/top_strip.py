@@ -74,12 +74,10 @@ def build_appbar(
             pass
     dot = _status_dot(bool(ollama_connected))
     status = ft.GestureDetector(
-        # Padded off the screen edge: a bare 10px dot otherwise reads as
-        # attached to the border.
         content=ft.Container(
             content=dot,
             alignment=ft.alignment.Alignment.CENTER,
-            padding=ft.Padding.only(left=4, right=12),
+            padding=ft.Padding.only(left=4),
         ),
         tooltip=status_detail(bool(ollama_connected), ollama_url),
         mouse_cursor=ft.MouseCursor.CLICK,
@@ -89,7 +87,12 @@ def build_appbar(
         title=ft.Text("text-c3po"),
         center_title=False,
         bgcolor=ft.Colors.SURFACE_CONTAINER,
-        actions=[status, model_dropdown],
+        # Right margin lives on the wrapper so the picker's edge aligns with
+        # the pane margin below; data keeps the bare dropdown for refreshes.
+        actions=[
+            status,
+            ft.Container(content=model_dropdown, padding=ft.Padding.only(right=12)),
+        ],
     )
     bar.data = {
         "model_dropdown": model_dropdown,
