@@ -80,14 +80,12 @@ def build_text_view() -> ft.Column:
     char_count = ft.Text("0 / {}".format(INPUT_SOFT_LIMIT), size=12)
     formal_text = ft.Text("", selectable=True, size=15)
     informal_text = ft.Text("", selectable=True, size=15)
-    # Detected-language slot: empty until the first Translate, then holds
-    # "Detected: X". No static "Detect language" label — it has no value
-    # once the result takes its place, and it misaligned the row.
-    # Fixed width: the text must never grow the row into the target
-    # picker — long names clip with … instead of pushing or overlapping.
+    # Dual-duty label: "Detect language" until the first Translate, then
+    # "Detected: X". One control, so the row never shifts or overlaps —
+    # the text swaps in place left of the target picker.
     origin_caption = ft.Text(
-        "",
-        size=12,
+        SOURCE_TITLE,
+        weight=ft.FontWeight.W_600,
         max_lines=1,
         no_wrap=True,
         overflow=ft.TextOverflow.ELLIPSIS,
@@ -114,11 +112,6 @@ def build_text_view() -> ft.Column:
     field.on_change = _on_field_change
 
     informal_text.visible = False
-    # Left anchor: static title plus the detected-result slot. The title's
-    # real job is structural — it holds the left edge so the control cluster
-    # sits over the right pane; the slot fills with "Detected: X" after
-    # Translate without shifting the row.
-    source_title = ft.Text(SOURCE_TITLE, weight=ft.FontWeight.W_600)
 
     def _visible_body():
         try:
@@ -162,27 +155,29 @@ def build_text_view() -> ft.Column:
         on_change=_on_style_change,
     )
 
-    # One header line, never wrapped: detected-source slot above the input
-    # pane, target picker plus actions above the output pane they control.
-    # An earlier spaceBetween bar wrapped into two lines at window width and
-    # cost more vertical space than the two rows it replaced. Wrap itself
-    # folds even when content fits, so no wrap: at the 960 minimum this row
-    # fits (verified by screenshot); below-minimum widths clip instead of
-    # overlapping, and the native window enforces the min.
-    left_head = ft.Row([source_title, origin_caption], spacing=8)
+    # Responsive header: dual-duty source label (fixed width, so the swap to
+    # "Detected: X" never moves anything) beside the target-plus-actions
+    # cluster on md+ screens; below that the cluster takes its own full-width
+    # row and wraps internally — everything stays reachable, nothing overlaps.
+    left_head = ft.Row(
+        [origin_caption],
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+    )
     right_head = ft.Row(
         [target, style_toggle, translate_button, stop_button, progress, copy_current],
         spacing=8,
         alignment=ft.MainAxisAlignment.END,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        # Flex: the cluster hugs the right edge (over the output pane) no
-        # matter how wide the left anchor is.
-        expand=True,
+        wrap=True,
+        run_spacing=8,
     )
-    lang_bar = ft.Row(
+    left_head.col = {"xs": 12, "md": 3}
+    right_head.col = {"xs": 12, "md": 9}
+    lang_bar = ft.ResponsiveRow(
         [left_head, right_head],
-        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        columns=12,
         spacing=8,
+        run_spacing=8,
     )
 
     left_card = ft.Card(
