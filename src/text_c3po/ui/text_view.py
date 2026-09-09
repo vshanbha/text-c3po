@@ -17,8 +17,6 @@ RETRY_HINT = "Couldn't parse that one. Retry."
 INPUT_PLACEHOLDER = "Type or paste text to translate"
 INPUT_SOFT_LIMIT = 5000
 
-SOURCE_TITLE = "Detect language"
-
 
 def _make_copy_handler(body):
     """Return a click handler copying the current body text to the clipboard.
@@ -80,8 +78,10 @@ def build_text_view() -> ft.Column:
     char_count = ft.Text("0 / {}".format(INPUT_SOFT_LIMIT), size=12)
     formal_text = ft.Text("", selectable=True, size=15)
     informal_text = ft.Text("", selectable=True, size=15)
-    source_title = ft.Text(SOURCE_TITLE, weight=ft.FontWeight.W_600)
-    # Fixed slot: the detected text must never grow the row into the target
+    # Detected-language slot: empty until the first Translate, then holds
+    # "Detected: X". No static "Detect language" label — it has no value
+    # once the result takes its place, and it misaligned the row.
+    # Fixed width: the text must never grow the row into the target
     # picker — long names clip with … instead of pushing or overlapping.
     origin_caption = ft.Text(
         "",
@@ -155,11 +155,13 @@ def build_text_view() -> ft.Column:
         on_change=_on_style_change,
     )
 
-    # One header line, never wrapped: source label above the input pane,
-    # target picker plus actions above the output pane they control. An
-    # earlier spaceBetween bar wrapped into two lines at window width and
-    # cost more vertical space than the two rows it replaced.
-    left_head = ft.Row([source_title, origin_caption], spacing=8, expand=True)
+    # One header line, never wrapped: detected-source slot above the input
+    # pane, target picker plus actions above the output pane they control.
+    # An earlier spaceBetween bar wrapped into two lines at window width and
+    # cost more vertical space than the two rows it replaced. Wrap itself
+    # folds even when content fits, so no wrap: at the 960 minimum this row
+    # fits (verified by screenshot); below-minimum widths clip instead of
+    # overlapping, and the native window enforces the min.
     right_head = ft.Row(
         [target, style_toggle, translate_button, stop_button, progress, copy_current],
         spacing=8,
@@ -167,7 +169,7 @@ def build_text_view() -> ft.Column:
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
     lang_bar = ft.Row(
-        [left_head, right_head],
+        [origin_caption, right_head],
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
         spacing=8,
     )
