@@ -449,11 +449,12 @@ def test_appbar_hosts_model_and_status_top_right():
         on_status_click=lambda e: tapped.append(True),
         ollama_url="http://127.0.0.1:11434",
     )
-    assert set(bar.data.keys()) == {"model_dropdown", "dot", "status"}
+    assert set(bar.data.keys()) == {"model_dropdown", "dot", "label", "status"}
     dropdown, status = bar.data["model_dropdown"], bar.data["status"]
     assert dropdown.value == "m" and dropdown.dense is True
     assert "model" in (dropdown.tooltip or "").lower()
     assert "127.0.0.1:11434" in (status.tooltip or "")
+    assert bar.data["label"].value == "Connected"
     status.on_tap(None)
     assert tapped == [True]
 
@@ -467,6 +468,7 @@ def test_toolbar_is_toggle_only():
 
 def test_status_dot_down_is_error_red_with_fix_in_hover():
     from text_c3po.ui.top_strip import (
+        DOWN_LABEL,
         ERROR_DOT,
         SUCCESS_DOT,
         refresh_ollama_status,
@@ -481,19 +483,26 @@ def test_status_dot_down_is_error_red_with_fix_in_hover():
         def __init__(self):
             self.bgcolor = None
 
+    class FakeLabel:
+        def __init__(self):
+            self.value = None
+            self.color = "sentinel"
+
     class FakeStatus:
         def __init__(self):
             self.tooltip = None
 
     class FakeStrip:
-        def __init__(self, dot, status):
-            self.data = {"dot": dot, "status": status}
+        def __init__(self, dot, label, status):
+            self.data = {"dot": dot, "label": label, "status": status}
 
-    dot, status = FakeDot(), FakeStatus()
-    refresh_ollama_status(FakeStrip(dot, status), True, None, "http://x")
+    dot, label, status = FakeDot(), FakeLabel(), FakeStatus()
+    refresh_ollama_status(FakeStrip(dot, label, status), True, None, "http://x")
     assert dot.bgcolor == SUCCESS_DOT and "connected" in status.tooltip.lower()
-    refresh_ollama_status(FakeStrip(dot, status), False)
+    assert label.value == "Connected" and label.color is None
+    refresh_ollama_status(FakeStrip(dot, label, status), False)
     assert dot.bgcolor == ERROR_DOT and "ollama serve" in status.tooltip
+    assert label.value == DOWN_LABEL and label.color == ERROR_DOT
 
 
 def test_disconnect_snackbar_carries_fix_and_retry():

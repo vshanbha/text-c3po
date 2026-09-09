@@ -1,9 +1,10 @@
 """Top chrome: Material AppBar plus mode toolbar (CAP-1/CAP-2/CAP-4).
 
 The AppBar owns the title plus, top-right, the model picker and the Ollama
-status dot (click re-probes; hover carries detail plus the fix). The toolbar
+status dot with its Connected/Down label (click re-probes; hover carries
+detail plus the fix). The toolbar
 below is just the full-width Text/Live/File SegmentedButton. Mutable refs
-live in appbar.data (model_dropdown, dot, status) and toolbar.data (toggle)
+live in appbar.data (model_dropdown, dot, label, status) and toolbar.data (toggle)
 so app.py can refresh them in place.
 """
 
@@ -12,10 +13,14 @@ import flet as ft
 from .model_picker import build_model_dropdown, refresh_model_options
 
 SUCCESS_DOT = "#1E7E34"
-# Material 3 error red (light scheme): a down server is an error state, so
-# the dot reads as one — never amber, never the only signal (tooltip text
-# plus a SnackBar on disconnect carry the words).
+# Material 3 error red (light scheme): a down server is an error state —
+# connection loss is unrecoverable in-app (operator decision 2026-09-09),
+# so it reads as an error, never amber. Never the only signal either: label
+# text plus a SnackBar on disconnect carry the words.
 ERROR_DOT = "#B3261E"
+
+CONNECTED_LABEL = "Connected"
+DOWN_LABEL = "Down"
 
 CONNECTED_DETAIL = "Ollama connected at {}."
 DOWN_DETAIL = (
@@ -73,9 +78,14 @@ def build_appbar(
         except Exception:
             pass
     dot = _status_dot(bool(ollama_connected))
+    label = ft.Text(
+        CONNECTED_LABEL if ollama_connected else DOWN_LABEL,
+        size=13,
+        color=None if ollama_connected else ERROR_DOT,
+    )
     status = ft.GestureDetector(
         content=ft.Container(
-            content=dot,
+            content=ft.Row([dot, label], spacing=6),
             alignment=ft.alignment.Alignment.CENTER,
             padding=ft.Padding.only(left=4, right=8),
         ),
@@ -97,6 +107,7 @@ def build_appbar(
     bar.data = {
         "model_dropdown": model_dropdown,
         "dot": dot,
+        "label": label,
         "status": status,
     }
     return bar
@@ -128,17 +139,24 @@ def build_toolbar(
 def refresh_ollama_status(
     holder, connected: bool, appbar=None, ollama_url=None
 ) -> None:
-    """Refresh the status dot plus its hover detail (caller updates the page).
+    """Refresh the status dot, label, and hover detail (caller updates page).
 
-    ``holder`` is any control with .data holding dot/status — the AppBar
-    since the cluster moved there. ``appbar`` stays for call compat.
+    ``holder`` is any control with .data holding dot/label/status — the
+    AppBar since the cluster moved there. ``appbar`` stays for call compat.
     """
     refs = holder.data if isinstance(getattr(holder, "data", None), dict) else {}
     dot = refs.get("dot")
+    label = refs.get("label")
     status = refs.get("status")
     if dot is not None:
         try:
             dot.bgcolor = SUCCESS_DOT if connected else ERROR_DOT
+        except Exception:
+            pass
+    if label is not None:
+        try:
+            label.value = CONNECTED_LABEL if connected else DOWN_LABEL
+            label.color = None if connected else ERROR_DOT
         except Exception:
             pass
     if status is not None:
