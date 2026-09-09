@@ -6,13 +6,17 @@ Views are built once and toggled visible so input text survives switches.
 
 import flet as ft
 
-from languages import name_for_code
-from runtimes.ollama_client import check_ollama, pick_default_model
-from services.translation import translate_text
-from ui.file_view import build_file_view
-from ui.live_view import build_live_view
-from ui.text_view import build_text_view
-from ui.top_strip import build_top_strip, refresh_model_picker, refresh_ollama_status
+from text_c3po.languages import name_for_code
+from text_c3po.runtimes.ollama_client import check_ollama, pick_default_model
+from text_c3po.services.translation import translate_text
+from text_c3po.ui.file_view import build_file_view
+from text_c3po.ui.live_view import build_live_view
+from text_c3po.ui.text_view import build_text_view
+from text_c3po.ui.top_strip import (
+    build_top_strip,
+    refresh_model_picker,
+    refresh_ollama_status,
+)
 
 WINDOW_MIN_WIDTH = 960
 WINDOW_MIN_HEIGHT = 640

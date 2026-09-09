@@ -1,8 +1,7 @@
 # NOTE: no [project] table on purpose. Runtime deps live in requirements.txt
-# and one-off runs use `uv run --with ...` (fully ephemeral). Adding a
-# [project] table makes `uv run` treat this dir as a packaged project and
-# install it, which has been observed to shadow the `services` package with
-# a doubled path (text-c3po/text-c3po) and mis-resolve file locations.
+# and one-off runs use `uv run --with ...` (fully ephemeral). The package
+# itself lives under src/ (src layout) and is found via pythonpath below —
+# never installed, never copied.
 
 [tool.pytest.ini_options]
 # Product test policy:
@@ -15,10 +14,12 @@
 #   holds a single loaded model). Never add parallel runners (pytest-xdist,
 #   workers) for integration paths, and gate on lfm2.5 first
 #   (`--models lfm2.5:latest`); memory hogs such as gemma4:e4b-mlx stay out.
-# - The E1 eval gate (text-c3po/services/eval_harness.py) is a manual-only
-#   script, not a pytest test: run `python text-c3po/services/eval_harness.py
-#   [--models ...]` explicitly when gate evidence is needed.
-testpaths = ["text-c3po"]
+# - The E1 eval gate (src/text_c3po/services/eval_harness.py) is a manual-only
+#   script, not a pytest test: run `PYTHONPATH=src python -m
+#   text_c3po.services.eval_harness [--models ...]` explicitly when gate
+#   evidence is needed.
+testpaths = ["tests"]
+pythonpath = ["src"]
 addopts = ["-m", "not integration"]
 markers = [
     "integration: calls a live Ollama model over loopback; manual invocation only, never CI",

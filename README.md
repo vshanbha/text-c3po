@@ -19,19 +19,27 @@ All paths below need these installed first:
 
 ## Run
 
-With plain pip:
+All commands run from the repo root. The package lives under `src/`, so
+Python commands carry `PYTHONPATH=src`:
+
+With plain pip (one-time setup):
 
 ```sh
-pip install -r requirements.txt   # flet==0.86.5 (pinned), langchain-ollama
-ollama serve                      # or the Ollama desktop app
-python text-c3po/app.py           # use python3 if plain python is missing
+pip install -r requirements.txt pytest   # flet==0.86.5 (pinned), langchain-ollama
+```
+
+Then:
+
+```sh
+ollama serve                                  # or the Ollama desktop app
+PYTHONPATH=src python -m text_c3po.app        # use python3 if plain python is missing
 ```
 
 Prefer `uv` (no activation step — it auto-uses the project `.venv`):
 
 ```sh
 uv venv && uv pip install -r requirements.txt pytest   # one-time setup
-uv run python text-c3po/app.py
+PYTHONPATH=src uv run python -m text_c3po.app
 ```
 
 Live speech and file modes (whisper-server + sounddevice) land in E2/E3;
@@ -42,8 +50,7 @@ their placeholders are visible in the UI.
 - Fast unit checks (no Ollama, default): `pytest` — or `uv run pytest`
 - Manual Ollama-backed tests (opt-in, never CI): `pytest -m integration`
 - E1 translation gate, repeatable (serial, lfm2.5-first):  
-  `python text-c3po/services/eval_harness.py --models lfm2.5:latest`  
-  (via uv: `uv run python text-c3po/services/eval_harness.py --models lfm2.5:latest`)
+  `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest`
   Scores append to the model-quality `research.md` under
   `_bmad-output/planning-artifacts/research/`. Full policy (serial-only,
   memory-hog exclusions) is documented in `pyproject.toml` and the harness
@@ -51,9 +58,11 @@ their placeholders are visible in the UI.
 
 ## Layout
 
-- `text-c3po/` — product code: `app.py` (Flet entry), `ui/`, `services/`
+- `src/text_c3po/` — product code (src layout): `app.py` (Flet entry;
+  run `PYTHONPATH=src python -m text_c3po.app`), `ui/`, `services/`
   (translation + eval harness), `runtimes/` (Ollama client), `languages.py`
   (23-language constant)
+- `tests/` — fast unit tests (run `pytest` from the repo root)
 - Provenance: an earlier live-translate proof-of-concept validated the
   speech-to-translation pipeline; its patterns are re-implemented here,
   never imported

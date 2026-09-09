@@ -22,7 +22,7 @@ from langchain_core.prompts import (
 from langchain_ollama import ChatOllama
 from pydantic import BaseModel, Field
 
-from runtimes.ollama_client import OLLAMA_BASE_URL
+from text_c3po.runtimes.ollama_client import OLLAMA_BASE_URL
 
 logger = logging.getLogger(__name__)
 
