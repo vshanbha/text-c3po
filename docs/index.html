@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview — text-c3po docs</title>
+<style>
+body{font-family:-apple-system,system-ui,sans-serif;max-width:860px;margin:0 auto;padding:1.5rem;line-height:1.6;color:#222}
+nav{border-bottom:1px solid #ddd;padding-bottom:.75rem;margin-bottom:1.5rem;font-size:.9rem}
+nav a{margin-right:.9rem;text-decoration:none;color:#0b5fff}
+nav a:hover{text-decoration:underline}
+pre{background:#f4f4f4;padding:1rem;overflow-x:auto;border-radius:6px}
+code{font-family:ui-monospace,monospace;font-size:.88em}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left}
+footer{margin-top:2rem;border-top:1px solid #ddd;padding-top:.75rem;font-size:.8rem;color:#666}
+</style>
+</head>
+<body>
+<nav><a href="index.html">Overview</a> <a href="blueprint.html">Blueprint</a> <a href="brief.html">Product brief</a> <a href="prd.html">PRD</a> <a href="design.html">Design</a> <a href="experience.html">Experience</a> <a href="architecture.html">Architecture</a> <a href="research-feasibility.html">Feasibility research</a> <a href="research-model-quality.html">Model-quality research</a> <a href="retrospective-e1.html">E1 retrospective</a></nav>
+<main><h1>🤖 Text C-3PO — Local-first Translator (v2)</h1>
+<p>Flet desktop app. Type text → local Ollama model → structured translation
+(formal / informal / commentary / detected language). No API keys, no cloud:
+after the first model download, everything runs on loopback.</p>
+<p>Inspired by the Star Wars character C-3PO. Product direction lives in
+<code>blueprint.md</code>; planning artifacts in <code>_bmad-output/</code>.</p>
+<h2>Run</h2>
+<p>Prereqs: Python 3.12, <a href="https://ollama.com">Ollama</a> with a model pulled
+(<code>ollama pull lfm2.5</code> — the default; any installed model works via the
+in-app picker).</p>
+<pre><code class="language-sh">pip install -r requirements.txt   # flet==0.86.5 (pinned), langchain-ollama
+ollama serve                      # or the Ollama desktop app
+python text-c3po/app.py
+</code></pre>
+<p>Live speech and file modes (whisper-server + sounddevice) land in E2/E3;
+their placeholders are visible in the UI.</p>
+<h2>Testing</h2>
+<ul>
+<li>Fast unit checks (no Ollama, default): <code>pytest</code></li>
+<li>Manual Ollama-backed tests (opt-in, never CI): <code>pytest -m integration</code></li>
+<li>E1 translation gate, repeatable (serial, lfm2.5-first):<br />
+<code>python text-c3po/services/eval_harness.py --models lfm2.5:latest</code><br />
+  Scores append to the model-quality <code>research.md</code> under
+  <code>_bmad-output/planning-artifacts/research/</code>. Full policy (serial-only,
+  memory-hog exclusions) is documented in <code>pyproject.toml</code> and the harness
+  docstring — CI runs unit tests only, by design.</li>
+</ul>
+<h2>Layout</h2>
+<ul>
+<li><code>text-c3po/</code> — product code: <code>app.py</code> (Flet entry), <code>ui/</code>, <code>services/</code>
+  (translation + eval harness), <code>runtimes/</code> (Ollama client), <code>languages.py</code>
+  (23-language constant)</li>
+<li><code>live-translate/</code> — PoC only; patterns are re-implemented, never imported</li>
+<li><code>_bmad-output/</code> — brief, PRD, UX, architecture spine, epic specs, eval
+  research, sprint status, E1 retrospective</li>
+</ul></main>
+<footer>Generated from <code>README.md</code> on 2026-09-09. text-c3po v2 docs.</footer>
+</body>
+</html>

@@ -41,3 +41,5 @@ their placeholders are visible in the UI.
 - `live-translate/` — PoC only; patterns are re-implemented, never imported
 - `_bmad-output/` — brief, PRD, UX, architecture spine, epic specs, eval
   research, sprint status, E1 retrospective
+- `docs/` — static site published to GitHub Pages (regenerate with
+  `uv run --with markdown --no-project python docs/build_docs.py`)
