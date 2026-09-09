@@ -145,18 +145,20 @@ def build_text_view() -> ft.Column:
         on_change=_on_style_change,
     )
 
-    lang_bar = ft.Row(
-        [
-            ft.Row([source_title, origin_caption], spacing=8),
-            ft.Row(
-                [target, translate_button, stop_button, progress],
-                spacing=8,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-        ],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+    # One header line, never wrapped: source label above the input pane,
+    # target picker plus actions above the output pane they control. An
+    # earlier spaceBetween bar wrapped into two lines at window width and
+    # cost more vertical space than the two rows it replaced.
+    left_head = ft.Row([source_title, origin_caption], spacing=8, expand=True)
+    right_head = ft.Row(
+        [target, translate_button, stop_button, progress],
+        spacing=8,
+        alignment=ft.MainAxisAlignment.END,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
-        wrap=True,
+    )
+    lang_bar = ft.Row(
+        [left_head, right_head],
+        vertical_alignment=ft.CrossAxisAlignment.CENTER,
         spacing=8,
     )
 
