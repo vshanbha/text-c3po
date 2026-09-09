@@ -152,7 +152,7 @@ def build_text_view() -> ft.Column:
     # cost more vertical space than the two rows it replaced.
     left_head = ft.Row([source_title, origin_caption], spacing=8, expand=True)
     right_head = ft.Row(
-        [target, style_toggle, translate_button, stop_button, progress],
+        [target, style_toggle, translate_button, stop_button, progress, copy_current],
         spacing=8,
         alignment=ft.MainAxisAlignment.END,
         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -196,28 +196,15 @@ def build_text_view() -> ft.Column:
         ),
         elevation=1,
     )
-    # Copy rides alone as a small floating icon (FAB-like): the wide toggle
-    # pill squeezed the text column, so the toggle moved to the header row.
-    copy_float = ft.Container(
-        content=copy_current,
-        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-        border_radius=20,
-        padding=ft.Padding.all(4),
-        shadow=ft.BoxShadow(blur_radius=8, color="#40000000"),
-        right=12,
-        bottom=12,
-    )
-    right_stack = ft.Stack(
-        controls=[right_card, copy_float],
-        height=360,
-        expand=True,
-    )
+    # Plain symmetric flex: the Stack overlay experiment collapsed the right
+    # pane to a sliver (Stack shrink-wraps instead of flexing), so chrome
+    # lives in rows and both cards just split the width.
     panes = ft.Row(
-        [left_card, right_stack],
+        [left_card, right_card],
         spacing=12,
         vertical_alignment=ft.CrossAxisAlignment.START,
     )
-    for pane in (left_card, right_stack):
+    for pane in (left_card, right_card):
         try:
             pane.expand = 1
         except Exception:
@@ -246,7 +233,6 @@ def build_text_view() -> ft.Column:
         "char_count": char_count,
         "copy_button": copy_current,
         "style_toggle": style_toggle,
-        "copy_float": copy_float,
         "formal_text": formal_text,
         "informal_text": informal_text,
         "origin_caption": origin_caption,
