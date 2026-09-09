@@ -1,0 +1,39 @@
+- id: "1"
+  title: setup.sh for clean-machine install
+  description: >-
+    Add setup.sh covering Ollama install, model pull, PortAudio/sounddevice,
+    ffmpeg check, and BlackHole guidance; clean-machine run completes in
+    <=15 min with missing BlackHole as guidance per CAP-1.
+- id: "2"
+  title: Extend harness to the full 23-language matrix
+  description: >-
+    Extend services/eval_harness from the E1 5x5 gate to sample sentences
+    by all 23 languages by installed models, recording per-language scores
+    and JSON-validity to research.md with comparable rows per CAP-2.
+  invoke_dev_with: >-
+    Reuse the translation service with model as parameter; never gate UI
+    combos on scores.
+- id: "3"
+  title: Package macOS bundle with mic permission
+  description: >-
+    Ship the installable macOS bundle (flet build macos or PyInstaller
+    --windowed decision recorded) carrying NSMicrophoneUsageDescription so
+    first Live start prompts and TCC grants mic access per CAP-3.
+  invoke_dev_with: >-
+    Bundle runs loopback-only to 127.0.0.1:11434 and 127.0.0.1:9001 after
+    download; verify with the loopback-only check.
+- id: "4"
+  title: Regression tests for VAD parser and whisper health
+  description: >-
+    Add tests covering VAD silence-threshold and max-utterance flush paths,
+    JSON parser valid-plus-malformed cases, and whisper-server health;
+    suite passes post-setup.sh per CAP-4.
+- id: "5"
+  title: Remove cloud surface and refresh docs
+  description: >-
+    Delete all langchain-openai code and secrets.toml, then refresh README
+    and AGENTS.md with the true Flet run, smoke, and harness commands;
+    grep plus absence check both return empty per CAP-5.
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Never commit secrets; do not use streamlit run to verify v2.

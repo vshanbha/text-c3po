@@ -1,0 +1,41 @@
+- id: "1"
+  title: Session controller with owned caption list
+  description: >-
+    Add services/session as sole mutator of the ordered in-memory caption
+    list draining the utterance queue; mode switch preserves the list while
+    new Start or app close clears it per CAP-3.
+  invoke_dev_with: >-
+    Only the main thread touches Flet controls; background threads post to
+    the queue the controller drains.
+- id: "2"
+  title: Captions pane with history and timestamps
+  description: >-
+    Build ui/live_view captions ListView appending rows in
+    utterance-completion order with mono timestamps, auto-follow plus
+    scroll-back escape and Jump-to-latest, utterance-flush only per CAP-1.
+  invoke_dev_with: >-
+    Follow DESIGN.md caption-row and EXPERIENCE.md captions-pane rules;
+    announce each new row via live region at utterance granularity.
+- id: "3"
+  title: Start-Stop toggle with live status indicators
+  description: >-
+    Wire the Start/Stop FilledButton (label is the state) with capture,
+    whisper-latency, and model dot-plus-label indicators reflecting live
+    state; Stop halts capture within 2s and restart needs no relaunch
+    per CAP-2.
+  invoke_dev_with: >-
+    Live red is capture-running only; recoverable failures render inline
+    in the failing row plus SnackBar retry, never a dialog.
+- id: "4"
+  title: Live pickers, file surface, and session-state polish
+  description: >-
+    Bind device, source, and target Dropdowns to the E2 enumeration and
+    the 23-language constant with auto-detect-where-supported source
+    default; compose the file surface (picker row, progress, results list
+    reusing the caption-row pattern) on the E2 decode path; verify
+    mode-switch retention and memory-only session labeling per CAP-4
+    and CAP-3.
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Any model-by-language combo stays submittable; quality is measured in
+    E4, never gated here.
