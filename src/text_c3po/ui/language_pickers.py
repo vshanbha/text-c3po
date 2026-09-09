@@ -8,7 +8,7 @@ E2/E3 pipeline brings auto-detect behavior.
 
 import flet as ft
 
-from languages import LANGUAGES
+from text_c3po.languages import LANGUAGES
 
 
 def _language_options() -> list:

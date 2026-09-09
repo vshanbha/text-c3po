@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
       - name: Syntax check (no deps, no Ollama)
-        run: python -m compileall -q text-c3po
+        run: python -m compileall -q src tests
       - name: Unit tests (integration deselected)
         # Exit 5 means "no tests collected" — success while the suite grows.
         run: pytest -q -m "not integration" || [ $? -eq 5 ]

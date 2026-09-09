@@ -8,20 +8,20 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 ## Policy
 
 - Never commit secrets or any API key; v2 removes cloud LLM by design.
-- Keep all product code inside `text-c3po/`; patterns from the earlier live-translate proof-of-concept are re-implemented here, never imported.
+- Keep all product code inside `src/text_c3po/` (src layout, valid package name); patterns from the earlier live-translate proof-of-concept are re-implemented here, never imported.
 - After first-run model download keep zero outbound; loopback to 127.0.0.1:11434 and 127.0.0.1:9001 only.
 
 ## Where things are
 
 - Product direction: `blueprint.md`, consumed via bmad-product-brief and bmad-spec.
-- App entry: `text-c3po/app.py` (Flet; Streamlit removed in E1).
+- App entry: `src/text_c3po/app.py` (Flet; Streamlit removed in E1). All run commands assume the repo root with `PYTHONPATH=src`.
 - Long-term knowledge: `docs/`; BMAD outputs in `_bmad-output/`.
 
 ## Running and verifying
 
 - Use prereqs Node >= 20.12, uv, ollama, whisper-cpp, ffmpeg; verified node v24.11.1, uv 0.12.10, ollama 0.33.3 with lfm2.5 present.
-- Run the app with `python text-c3po/app.py` (needs `ollama serve`); fast checks with `pytest` (unit only, integration deselected).
-- Ollama-backed tests are manual-only and serial (`pytest -m integration`, lfm2.5-first); the eval gate is `python text-c3po/services/eval_harness.py --models lfm2.5:latest`. Never run Ollama tests in CI.
+- Work from the repo root: the app with `PYTHONPATH=src python -m text_c3po.app` (needs `ollama serve`); fast checks with `pytest` (unit only, integration deselected; `pythonpath=src` is wired in pyproject).
+- Ollama-backed tests are manual-only and serial (`pytest -m integration`, lfm2.5-first); the eval gate is `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest`. Never run Ollama tests in CI.
 - No lint or typecheck configured in this repo.
 
 ## Conventions that differ from defaults

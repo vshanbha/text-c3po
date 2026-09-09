@@ -11,7 +11,7 @@ shape, so a result without an ``error`` key is a schema-conformant dict by
 construction and counts valid; anything else counts invalid. Gate math: 95%
 of 25 is 23.75, so a model passes with >= 24 valid cells.
 
-Headless-runnable: ``python text-c3po/services/eval_harness.py`` with
+Headless-runnable: ``PYTHONPATH=src python -m text_c3po.services.eval_harness`` with
 ``--models`` and ``--research-path`` overrides. Importing this module has no
 side effects and issues no LLM calls. Stdlib plus installed
 ``langchain-ollama`` (via ``services.translation``) only.
@@ -40,24 +40,23 @@ import os
 import sys
 
 
-# Make the harness runnable both as ``python text-c3po/services/eval_harness.py``
-# (script dir is text-c3po/services/) and as ``services.eval_harness`` with
-# text-c3po/ on sys.path (headless import). Absolute product imports below
-# then resolve either way. Never raises for a missing dep: the ImportError
-# surfaces to the caller per the headless-import contract.
+# src layout: every product import here is absolute (``text_c3po.*``).
+# Supported invocations (all from the project root):
+# - ``PYTHONPATH=src python -m text_c3po.services.eval_harness ...``
+# - ``python src/text_c3po/services/eval_harness.py ...`` (script form)
+# - headless ``import text_c3po.services.eval_harness`` with src/ on sys.path
+#   (pytest provides this via pythonpath). Never raises for a missing dep:
+#   the ImportError surfaces to the caller per the headless-import contract.
 #
-# __file__ is not trustworthy here (relative invocations, editable-install
-# shims, and ephemeral runners have all been observed to report doubled or
-# synthetic paths), and neither is a relative sys.path entry. Both the
-# import root and the research path are therefore anchored to the current
-# working directory, which is kernel truth: every supported invocation runs
-# with the project root as cwd (``python text-c3po/services/eval_harness.py``
-# or the headless ``sys.path.insert(0, 'text-c3po'); import ...`` form).
+# __file__ is not trustworthy here (relative invocations have been observed
+# to report doubled paths), so src/ is located by existence: the nearest
+# ancestor holding src/text_c3po/services/eval_harness.py on disk.
 def _find_project_root():
-    path = os.path.abspath(os.getcwd())
+    here = os.path.dirname(os.path.realpath(__file__))
+    path = here
     for _ in range(8):
         if os.path.isfile(
-            os.path.join(path, "text-c3po", "services", "eval_harness.py")
+            os.path.join(path, "src", "text_c3po", "services", "eval_harness.py")
         ):
             return path
         parent = os.path.dirname(path)
@@ -68,12 +67,16 @@ def _find_project_root():
 
 
 _PROJECT_ROOT = _find_project_root()
-_PRODUCT_ROOT = os.path.join(_PROJECT_ROOT, "text-c3po")  # package root
-if _PRODUCT_ROOT not in sys.path:
-    sys.path.insert(0, _PRODUCT_ROOT)
+_SRC_ROOT = os.path.join(_PROJECT_ROOT, "src")
+if _SRC_ROOT not in sys.path:
+    sys.path.insert(0, _SRC_ROOT)
 
-from runtimes.ollama_client import OLLAMA_BASE_URL, check_ollama, list_models
-from services.translation import translate_text
+from text_c3po.runtimes.ollama_client import (
+    OLLAMA_BASE_URL,
+    check_ollama,
+    list_models,
+)
+from text_c3po.services.translation import translate_text
 
 # Five fixed English sentences covering varied constructs (question, thanks,
 # timed statement, polite request, habitual statement). Fixed so re-runs are
