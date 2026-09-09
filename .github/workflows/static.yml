@@ -36,8 +36,10 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          # Docs site only: never publish the repo (code, planning
+          # artifacts, agent scaffolding) to the public site. E4 story 6
+          # builds the real landing page here.
+          path: 'docs'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
