@@ -1,0 +1,24 @@
+site_name: text-c3po docs
+site_description: Local-first translator (v2) — run guide, planning, eval research
+site_url: https://vshanbha.github.io/text-c3po/
+
+theme:
+  name: material
+
+# Sources are symlinks to the single-source-of-truth markdown in the repo
+# (README, blueprint, _bmad-output). Never copy content into docs/.
+nav:
+  - Overview: index.md
+  - Blueprint: blueprint.md
+  - Product brief: brief.md
+  - PRD: prd.md
+  - Design: design.md
+  - Experience: experience.md
+  - Architecture: architecture.md
+  - Feasibility research: research-feasibility.md
+  - Model-quality research: research-model-quality.md
+  - E1 retrospective: retrospective-e1.md
+
+markdown_extensions:
+  - tables
+  - fenced_code
