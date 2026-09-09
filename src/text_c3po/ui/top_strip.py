@@ -46,7 +46,7 @@ def build_appbar(
     down or the model list changes.
     """
     retry = ft.TextButton(
-        text="Retry",
+        content="Retry",
         tooltip="Retry Ollama connection",
         on_click=on_retry,
     )
@@ -56,7 +56,7 @@ def build_appbar(
         except Exception:
             pass
     refresh = ft.TextButton(
-        text="Models",
+        content="Models",
         tooltip="Refresh model list",
         on_click=on_refresh_models,
     )

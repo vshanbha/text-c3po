@@ -409,3 +409,29 @@ def test_style_toggle_flips_pages_without_tabs():
     toggle.on_change(FakeEvent(["formal"]))
     assert refs["formal_text"].visible is True
     assert refs["informal_text"].visible is False
+
+
+def test_appbar_builds_with_labeled_actions():
+    # Regression: AppBar actions must construct on flet 0.86.5 (a wrong
+    # TextButton kwarg crashed the app at launch with no test failing).
+    from text_c3po.ui.top_strip import build_appbar
+
+    bar = build_appbar(ollama_connected=False, on_retry=None, on_refresh_models=None)
+    labels = [getattr(a, "content", None) for a in bar.actions]
+    assert labels == ["Retry", "Models"]
+    tips = [getattr(a, "tooltip", None) for a in bar.actions]
+    assert tips == ["Retry Ollama connection", "Refresh model list"]
+    assert set(bar.data.keys()) == {"retry", "refresh_models"}
+
+
+def test_toolbar_and_text_view_construct():
+    # Smoke: every surface the app mounts must build headless. Catches
+    # constructor API drift (e.g. padding helper renames) before launch.
+    from text_c3po.ui.text_view import build_text_view
+    from text_c3po.ui.top_strip import build_toolbar
+
+    strip = build_toolbar(lambda e: None, ollama_connected=True, models=["m"])
+    assert set(strip.data.keys()) == {"toggle", "dot", "label", "model_dropdown"}
+    view = build_text_view()
+    assert view.data["stop_button"].visible is False
+    assert view.data["progress_ring"].visible is False
