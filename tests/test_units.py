@@ -621,3 +621,127 @@ def test_live_view_builds_device_picker_headless():
     assert [o.key for o in dropdown.options] == ["Mic", "BlackHole 2ch"]
     empty = build_live_view([], None)
     assert empty.data["device_dropdown"].options == []
+
+
+def _vad_frame(value, n=8000):
+    import struct
+
+    return struct.pack("<" + "h" * n, *([value] * n))
+
+
+def _wav_samples(payload):
+    import io
+    import struct
+    import wave
+
+    with wave.open(io.BytesIO(payload), "rb") as w:
+        assert w.getnchannels() == 1
+        assert w.getsampwidth() == 2
+        assert w.getframerate() == 16000
+        raw = w.readframes(w.getnframes())
+    return [s for (s,) in struct.iter_unpack("<h", raw)]
+
+
+def test_frame_rms_constant_values():
+    from text_c3po.services.vad import frame_rms
+
+    assert frame_rms(_vad_frame(1000)) == 1000.0
+    assert frame_rms(_vad_frame(-1000)) == 1000.0
+    assert frame_rms(_vad_frame(0)) == 0.0
+    assert frame_rms(b"") == 0.0
+    assert frame_rms(_vad_frame(100)) == 100.0
+
+
+def test_silence_threshold_boundary_is_speech():
+    from text_c3po.services.vad import VadChunker
+
+    speech, silence = _vad_frame(350), _vad_frame(349)
+    chunker = VadChunker()
+    assert chunker.feed(speech) == []
+    assert chunker.feed(silence) == []
+    assert chunker.flush() is not None
+    chunker2 = VadChunker()
+    assert chunker2.feed(silence) == []
+    assert chunker2.flush() is None
+
+
+def test_leading_silence_ignored():
+    from text_c3po.services.vad import VadChunker
+
+    chunker = VadChunker()
+    for _ in range(3):
+        assert chunker.feed(_vad_frame(0)) == []
+    assert chunker.flush() is None
+
+
+def test_two_silent_frames_flush_with_trailing_silence():
+    from text_c3po.services.vad import VadChunker
+
+    chunker = VadChunker()
+    speech, silence = _vad_frame(1000), _vad_frame(0)
+    assert chunker.feed(speech) == []
+    assert chunker.feed(speech) == []
+    assert chunker.feed(silence) == []
+    out = chunker.feed(silence)
+    assert len(out) == 1
+    samples = _wav_samples(out[0])
+    assert samples == [1000] * 16000 + [0] * 16000
+    assert chunker.flush() is None
+
+
+def test_single_silent_frame_does_not_flush():
+    from text_c3po.services.vad import VadChunker
+
+    chunker = VadChunker()
+    assert chunker.feed(_vad_frame(1000)) == []
+    assert chunker.feed(_vad_frame(0)) == []
+    assert chunker.flush() is not None
+
+
+def test_max_utterance_forces_flush_mid_speech():
+    from text_c3po.services.vad import VadChunker
+
+    chunker = VadChunker(max_utterance_s=1.0)
+    assert chunker.feed(_vad_frame(1000)) == []
+    out = chunker.feed(_vad_frame(1000))
+    assert len(out) == 1
+    assert _wav_samples(out[0]) == [1000] * 16000
+    assert chunker.flush() is None
+
+
+def test_state_resets_after_flush():
+    from text_c3po.services.vad import VadChunker
+
+    chunker = VadChunker()
+    chunker.feed(_vad_frame(1000))
+    chunker.feed(_vad_frame(0))
+    first = chunker.feed(_vad_frame(0))
+    assert len(first) == 1
+    chunker.feed(_vad_frame(2000))
+    chunker.feed(_vad_frame(0))
+    second = chunker.feed(_vad_frame(0))
+    assert len(second) == 1
+    assert _wav_samples(second[0]) == [2000] * 8000 + [0] * 16000
+
+
+def test_flush_emits_pending_without_trailing_silence():
+    from text_c3po.services.vad import VadChunker
+
+    chunker = VadChunker()
+    chunker.feed(_vad_frame(1000))
+    out = chunker.flush()
+    assert out is not None
+    assert _wav_samples(out) == [1000] * 8000
+    assert chunker.flush() is None
+
+
+def test_vad_never_raises_on_malformed_input():
+    from text_c3po.services.vad import VadChunker, frame_rms, utterance_to_wav
+
+    chunker = VadChunker(silence_rms="bad", max_utterance_s=None)
+    assert chunker.feed(b"") == []
+    assert chunker.feed(b"\x01") == []
+    assert chunker.feed(None) == []
+    assert chunker.flush() is None
+    assert frame_rms(None) == 0.0
+    assert isinstance(utterance_to_wav([0, 1, -1]), bytes)
