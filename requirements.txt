@@ -1,3 +1,6 @@
+# Human-readable exact pins (AGENTS.md policy). The installer of record
+# is `uv sync` against pyproject.toml [project] dependencies — keep the
+# two files identical; test_dependency_pins_agree enforces it.
 flet==0.86.5
 langchain-ollama==1.1.0
 sounddevice==0.5.6

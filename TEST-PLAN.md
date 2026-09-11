@@ -68,8 +68,9 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
 - **D2 — no orphans.** Quit the app, then `pgrep -f whisper-server`.
   Expect: empty.
 - **D3 — crash recovery.** `kill -9 <whisper pid>` while the app runs,
-  then use file mode. Expect: transport error surfaces readably
-  (restart-status UI arrives with E3's indicators).
+  then use file mode. Expect: transport error surfaces readably; in a
+  live session, gap rows appear and the whisper dot flips to down.
+  (No mid-session auto-restart by design — restart happens on next Start.)
 
 ## E. File mode end-to-end (E2-4)
 
@@ -132,10 +133,11 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
 
 ## G. Eval gate (E1, repeatable)
 
-- **F1.** `PYTHONPATH=src python -m
+- **G1.** `PYTHONPATH=src uv run python -m
   text_c3po.services.eval_harness --models lfm2.5:latest`.
   Expect: exit 0, every model ≥95% JSON-valid, dated section appended
-  to the model-quality `research.md`. Slow (~125 LLM calls).
+  to the model-quality `research.md`. Slow (25 LLM calls per model:
+  5 sentences × 5 languages; use `--languages all` for the 23×5 full).
 
 ## H. Packaging (E4-3, manual session)
 
@@ -159,16 +161,19 @@ ad-hoc signature suffices for local runs.
 
 ## I. Browser testing (agents / headless review)
 
-- **G1.** `FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m
-  text_c3po.app`, open `http://localhost:8555` in BrowserOS neo.
+- **I1.** `FLET_FORCE_WEB_SERVER=true FLET_SERVER_PORT=8555
+  PYTHONPATH=src uv run python -m text_c3po.app`, open
+  `http://localhost:8555` in BrowserOS neo.
   Expect: full UI interactive via snapshot/act. Kill the auto-launched
   Flet desktop client if it gets in the way (`pkill flet-desktop`).
 
 ## Coverage map (what automation owns)
 
-- `pytest` (67 unit tests, all headless/deterministic): VAD chunking
-  rules, device/VAD/decode/transcribe pure logic, manager lifecycle
-  with fake processes, pipeline short-circuits, UI construction.
+- `pytest` (131 unit tests, all headless/deterministic — recount with
+  `pytest --collect-only -q`): VAD chunking rules, device/VAD/decode/
+  transcribe pure logic, manager lifecycle with fake processes,
+  session ordering/gaps/retry, captions sync, pipeline short-circuits,
+  UI construction.
 - `pytest -m integration` (manual, serial, loopback-only): live
   Ollama/whisper/ffmpeg checks — see `tests/test_integration.py`.
 - This note: everything above a unit cannot reach (windows,

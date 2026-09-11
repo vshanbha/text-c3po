@@ -29,12 +29,13 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 
 Flet apps run as native desktop windows by default. To test in a browser via BrowserOS neo:
 
-1. Start the app as a web server: `FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m text_c3po.app`
+1. Start the app as a web server: `FLET_FORCE_WEB_SERVER=true FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m text_c3po.app`
 2. Open BrowserOS neo, navigate to `http://localhost:8555`
 3. The Flet web UI loads in the browser; interact via snapshot/act as with any web page
 
 Notes:
-- The desktop Flet client also launches automatically (connected to the same port). Kill it with `pkill flet-desktop` if it gets in the way.
+- `FLET_FORCE_WEB_SERVER=true` is what switches `ft.run` from the native window to a real HTTP site (verified in flet 0.86.5 source); `FLET_SERVER_PORT` alone only moves the desktop client's port and serves nothing to browsers.
+- No desktop client launches in this mode; nothing to kill.
 - The server binds to localhost only; no external access.
 - If the port is stale from a prior run, wait a few seconds for `TIME_WAIT` to clear or pick a different port.
 
