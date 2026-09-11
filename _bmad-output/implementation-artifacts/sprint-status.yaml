@@ -61,7 +61,7 @@ development_status:
 
    epic-4: in-progress
    4-1-setup-sh-for-clean-machine-install: done
-   4-2-extend-harness-to-the-full-23-language-matrix: in-progress
+   4-2-extend-harness-to-the-full-23-language-matrix: done
    4-3-package-macos-bundle-with-mic-permission: backlog
    4-4-regression-tests-for-vad-parser-and-whisper-health: done
    4-5-remove-cloud-surface-and-refresh-docs: done
