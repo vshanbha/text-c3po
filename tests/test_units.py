@@ -745,3 +745,161 @@ def test_vad_never_raises_on_malformed_input():
     assert chunker.flush() is None
     assert frame_rms(None) == 0.0
     assert isinstance(utterance_to_wav([0, 1, -1]), bytes)
+
+
+class _FakeProcess:
+    def __init__(self, alive=True, hang_on_wait=False):
+        self._alive = alive
+        self.hang_on_wait = hang_on_wait
+        self.calls = []
+
+    def poll(self):
+        return None if self._alive else 0
+
+    def terminate(self):
+        self.calls.append("terminate")
+        if not self.hang_on_wait:
+            self._alive = False
+
+    def kill(self):
+        self.calls.append("kill")
+        self._alive = False
+
+    def wait(self, timeout=None):
+        self.calls.append(("wait", timeout))
+        if self.hang_on_wait and "kill" not in self.calls:
+            raise TimeoutError("hung")
+        self._alive = False
+        return 0
+
+
+def _manager(process=None, probe=None, model_path=None, **kwargs):
+    from text_c3po.runtimes.process_manager import ProcessManager
+
+    made = {}
+    if model_path is None:
+        model_path = __file__
+
+    def factory(cmd, **kw):
+        made["cmd"] = cmd
+        if isinstance(process, Exception):
+            raise process
+        return process
+
+    probes = {"calls": 0}
+
+    def probe_fn():
+        probes["calls"] += 1
+        if isinstance(probe, list):
+            return probe.pop(0) if probe else False
+        return bool(probe)
+
+    slept = []
+    mgr = ProcessManager(
+        model_path=model_path,
+        popen_factory=factory,
+        probe_fn=probe_fn,
+        sleep_fn=slept.append,
+        **kwargs,
+    )
+    return mgr, made, probes, slept
+
+
+def test_resolve_language_code_uses_constant_or_auto():
+    from text_c3po.runtimes.process_manager import resolve_language_code
+
+    assert resolve_language_code("de") == "de"
+    assert resolve_language_code("xx") == "auto"
+    assert resolve_language_code(None) == "auto"
+    assert resolve_language_code(" de ") == "de"
+
+
+def test_build_command_transcribe_only():
+    mgr, _, _, _ = _manager(process=_FakeProcess())
+    cmd = mgr.build_command()
+    assert cmd[0] == "whisper-server"
+    assert "--translate" not in cmd
+    assert cmd == [
+        "whisper-server",
+        "-m",
+        mgr.model_path,
+        "--port",
+        "9001",
+        "-l",
+        "auto",
+    ]
+
+
+def test_start_refuses_missing_model_without_spawning():
+    from text_c3po.runtimes.process_manager import ProcessManager
+
+    spawned = []
+    mgr = ProcessManager(
+        model_path="/does/not/exist.bin",
+        popen_factory=lambda *a, **k: spawned.append(a) or _FakeProcess(),
+    )
+    assert mgr.start() is False
+    assert spawned == []
+    assert mgr.is_alive() is False
+
+
+def test_start_spawn_failure_is_false_not_raise():
+    mgr, made, _, _ = _manager(process=OSError("no binary"))
+    assert mgr.start() is False
+    assert "cmd" in made
+    assert mgr._process is None
+    assert mgr.is_alive() is False
+
+
+def test_stop_terminates_and_forgets():
+    mgr, _, _, _ = _manager(process=_FakeProcess())
+    assert mgr.start() is True
+    mgr.stop()
+    assert mgr.is_alive() is False
+    mgr.stop()
+
+
+def test_stop_kills_hung_process():
+    proc = _FakeProcess(hang_on_wait=True)
+    mgr, _, _, _ = _manager(process=proc)
+    assert mgr.start() is True
+    mgr.stop()
+    assert "terminate" in proc.calls
+    assert "kill" in proc.calls
+    assert mgr.is_alive() is False
+
+
+def test_wait_ready_polls_until_serving():
+    mgr, _, probes, slept = _manager(process=_FakeProcess(), probe=[False, False, True])
+    assert mgr.wait_ready(timeout_s=5.0) is True
+    assert probes["calls"] == 3
+    assert len(slept) == 2
+
+
+def test_wait_ready_times_out():
+    mgr, _, probes, _ = _manager(process=_FakeProcess(), probe=[])
+    assert mgr.wait_ready(timeout_s=0) is False
+    assert probes["calls"] >= 1
+
+
+def test_ensure_running_reports_ready_restarted_failed():
+    mgr, _, _, _ = _manager(process=_FakeProcess(), probe=True)
+    assert mgr.start() is True
+    assert mgr.ensure_running() == "ready"
+
+    restarted, _, _, _ = _manager(process=_FakeProcess(), probe=[True])
+    restarted._process = _FakeProcess(alive=False)
+    assert restarted.ensure_running() == "restarted"
+
+    dead, _, _, _ = _manager(process=_FakeProcess(), probe=[])
+    dead._process = _FakeProcess(alive=False)
+    dead.wait_ready = lambda timeout_s=0: False
+    assert dead.ensure_running() == "failed"
+
+
+def test_context_manager_stops_on_exit():
+    mgr, _, _, _ = _manager(process=_FakeProcess(), probe=True)
+    with mgr as entered:
+        assert entered is mgr
+        assert mgr.is_alive() is True
+    assert mgr.is_alive() is False

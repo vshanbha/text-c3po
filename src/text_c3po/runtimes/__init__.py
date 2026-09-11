@@ -5,6 +5,17 @@ from .audio_devices import (
     list_devices,
     pick_default_device,
 )
+from .process_manager import (
+    AUTO_LANGUAGE,
+    DEFAULT_MODEL_FILENAME,
+    READY_TIMEOUT_S,
+    WHISPER_HOST,
+    WHISPER_INFERENCE_PATH,
+    WHISPER_PORT,
+    ProcessManager,
+    probe_serving,
+    resolve_language_code,
+)
 from .ollama_client import (
     DEFAULT_MODEL_PREFIX,
     OLLAMA_BASE_URL,
@@ -26,4 +37,13 @@ __all__ = [
     "has_blackhole",
     "list_devices",
     "pick_default_device",
+    "AUTO_LANGUAGE",
+    "DEFAULT_MODEL_FILENAME",
+    "READY_TIMEOUT_S",
+    "WHISPER_HOST",
+    "WHISPER_INFERENCE_PATH",
+    "WHISPER_PORT",
+    "ProcessManager",
+    "probe_serving",
+    "resolve_language_code",
 ]
