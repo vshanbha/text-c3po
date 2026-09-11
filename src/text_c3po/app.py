@@ -4,7 +4,6 @@ Mounts the always-visible top strip plus the Text/Live/File mode views.
 Views are built once and toggled visible so input text survives switches.
 """
 
-import atexit
 import os
 import threading
 import time
@@ -19,8 +18,17 @@ from text_c3po.runtimes.ollama_client import (
 )
 from text_c3po.runtimes.audio_devices import list_devices, pick_default_device
 from text_c3po.runtimes.audio_file import supported_extensions
-from text_c3po.runtimes.process_manager import ProcessManager, default_model_path
+from text_c3po.runtimes.process_manager import (
+    ProcessManager,
+    default_model_path,
+    install_exit_cleanup,
+)
+from text_c3po.runtimes.whisper_client import transcribe_wav
 from text_c3po.services.asr import transcribe_file
+from text_c3po.services.live_runner import LiveRunner
+from text_c3po.services.session import SessionController
+from text_c3po.ui.captions import reset_pane, sync_captions
+from text_c3po.ui.status import LIVE_GREEN, LIVE_RED, paint_status
 from text_c3po.services.translation import (
     cancel_inflight,
     extract_partial_formal,
@@ -263,10 +271,8 @@ def main(page: ft.Page) -> None:
         whisper_model = default_model_path()
         if whisper_model:
             whisper_manager = ProcessManager(model_path=whisper_model)
-            try:
-                atexit.register(whisper_manager.stop)
-            except Exception:
-                pass
+            # atexit plus SIGTERM/SIGINT so kills never orphan the server.
+            install_exit_cleanup(whisper_manager)
 
             def _start_whisper() -> None:
                 try:
@@ -652,6 +658,234 @@ def main(page: ft.Page) -> None:
         file_pick_control = file_refs.get("pick_button")
         if file_pick_control is not None:
             file_pick_control.on_click = on_pick_file
+    except Exception:
+        pass
+
+    # E3-3: live session — Start/Stop toggle plus capture/whisper status.
+    # Threading note (AD-4): the runner only posts dicts to the controller
+    # queue; _render_session is the single point that drains, syncs rows,
+    # and updates the page (same worker-update tolerance E1 ships).
+    live_controller = SessionController(target_language="English", model=selected_model)
+    live_runner = {"current": None, "thread": None}
+
+    def _live_refs() -> dict:
+        try:
+            refs = live_view.data if isinstance(live_view.data, dict) else {}
+            return refs if isinstance(refs, dict) else {}
+        except Exception:
+            return {}
+
+    def _set_live_buttons(running: bool) -> None:
+        try:
+            refs = _live_refs()
+            start_control = refs.get("start_button")
+            stop_control = refs.get("stop_button")
+            if start_control is not None:
+                try:
+                    start_control.disabled = running
+                except Exception:
+                    pass
+            if stop_control is not None:
+                try:
+                    stop_control.visible = running
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _paint_live(capture_on: bool, whisper_ok=None) -> None:
+        try:
+            refs = _live_refs()
+            if capture_on:
+                paint_status(
+                    refs.get("capture_dot"),
+                    refs.get("capture_label"),
+                    LIVE_RED,
+                    "Live",
+                )
+            else:
+                paint_status(
+                    refs.get("capture_dot"),
+                    refs.get("capture_label"),
+                    None,
+                    "Idle",
+                )
+            if whisper_ok is True:
+                paint_status(
+                    refs.get("whisper_dot"),
+                    refs.get("whisper_label"),
+                    LIVE_GREEN,
+                    "Whisper: ready",
+                )
+            elif whisper_ok is False:
+                paint_status(
+                    refs.get("whisper_dot"),
+                    refs.get("whisper_label"),
+                    ft.Colors.ERROR,
+                    "Whisper: down",
+                )
+        except Exception:
+            pass
+
+    def _render_session() -> None:
+        try:
+            live_controller.drain()
+            refs = _live_refs()
+            pane = refs.get("captions_pane")
+            if pane is not None:
+                try:
+                    sync_captions(pane, live_controller.captions())
+                except Exception:
+                    pass
+            page.update()
+        except Exception:
+            pass
+
+    def _run_live(runner) -> None:
+        try:
+            runner.run()
+        except Exception:
+            pass
+        finally:
+            try:
+                _render_session()
+            except Exception:
+                pass
+
+    def _supervise_live(target_value, model_value, device_value, source_value) -> None:
+        try:
+            manager = whisper_manager
+            if manager is None:
+                _paint_live(False, False)
+                _set_live_buttons(False)
+                try:
+                    page.update()
+                except Exception:
+                    pass
+                return
+            try:
+                state = manager.ensure_running()
+            except Exception:
+                state = "failed"
+            if state not in ("ready", "restarted"):
+                _paint_live(False, False)
+                _set_live_buttons(False)
+                try:
+                    page.update()
+                except Exception:
+                    pass
+                return
+            try:
+                live_controller.target_language = target_value
+                live_controller.model = model_value
+            except Exception:
+                pass
+            live_controller.start_session()
+            try:
+                refs = _live_refs()
+                pane = refs.get("captions_pane")
+                if pane is not None:
+                    reset_pane(pane)
+            except Exception:
+                pass
+            runner = LiveRunner(
+                live_controller,
+                device=device_value,
+                source_lang=source_value,
+                transcribe_fn=transcribe_wav,
+                on_utterance=_render_session,
+            )
+            live_runner["current"] = runner
+            _paint_live(True, True)
+            _set_live_buttons(True)
+            try:
+                page.update()
+            except Exception:
+                pass
+            live_runner["thread"] = threading.Thread(
+                target=_run_live, args=(runner,), daemon=True
+            )
+            live_runner["thread"].start()
+        except Exception:
+            pass
+
+    def on_start_live(e=None) -> None:
+        try:
+            refs = _live_refs()
+            if (
+                live_runner.get("current") is not None
+                and live_runner["current"].is_running()
+            ):
+                return
+            try:
+                target_dropdown = refs.get("target_dropdown")
+                target_value = (
+                    target_dropdown.value if target_dropdown is not None else None
+                )
+            except Exception:
+                target_value = None
+            target_value = name_for_code(target_value) or "English"
+            try:
+                source_dropdown = refs.get("source_dropdown")
+                source_value = (
+                    source_dropdown.value if source_dropdown is not None else None
+                )
+            except Exception:
+                source_value = None
+            source_value = name_for_code(source_value)
+            model_value = current_model.get("value")
+            device_value = current_device.get("value")
+            _set_live_buttons(True)
+            _paint_live(True, None)
+            try:
+                page.update()
+            except Exception:
+                pass
+            threading.Thread(
+                target=_supervise_live,
+                args=(target_value, model_value, device_value, source_value),
+                daemon=True,
+            ).start()
+        except Exception:
+            pass
+
+    def on_stop_live(e=None) -> None:
+        try:
+            runner = live_runner.get("current")
+            if runner is not None:
+                try:
+                    runner.request_stop()
+                except Exception:
+                    pass
+                try:
+                    thread = live_runner.get("thread")
+                    if thread is not None:
+                        thread.join(timeout=2.0)
+                except Exception:
+                    pass
+            live_runner["current"] = None
+            live_runner["thread"] = None
+            try:
+                live_controller.end_session()
+            except Exception:
+                pass
+            _set_live_buttons(False)
+            _paint_live(False, None)
+            try:
+                page.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    try:
+        live_refs = _live_refs()
+        live_start = live_refs.get("start_button")
+        if live_start is not None:
+            live_start.on_click = on_start_live
+        live_stop = live_refs.get("stop_button")
+        if live_stop is not None:
+            live_stop.on_click = on_stop_live
     except Exception:
         pass
 

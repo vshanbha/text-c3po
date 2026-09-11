@@ -701,6 +701,7 @@ def test_services_lazy_loader_errors():
     assert callable(services.transcribe_file)
     assert callable(services.VadChunker)
     assert callable(services.SessionController)
+    assert callable(services.LiveRunner)
 
 
 def _session_controller():
@@ -1076,6 +1077,35 @@ def test_manager_stop_poll_raising_and_enter_raising(monkeypatch):
     with mgr2:
         pass
     assert mgr2._process is None
+
+
+def test_install_exit_cleanup_stops_then_resignals(monkeypatch):
+    import os
+    import signal as sig
+
+    from text_c3po.runtimes.process_manager import install_exit_cleanup
+
+    stops = []
+
+    class FakeMgr:
+        def stop(self):
+            stops.append(True)
+
+    handlers = {}
+
+    def record(num, handler):
+        handlers[num] = handler
+
+    monkeypatch.setattr(sig, "signal", record)
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, num: killed.append((pid, num)))
+    assert install_exit_cleanup(FakeMgr()) is True
+    term = handlers.get(sig.SIGTERM)
+    assert callable(term)
+    term(sig.SIGTERM, None)
+    assert stops
+    assert handlers.get(sig.SIGTERM) is sig.SIG_DFL
+    assert killed and killed[0][1] == sig.SIGTERM
 
 
 def test_manager_build_command_isfile_raise(monkeypatch):
@@ -1827,3 +1857,187 @@ def test_transcribe_file_short_circuits():
     )
     assert out["retryable"] is True
     assert calls == []
+
+
+def test_reset_pane_clears_for_new_session():
+    from text_c3po.ui.captions import (
+        build_captions_pane,
+        on_pane_scroll,
+        reset_pane,
+        sync_captions,
+    )
+
+    pane = build_captions_pane()
+    sync_captions(pane, [_caption(1), _caption(2)])
+    on_pane_scroll(pane)
+    reset_pane(pane)
+    assert pane.data["list"].controls == []
+    assert pane.data["rendered"] == []
+    assert pane.data["follow"]["on"] is True
+    assert pane.data["jump"].visible is False
+    reset_pane(None)
+    reset_pane(object())
+
+
+def test_paint_status_with_fakes():
+    from text_c3po.ui.status import LIVE_RED, paint_status, status_dot
+
+    class Fake:
+        pass
+
+    dot, label = Fake(), Fake()
+    paint_status(dot, label, LIVE_RED, "Live")
+    assert (dot.bgcolor, label.value) == (LIVE_RED, "Live")
+    paint_status(None, None, LIVE_RED, "x")
+    paint_status(object(), object(), LIVE_RED, "x")
+    assert status_dot(LIVE_RED).bgcolor == LIVE_RED
+
+
+def test_live_view_session_controls():
+    from text_c3po.ui.live_view import build_live_view
+
+    view = build_live_view(["Mic"], "Mic")
+    assert view.data["start_button"].content == "Start"
+    assert view.data["stop_button"].visible is False
+    assert view.data["capture_label"].value == "Idle"
+    assert view.data["whisper_label"].value == "Whisper: ?"
+
+
+class _FakeStream:
+    def __init__(self, frames):
+        self._frames = list(frames)
+        self.started = False
+        self.closed = False
+
+    def start(self):
+        self.started = True
+
+    def read(self, n):
+        if not self._frames:
+            raise RuntimeError("stream ended")
+        return self._frames.pop(0), False
+
+    def stop(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+def _speech_frames(value=1000, n=2):
+    return [_vad_frame(value) for _ in range(n)]
+
+
+def _runner_controller():
+    from text_c3po.services.session import SessionController
+
+    return SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: {"formal": text},
+    )
+
+
+def test_runner_posts_utterance_with_source_lang():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    fired = []
+    stream = _FakeStream(_speech_frames() + [_vad_frame(0)] * 2)
+    runner = LiveRunner(
+        ctl,
+        device="Mic",
+        source_lang="German",
+        transcribe_fn=lambda wav: {"text": "Hallo"},
+        stream_factory=lambda device: stream,
+        on_utterance=lambda: fired.append(True),
+    )
+    assert runner.is_running() is False
+    assert runner.run() == 1
+    assert stream.closed is True
+    assert fired
+    assert ctl.pending() == 1
+    added = ctl.drain()
+    assert added[0]["source_lang"] == "German"
+    assert added[0]["translation"] == "Hallo"
+
+
+def test_runner_gap_on_transcribe_failure():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    stream = _FakeStream(_speech_frames() + [_vad_frame(0)] * 2)
+
+    def down(wav):
+        raise ConnectionError("down")
+
+    runner = LiveRunner(ctl, transcribe_fn=down, stream_factory=lambda device: stream)
+    assert runner.run() == 0
+    assert ctl.drain() == []
+    gaps = [c for c in ctl.captions() if c["kind"] == "gap"]
+    assert len(gaps) == 1
+    assert "whisper" in gaps[0]["text"].lower()
+
+
+def test_runner_no_stream_returns_zero(monkeypatch):
+    import sys
+
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+
+    def no_factory(device):
+        raise OSError("no PortAudio")
+
+    assert LiveRunner(ctl, stream_factory=no_factory).run() == 0
+    assert LiveRunner(ctl, stream_factory=lambda device: None).run() == 0
+    # Default factory without sounddevice/PortAudio (monkeypatched away so
+    # the test never touches real hardware): clean zero, no raise.
+    monkeypatch.setitem(sys.modules, "sounddevice", None)
+    assert LiveRunner(ctl, transcribe_fn=lambda w: {"text": "x"}).run() == 0
+
+
+def test_runner_stop_is_prompt():
+    import threading
+    import time
+
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    stream = _FakeStream([_vad_frame(0)] * 100000)
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: stream,
+    )
+    done = []
+    worker = threading.Thread(target=lambda: done.append(runner.run()))
+    started = time.monotonic()
+    worker.start()
+    time.sleep(0.3)
+    assert runner.is_running() is True
+    assert runner.run() == 0
+    runner.request_stop()
+    worker.join(timeout=5)
+    assert done == [0]
+    assert time.monotonic() - started < 5
+    assert runner.is_running() is False
+    assert stream.closed is True
+
+
+def test_runner_stop_before_run():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: _FakeStream([_vad_frame(0)]),
+    )
+    runner.request_stop()
+    assert runner.run() == 0

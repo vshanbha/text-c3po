@@ -167,6 +167,38 @@ def sync_captions(pane, captions) -> int:
         return 0
 
 
+def reset_pane(pane) -> None:
+    """Clear a pane for a new session: rows, seqs, follow on. Never raises."""
+    try:
+        data = pane.data if isinstance(getattr(pane, "data", None), dict) else None
+        if data is None:
+            return
+        try:
+            data["list"].controls.clear()
+        except Exception:
+            pass
+        try:
+            data["rendered"] = []
+        except Exception:
+            pass
+        follow = data.get("follow")
+        if isinstance(follow, dict):
+            try:
+                follow["on"] = True
+            except Exception:
+                pass
+        try:
+            data["list"].auto_scroll = True
+        except Exception:
+            pass
+        try:
+            data["jump"].visible = False
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def on_pane_scroll(pane) -> None:
     """User scrolled: leave follow mode and reveal Jump-to-latest."""
     try:
