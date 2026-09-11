@@ -1004,6 +1004,28 @@ def test_audio_file_generic_run_failure():
     assert "Could not decode" in out["error"]
 
 
+def test_dependency_pins_agree():
+    # AGENTS.md mandates exact pins in requirements.txt while `uv sync`
+    # installs from pyproject.toml — the two must never drift apart.
+    import os
+    import re
+    import tomllib
+
+    from text_c3po.paths import find_project_root
+
+    root = find_project_root()
+    with open(os.path.join(root, "requirements.txt"), encoding="utf-8") as handle:
+        reqs = {
+            line.strip()
+            for line in handle
+            if line.strip() and not line.strip().startswith("#")
+        }
+    with open(os.path.join(root, "pyproject.toml"), "rb") as handle:
+        project = tomllib.load(handle)["project"]
+    assert set(project["dependencies"]) == reqs
+    assert all(re.fullmatch(r"[A-Za-z0-9_.-]+==[^,;\s]+", pin) for pin in reqs)
+
+
 def test_hostile_names_never_raise():
     from text_c3po.runtimes.audio_devices import has_blackhole, pick_default_device
 

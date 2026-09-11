@@ -310,7 +310,16 @@ def main(page: ft.Page) -> None:
             new_value = control.value if control is not None else None
         except Exception:
             new_value = None
-        current_model["value"] = new_value
+        # Serialized with the background poll's picker refresh below: a
+        # user pick landing mid-refresh must not be clobbered by it.
+        try:
+            with poll_state["lock"]:
+                current_model["value"] = new_value
+        except Exception:
+            try:
+                current_model["value"] = new_value
+            except Exception:
+                pass
 
     def _reprobe_and_refresh(e=None) -> None:
         ok, fresh = check_ollama()
@@ -1028,7 +1037,9 @@ def main(page: ft.Page) -> None:
     # Stale-status fix: Ollama can die after launch while the dot stays
     # green. A daemon poll re-probes loopback and re-renders only on a flip,
     # so shutdowns and restarts surface within seconds, never on next click.
-    poll_state = {"last": (connected, startup_models)}
+    # "lock" serializes the poll's picker refresh with the user's
+    # on_select handler so a mid-refresh pick is never clobbered.
+    poll_state = {"last": (connected, startup_models), "lock": threading.Lock()}
 
     def _poll_ollama() -> None:
         while True:
@@ -1049,29 +1060,35 @@ def main(page: ft.Page) -> None:
                     if holder is not None:
                         refresh_ollama_status(holder, ok, None, OLLAMA_BASE_URL)
                         if ok:
-                            prior = current_model.get("value")
-                            if prior not in fresh_models:
-                                try:
-                                    refs = (
-                                        holder.data
-                                        if isinstance(holder.data, dict)
-                                        else {}
+                            try:
+                                with poll_state["lock"]:
+                                    prior = current_model.get("value")
+                                    if prior not in fresh_models:
+                                        try:
+                                            refs = (
+                                                holder.data
+                                                if isinstance(holder.data, dict)
+                                                else {}
+                                            )
+                                            dropdown = refs.get("model_dropdown")
+                                            dropdown_value = (
+                                                dropdown.value
+                                                if dropdown is not None
+                                                else None
+                                            )
+                                            if dropdown_value in fresh_models:
+                                                prior = dropdown_value
+                                        except Exception:
+                                            pass
+                                    selected = (
+                                        prior
+                                        if prior in fresh_models
+                                        else pick_default_model(fresh_models)
                                     )
-                                    dropdown = refs.get("model_dropdown")
-                                    dropdown_value = (
-                                        dropdown.value if dropdown is not None else None
-                                    )
-                                    if dropdown_value in fresh_models:
-                                        prior = dropdown_value
-                                except Exception:
-                                    pass
-                            selected = (
-                                prior
-                                if prior in fresh_models
-                                else pick_default_model(fresh_models)
-                            )
-                            refresh_model_picker(holder, fresh_models, selected)
-                            current_model["value"] = selected
+                                    refresh_model_picker(holder, fresh_models, selected)
+                                    current_model["value"] = selected
+                            except Exception:
+                                pass
                         page.update()
                     if went_down:
                         _show_snackbar(page, DISCONNECT_SNACKBAR_HINT, on_retry)

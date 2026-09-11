@@ -55,8 +55,17 @@ def whisper_server():
     if not model:
         pytest.skip("no whisper model file resolved")
     mgr = ProcessManager(model_path=model)
-    assert mgr.start() is True
-    assert mgr.wait_ready(timeout_s=60.0) is True
+    try:
+        assert mgr.start() is True
+        assert mgr.wait_ready(timeout_s=60.0) is True
+    except BaseException:
+        # Setup asserts run before yield: without this the spawned server
+        # leaks across pytest exit and squats :9001 for the next launch.
+        try:
+            mgr.stop()
+        except Exception:
+            pass
+        raise
     yield mgr
     mgr.stop()
 

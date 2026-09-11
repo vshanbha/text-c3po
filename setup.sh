@@ -25,7 +25,7 @@ fail() {
 
 need_macos() {
   [ "$(uname -s)" = "Darwin" ] || fail "macOS only (found $(uname -s))."
-  [ "$(uname -m)" = "arm64" ] || echo "setup.sh: warning: non-Apple-Silicon ($ARCH); continuing."
+  [ "$(uname -m)" = "arm64" ] || echo "setup.sh: warning: non-Apple-Silicon ($(uname -m)); continuing."
 }
 
 need_brew() {
@@ -56,8 +56,8 @@ else
 fi
 brew_pkg ollama ollama
 
-if [ ! -d "/Library/Audio/Plug-Ins/HAL/BlackHole.driver" ] \
-  && [ ! -d "$HOME/Library/Audio/Plug-Ins/HAL/BlackHole.driver" ]; then
+if [ ! -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ] \
+  && [ ! -d "$HOME/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ]; then
   echo "setup.sh: installing BlackHole 2ch (system-audio loopback) ..."
   brew install --cask blackhole-2ch || echo "setup.sh: warning: BlackHole install failed — live mic still works; file mode unaffected."
 else
@@ -77,7 +77,9 @@ fetch_model() {
     echo "setup.sh: $MODELS_DIR/$1 present, skipping."
   else
     echo "setup.sh: downloading $1 (~500 MB for small) ..."
-    curl -fL -o "$MODELS_DIR/$1" "$WHISPER_MODEL_URL/$1"
+    # Atomic fetch: a dropped transfer must never pass the -f check above.
+    curl -fL --retry 3 -o "$MODELS_DIR/$1.tmp" "$WHISPER_MODEL_URL/$1" \
+      && mv "$MODELS_DIR/$1.tmp" "$MODELS_DIR/$1"
   fi
 }
 fetch_model ggml-small.bin
@@ -85,7 +87,7 @@ if [ "$HAVE_MEDIUM" = "1" ]; then
   fetch_model ggml-medium.bin
 fi
 
-if ollama list 2>/dev/null | grep -q "lfm2.5"; then
+if ollama list 2>/dev/null | grep -q "^lfm2\.5"; then
   echo "setup.sh: lfm2.5 present, skipping."
 else
   echo "setup.sh: ollama pull lfm2.5 (needs 'ollama serve' running) ..."
@@ -97,14 +99,16 @@ else
 fi
 
 echo "setup.sh: fast unit suite ..."
-uv run pytest -q
+# --no-sync: run against the .venv this script just synced; a fresh
+# re-sync here would re-hit the network and fail offline.
+uv run --no-sync pytest -q
 
 cat <<'EOF'
 setup.sh: done.
   Run:            ollama serve   # if not already running
                   uv run text-c3po
   Manual checks:  TEST-PLAN.md (top to bottom after any epic)
-  Live gate:      PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest
+  Live gate:      PYTHONPATH=src uv run python -m text_c3po.services.eval_harness --models lfm2.5:latest
   BlackHole routing (optional, for system-audio capture): Audio MIDI Setup ->
   create a Multi-Output Device (speakers + BlackHole, Drift Correction on),
   set it as the system output.
