@@ -15,6 +15,7 @@ from text_c3po.runtimes.ollama_client import (
     check_ollama,
     pick_default_model,
 )
+from text_c3po.runtimes.audio_devices import list_devices, pick_default_device
 from text_c3po.services.translation import (
     cancel_inflight,
     extract_partial_formal,
@@ -232,8 +233,23 @@ def main(page: ft.Page) -> None:
     # tall output scrolls the window instead of clipping without a scrollbar.
     page.scroll = ft.ScrollMode.AUTO
 
+    # E2-1: enumerate capture devices once at launch (sounddevice may be
+    # absent — list_devices yields [] and never raises, so the app always
+    # starts and file mode keeps working without a capture device).
+    startup_devices = list_devices()
+    selected_device = pick_default_device(startup_devices)
+    current_device = {"value": selected_device}
+
+    def on_device_change(e=None) -> None:
+        try:
+            control = getattr(e, "control", None) if e is not None else None
+            new_value = control.value if control is not None else None
+        except Exception:
+            new_value = None
+        current_device["value"] = new_value
+
     text_view = build_text_view()
-    live_view = build_live_view()
+    live_view = build_live_view(startup_devices, selected_device, on_device_change)
     file_view = build_file_view()
     live_view.visible = False
     file_view.visible = False

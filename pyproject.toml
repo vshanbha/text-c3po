@@ -11,7 +11,11 @@ name = "text-c3po"
 version = "2.0.0"
 description = "Local-first desktop translator (Flet + Ollama + whisper-server)"
 requires-python = ">=3.12"
-dependencies = ["flet==0.86.5", "langchain-ollama==1.1.0"]
+dependencies = [
+    "flet==0.86.5",
+    "langchain-ollama==1.1.0",
+    "sounddevice==0.5.6",
+]
 
 [project.scripts]
 text-c3po = "text_c3po.app:run"

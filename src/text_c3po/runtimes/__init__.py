@@ -1,5 +1,10 @@
 """Runtimes layer: ollama_client, whisper_client, audio_devices, process_manager (AD-1)."""
 
+from .audio_devices import (
+    has_blackhole,
+    list_devices,
+    pick_default_device,
+)
 from .ollama_client import (
     DEFAULT_MODEL_PREFIX,
     OLLAMA_BASE_URL,
@@ -18,4 +23,7 @@ __all__ = [
     "check_ollama",
     "list_models",
     "pick_default_model",
+    "has_blackhole",
+    "list_devices",
+    "pick_default_device",
 ]

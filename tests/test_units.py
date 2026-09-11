@@ -552,3 +552,72 @@ def test_toolbar_and_text_view_construct():
     assert view.data["stop_button"].visible is False
     assert view.data["progress_ring"].visible is False
     assert "copy_float" not in view.data and "style_float" not in view.data
+
+
+def _stub_devices():
+    return [
+        {
+            "name": "MacBook Air Microphone",
+            "max_input_channels": 1,
+            "max_output_channels": 0,
+        },
+        {"name": "BlackHole 2ch", "max_input_channels": 2, "max_output_channels": 2},
+        {
+            "name": "MacBook Air Speakers",
+            "max_input_channels": 0,
+            "max_output_channels": 2,
+        },
+    ]
+
+
+def test_list_devices_lists_inputs_verbatim():
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    assert list_devices(query_fn=_stub_devices) == [
+        "MacBook Air Microphone",
+        "BlackHole 2ch",
+    ]
+
+
+def test_list_devices_never_raises():
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    def boom():
+        raise OSError("no PortAudio")
+
+    assert list_devices(query_fn=boom) == []
+    assert list_devices(query_fn=lambda: None) == []
+    assert list_devices(query_fn=lambda: [{"name": "", "max_input_channels": 1}]) == []
+
+
+def test_has_blackhole_case_insensitive():
+    from text_c3po.runtimes.audio_devices import has_blackhole
+
+    assert has_blackhole(["Mic", "BlackHole 2ch"]) is True
+    assert has_blackhole(["mic", "blackhole 16ch"]) is True
+    assert has_blackhole(["Mic", "Speakers"]) is False
+    assert has_blackhole([]) is False
+    assert has_blackhole(None) is False
+
+
+def test_pick_default_device_prefers_mic():
+    from text_c3po.runtimes.audio_devices import pick_default_device
+
+    assert pick_default_device(["MacBook Air Microphone", "BlackHole 2ch"]) == (
+        "MacBook Air Microphone"
+    )
+    assert pick_default_device(["BlackHole 2ch", "USB Mic"]) == "USB Mic"
+    assert pick_default_device(["BlackHole 2ch"]) == "BlackHole 2ch"
+    assert pick_default_device([]) is None
+    assert pick_default_device(None) is None
+
+
+def test_live_view_builds_device_picker_headless():
+    from text_c3po.ui.live_view import build_live_view
+
+    view = build_live_view(["Mic", "BlackHole 2ch"], "Mic")
+    dropdown = view.data["device_dropdown"]
+    assert dropdown.value == "Mic"
+    assert [o.key for o in dropdown.options] == ["Mic", "BlackHole 2ch"]
+    empty = build_live_view([], None)
+    assert empty.data["device_dropdown"].options == []
