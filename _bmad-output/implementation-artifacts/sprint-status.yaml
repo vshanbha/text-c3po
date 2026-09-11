@@ -50,14 +50,14 @@ development_status:
   2-2-port-vad-chunker-with-unit-tests: done
   2-3-whisper-process-manager-with-health-and-restart: done
   2-4-file-decode-path-into-the-shared-asr-entry-point: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: done
   3-1-session-controller-with-owned-caption-list: done
   3-2-captions-pane-with-history-and-timestamps: done
   3-3-start-stop-toggle-with-live-status-indicators: done
   3-4-live-pickers-file-surface-and-session-state-polish: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   epic-4: in-progress
   4-1-setup-sh-for-clean-machine-install: done
