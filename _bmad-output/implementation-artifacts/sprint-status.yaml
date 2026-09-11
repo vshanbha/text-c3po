@@ -45,24 +45,23 @@ development_status:
   1-7-e1-gate-5-language-by-5-sentence-smoke-harness: done
   epic-1-retrospective: done
 
-  epic-2: backlog
-  2-1-sounddevice-device-enumeration-and-picker-source: backlog
-  2-2-port-vad-chunker-with-unit-tests: backlog
-  2-3-whisper-process-manager-with-health-and-restart: backlog
-  2-4-file-decode-path-into-the-shared-asr-entry-point: backlog
+  epic-2: done
+  2-1-sounddevice-device-enumeration-and-picker-source: done
+  2-2-port-vad-chunker-with-unit-tests: done
+  2-3-whisper-process-manager-with-health-and-restart: done
+  2-4-file-decode-path-into-the-shared-asr-entry-point: done
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-session-controller-with-owned-caption-list: backlog
-  3-2-captions-pane-with-history-and-timestamps: backlog
-  3-3-start-stop-toggle-with-live-status-indicators: backlog
-  3-4-live-pickers-file-surface-and-session-state-polish: backlog
+  epic-3: done
+  3-1-session-controller-with-owned-caption-list: done
+  3-2-captions-pane-with-history-and-timestamps: done
+  3-3-start-stop-toggle-with-live-status-indicators: done
+  3-4-live-pickers-file-surface-and-session-state-polish: done
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-setup-sh-for-clean-machine-install: backlog
-  4-2-extend-harness-to-the-full-23-language-matrix: backlog
-  4-3-package-macos-bundle-with-mic-permission: backlog
-  4-4-regression-tests-for-vad-parser-and-whisper-health: backlog
-  4-5-remove-cloud-surface-and-refresh-docs: backlog
-  epic-4-retrospective: optional
+   epic-4: in-progress
+   4-1-setup-sh-for-clean-machine-install: done
+   4-2-extend-harness-to-the-full-23-language-matrix: in-progress
+   4-3-package-macos-bundle-with-mic-permission: backlog
+   4-4-regression-tests-for-vad-parser-and-whisper-health: done
+   4-5-remove-cloud-surface-and-refresh-docs: done

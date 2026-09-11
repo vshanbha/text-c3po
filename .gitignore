@@ -1,6 +1,10 @@
 # Project specific ignores
 secrets.toml
 
+# Whisper model binaries (fetched by ./setup.sh, ~0.5-1.5 GB each)
+models/
+*.bin
+
 # Editors
 .vscode/
 .idea/

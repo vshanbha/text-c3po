@@ -54,6 +54,85 @@ def test_matrix_languages_are_known_names():
     assert set(MATRIX_LANGUAGES) <= known
 
 
+def test_all_languages_cover_constant_with_codes():
+    from text_c3po.services.eval_harness import ALL_LANGUAGES, _code_for
+
+    assert len(ALL_LANGUAGES) == 23
+    assert set(ALL_LANGUAGES) == {e["name"] for e in LANGUAGES}
+    for name in ALL_LANGUAGES:
+        assert _code_for(name) != name
+
+
+def test_resolve_languages_forms():
+    from text_c3po.services.eval_harness import (
+        ALL_LANGUAGES,
+        MATRIX_LANGUAGES,
+        resolve_languages,
+    )
+
+    assert resolve_languages(None) == MATRIX_LANGUAGES
+    assert resolve_languages("matrix") == MATRIX_LANGUAGES
+    assert resolve_languages("all") == ALL_LANGUAGES
+    assert resolve_languages("German,French") == ["German", "French"]
+    assert resolve_languages("German, German") == ["German"]
+    assert resolve_languages("Klingon") is None
+    assert resolve_languages("") == MATRIX_LANGUAGES
+    assert resolve_languages(42) is None
+
+
+def test_run_matrix_custom_languages_stubbed():
+    from text_c3po.services.eval_harness import run_matrix
+
+    def stub(text, target, model):
+        return {"formal": text} if target == "German" else {"error": "x"}
+
+    results = run_matrix(
+        models=["m"], translate_fn=stub, languages=["German", "French"]
+    )
+    summary = results["m"]
+    assert (summary["valid"], summary["total"]) == (5, 10)
+    assert summary["per_language"] == {"German": 5, "French": 0}
+    assert len(summary["failures"]) == 5
+
+
+def test_format_table_custom_languages():
+    from text_c3po.services.eval_harness import format_table
+
+    table = format_table(
+        {"m": {"valid": 5, "total": 10, "per_language": {"German": 5}}},
+        ["German", "French"],
+    )
+    assert "| de | fr |" in table
+    assert table.count("---") == 6
+
+
+def test_record_results_custom_label(tmp_path):
+    from text_c3po.services.eval_harness import record_results
+
+    target = tmp_path / "r.md"
+    record_results(
+        {"m": {"valid": 10, "total": 10, "per_language": {}, "failures": []}},
+        str(target),
+        date="2026-09-11",
+        languages=["German", "French"],
+        label="E4 gate — 2x5 full matrix",
+    )
+    body = target.read_text()
+    assert "## E4 gate — 2x5 full matrix (2026-09-11)" in body
+    assert "2 sentences x 2 languages" not in body
+    assert "5 sentences x 2 languages" in body
+
+
+def test_main_rejects_unknown_languages(monkeypatch):
+    import text_c3po.services.eval_harness as harness
+
+    monkeypatch.setattr(harness, "check_ollama", lambda: (True, ["m"]))
+    assert harness.main(["--languages", "Klingon"]) == harness.EXIT_ABORT
+    parsed = harness._parse_args(["--languages", "all"])
+    assert parsed.languages == "all"
+    assert harness._parse_args([]).languages == "matrix"
+
+
 def test_pick_default_model_prefers_lfm2():
     models = ["mistral:latest", "lfm2.5:latest", "qwen3.5:9b-mlx"]
     assert pick_default_model(models) == "lfm2.5:latest"
