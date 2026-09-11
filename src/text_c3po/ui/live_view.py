@@ -46,8 +46,11 @@ def build_live_view(
     capture_label = ft.Text("Idle")
     whisper_dot = status_dot(None)
     whisper_label = ft.Text("Whisper: ?")
+    model_label = ft.Text("Model: ?")
     status_row = ft.Row(
-        [capture_dot, capture_label, whisper_dot, whisper_label], spacing=6
+        [capture_dot, capture_label, whisper_dot, whisper_label, model_label],
+        spacing=6,
+        wrap=True,
     )
     captions_pane = build_captions_pane(on_retry=on_caption_retry)
     view = ft.Column(
@@ -73,5 +76,6 @@ def build_live_view(
         "capture_label": capture_label,
         "whisper_dot": whisper_dot,
         "whisper_label": whisper_label,
+        "model_label": model_label,
     }
     return view

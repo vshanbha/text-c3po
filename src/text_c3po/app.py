@@ -729,7 +729,15 @@ def main(page: ft.Page) -> None:
 
     def _render_session() -> None:
         try:
-            live_controller.drain()
+            added = live_controller.drain()
+            try:
+                kinds = {c.get("kind") for c in added if isinstance(c, dict)}
+                # Gap rows mean whisper just failed mid-session: the dot
+                # must stop claiming ready without another probe round.
+                if "gap" in kinds:
+                    _paint_live(True, False)
+            except Exception:
+                pass
             refs = _live_refs()
             pane = refs.get("captions_pane")
             if pane is not None:
@@ -752,12 +760,27 @@ def main(page: ft.Page) -> None:
             except Exception:
                 pass
 
-    def _supervise_live(target_value, model_value, device_value, source_value) -> None:
+    def _on_live_open(device_value, opened: bool, reason: str = "") -> None:
+        try:
+            if opened or reason != "open-failed":
+                return
+            _refuse_live_start(
+                "Couldn't open {} — check the device, then retry.".format(
+                    device_value or "capture device"
+                )
+            )
+        except Exception:
+            pass
+
+    def _supervise_live(
+        token, target_value, model_value, device_value, source_value
+    ) -> None:
         try:
             manager = whisper_manager
             if manager is None:
                 _paint_live(False, False)
                 _set_live_buttons(False)
+                live_state["starting"] = False
                 try:
                     page.update()
                 except Exception:
@@ -770,10 +793,14 @@ def main(page: ft.Page) -> None:
             if state not in ("ready", "restarted"):
                 _paint_live(False, False)
                 _set_live_buttons(False)
+                live_state["starting"] = False
                 try:
                     page.update()
                 except Exception:
                     pass
+                return
+            if token != live_state["gen"]:
+                # Stopped while supervising: leave stop's state alone.
                 return
             try:
                 live_controller.target_language = target_value
@@ -786,6 +813,12 @@ def main(page: ft.Page) -> None:
                 pane = refs.get("captions_pane")
                 if pane is not None:
                     reset_pane(pane)
+                model_text = refs.get("model_label")
+                if model_text is not None:
+                    try:
+                        model_text.value = "Model: {}".format(model_value)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             runner = LiveRunner(
@@ -794,8 +827,12 @@ def main(page: ft.Page) -> None:
                 source_lang=source_value,
                 transcribe_fn=transcribe_wav,
                 on_utterance=_render_session,
+                on_status=lambda opened, reason="": _on_live_open(
+                    device_value, opened, reason
+                ),
             )
             live_runner["current"] = runner
+            live_state["starting"] = False
             _paint_live(True, True)
             _set_live_buttons(True)
             try:
@@ -807,7 +844,11 @@ def main(page: ft.Page) -> None:
             )
             live_runner["thread"].start()
         except Exception:
-            pass
+            try:
+                live_state["starting"] = False
+                _set_live_buttons(False)
+            except Exception:
+                pass
 
     def _refuse_live_start(message: str) -> None:
         try:
@@ -865,9 +906,16 @@ def main(page: ft.Page) -> None:
     except Exception:
         pass
 
+    # Start latch: the guard below must hold during the whole
+    # supervisor window (whisper ensure takes seconds), and Stop bumps
+    # the generation so a late supervisor aborts instead of spawning.
+    live_state = {"starting": False, "gen": 0}
+
     def on_start_live(e=None) -> None:
         try:
             refs = _live_refs()
+            if live_state["starting"]:
+                return
             if (
                 live_runner.get("current") is not None
                 and live_runner["current"].is_running()
@@ -879,6 +927,9 @@ def main(page: ft.Page) -> None:
             if not current_model.get("value"):
                 _refuse_live_start("Pick a model first.")
                 return
+            live_state["gen"] += 1
+            token = live_state["gen"]
+            live_state["starting"] = True
             try:
                 target_dropdown = refs.get("target_dropdown")
                 target_value = (
@@ -905,14 +956,22 @@ def main(page: ft.Page) -> None:
                 pass
             threading.Thread(
                 target=_supervise_live,
-                args=(target_value, model_value, device_value, source_value),
+                args=(token, target_value, model_value, device_value, source_value),
                 daemon=True,
             ).start()
         except Exception:
-            pass
+            try:
+                live_state["starting"] = False
+            except Exception:
+                pass
 
     def on_stop_live(e=None) -> None:
         try:
+            try:
+                live_state["gen"] += 1
+                live_state["starting"] = False
+            except Exception:
+                pass
             runner = live_runner.get("current")
             if runner is not None:
                 try:

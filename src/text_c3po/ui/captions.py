@@ -104,7 +104,13 @@ def build_captions_pane(on_retry=None) -> ft.Column:
     Refs live in ``pane.data``: list, jump, follow flag, rendered seqs,
     and the retry callback for error rows.
     """
-    pane_data = {"follow": {"on": True}, "rendered": [], "on_retry": on_retry}
+    pane_data = {
+        "follow": {"on": True},
+        "rendered": [],
+        "rendered_set": set(),
+        "rendered_sig": {},
+        "on_retry": on_retry,
+    }
     jump = ft.Button(JUMP_LABEL, visible=False)
     feed = ft.ListView(expand=True, spacing=8, auto_scroll=True)
     pane = ft.Column([feed, jump], expand=True, spacing=4)
@@ -130,11 +136,27 @@ def build_captions_pane(on_retry=None) -> ft.Column:
     return pane
 
 
-def sync_captions(pane, captions) -> int:
-    """Append unrendered captions in order; return how many were added.
+def _row_sig(caption) -> tuple:
+    """Return the content signature identifying a row's rendered state."""
+    try:
+        if not isinstance(caption, dict):
+            return ()
+        return (
+            caption.get("kind"),
+            caption.get("text"),
+            caption.get("translation"),
+        )
+    except Exception:
+        return ()
 
-    Reads controller snapshots (list of dicts with seq/at/kind). Never
-    raises; empty input is a no-op.
+
+def sync_captions(pane, captions) -> int:
+    """Sync the pane with controller snapshots; return rows added+updated.
+
+    New seqs append in order; already-rendered seqs whose content changed
+    (e.g. a retried error row) rebuild in place at the same position, so a
+    successful retry visibly flips the row instead of vanishing into the
+    dedupe. Never raises; empty input is a no-op.
     """
     try:
         data = pane.data if isinstance(getattr(pane, "data", None), dict) else None
@@ -146,25 +168,50 @@ def sync_captions(pane, captions) -> int:
         rendered = data.get("rendered")
         if not isinstance(rendered, list):
             rendered = data["rendered"] = []
-        seen = set(rendered)
-        added = 0
+        seen = data.get("rendered_set")
+        if not isinstance(seen, set):
+            seen = data["rendered_set"] = set(rendered)
+        sigs = data.get("rendered_sig")
+        if not isinstance(sigs, dict):
+            sigs = data["rendered_sig"] = {}
+        changed = 0
         for caption in captions or []:
             try:
                 seq = caption.get("seq") if isinstance(caption, dict) else None
             except Exception:
                 continue
-            if seq is None or seq in seen:
+            if seq is None:
                 continue
-            row = _row_for(caption, data.get("on_retry"))
-            if row is None:
-                continue
-            try:
-                feed.controls.append(row)
-            except Exception:
-                continue
-            seen.add(seq)
-            rendered.append(seq)
-            added += 1
+            sig = _row_sig(caption)
+            if seq not in seen:
+                row = _row_for(caption, data.get("on_retry"))
+                if row is None:
+                    continue
+                try:
+                    feed.controls.append(row)
+                except Exception:
+                    continue
+                seen.add(seq)
+                rendered.append(seq)
+                sigs[seq] = sig
+                changed += 1
+            elif sig != sigs.get(seq):
+                row = _row_for(caption, data.get("on_retry"))
+                if row is None:
+                    continue
+                try:
+                    index = next(
+                        i
+                        for i, existing in enumerate(feed.controls)
+                        if getattr(existing, "key", None) == _row_key(seq)
+                        or getattr(getattr(existing, "content", None), "key", None)
+                        == _row_key(seq)
+                    )
+                    feed.controls[index] = row
+                    sigs[seq] = sig
+                    changed += 1
+                except Exception:
+                    continue
         try:
             follow = data.get("follow", {})
             feed.auto_scroll = bool(follow.get("on", True))
@@ -173,7 +220,7 @@ def sync_captions(pane, captions) -> int:
                 jump.visible = not bool(follow.get("on", True))
         except Exception:
             pass
-        return added
+        return changed
     except Exception:
         return 0
 
@@ -190,6 +237,14 @@ def reset_pane(pane) -> None:
             pass
         try:
             data["rendered"] = []
+        except Exception:
+            pass
+        try:
+            data["rendered_set"] = set()
+        except Exception:
+            pass
+        try:
+            data["rendered_sig"] = {}
         except Exception:
             pass
         follow = data.get("follow")
@@ -210,14 +265,32 @@ def reset_pane(pane) -> None:
         pass
 
 
-def on_pane_scroll(pane) -> None:
+def _is_user_scroll(event) -> bool:
+    """True only for genuine user scrolls (review: programmatic pins and
+    auto-scrolls must never disable follow). Missing/unknown shapes
+    default to user so headless callers keep working."""
+    try:
+        if event is None:
+            return True
+        event_type = getattr(event, "event_type", None)
+        if event_type is None:
+            return True
+        try:
+            name = event_type.name
+        except Exception:
+            name = str(event_type)
+        return str(name).upper() == "USER"
+    except Exception:
+        return True
+
+
+def on_pane_scroll(pane, event=None) -> None:
     """User scrolled: leave follow mode and reveal Jump-to-latest."""
     try:
         data = pane.data if isinstance(getattr(pane, "data", None), dict) else None
         if data is None:
             return
-        if data.get("suppress_scroll"):
-            data["suppress_scroll"] = False
+        if not _is_user_scroll(event):
             return
         follow = data.get("follow")
         if isinstance(follow, dict):
@@ -247,7 +320,6 @@ def jump_to_latest(pane) -> None:
         follow = data.get("follow")
         if isinstance(follow, dict):
             follow["on"] = True
-        data["suppress_scroll"] = True
         try:
             data["list"].auto_scroll = True
         except Exception:

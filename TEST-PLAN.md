@@ -112,6 +112,13 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
 - **F11 — start guards.** With no capture device (or no model),
   press Start. Expect: readable refusal in the status line, no spawn,
   buttons re-armed.
+- **F12 — double-start.** Double-click Start rapidly (and again
+  during the ~2 s whisper-ensure window). Expect: exactly one
+  capture thread (`lsof -i` shows one stream); Stop halts everything,
+  mic released, no orphaned runner.
+- **F13 — stop timing.** Start, speak, press Stop mid-sentence.
+  Expect: capture halts within ~2 s; trailing speech may still land
+  one final caption; list retained.
 
 ## G. Eval gate (E1, repeatable)
 
