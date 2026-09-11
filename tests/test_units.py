@@ -554,6 +554,21 @@ def test_toolbar_and_text_view_construct():
     assert "copy_float" not in view.data and "style_float" not in view.data
 
 
+def test_file_view_builds_picker_refs_headless():
+    from text_c3po.ui.file_view import build_file_view
+
+    view = build_file_view()
+    assert set(view.data.keys()) == {
+        "source_dropdown",
+        "target_dropdown",
+        "pick_button",
+        "status_text",
+        "result_text",
+    }
+    assert view.data["pick_button"].content == "Pick audio file"
+    assert view.data["status_text"].value == ""
+
+
 def _stub_devices():
     return [
         {
@@ -903,3 +918,186 @@ def test_context_manager_stops_on_exit():
         assert entered is mgr
         assert mgr.is_alive() is True
     assert mgr.is_alive() is False
+
+
+class _FakeCompleted:
+    def __init__(self, returncode=0, stdout=b"", stderr=b""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class _FakeResponse:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+
+def test_decode_rejects_before_any_subprocess(tmp_path):
+    from text_c3po.runtimes.audio_file import decode_to_wav
+
+    txt = tmp_path / "song.txt"
+    txt.write_bytes(b"notes")
+    calls = []
+    out = decode_to_wav(str(txt), run_fn=lambda a: calls.append(a))
+    assert calls == []
+    assert out["retryable"] is False
+    assert "mp3" in out["error"]
+    missing = decode_to_wav("/tmp/no-such-file.wav", run_fn=lambda a: calls.append(a))
+    assert calls == []
+    assert missing["retryable"] is False
+    assert decode_to_wav("", run_fn=lambda a: calls.append(a))["retryable"] is False
+
+
+def test_decode_to_wav_success_and_failures(tmp_path):
+    from text_c3po.runtimes.audio_file import decode_to_wav
+
+    src = tmp_path / "clip.MP3"
+    src.write_bytes(b"fake")
+    seen = []
+
+    def ok(argv):
+        seen.append(argv)
+        return _FakeCompleted(returncode=0, stdout=b"RIFF....WAVE")
+
+    out = decode_to_wav(str(src), run_fn=ok)
+    assert out == {"wav": b"RIFF....WAVE"}
+    assert seen[0][:3] == ["ffmpeg", "-hide_banner", "-loglevel"]
+    assert "-ac" in seen[0] and "1" in seen[0]
+    assert "-ar" in seen[0] and "16000" in seen[0]
+
+    bad = decode_to_wav(
+        str(src), run_fn=lambda a: _FakeCompleted(returncode=1, stderr=b"boom")
+    )
+    assert bad["retryable"] is False
+    assert "boom" in bad["error"]
+
+    def no_ffmpeg(argv):
+        raise FileNotFoundError("ffmpeg")
+
+    gone = decode_to_wav(str(src), run_fn=no_ffmpeg)
+    assert gone["retryable"] is True
+    assert "ffmpeg" in gone["error"].lower()
+
+    empty = decode_to_wav(str(src), run_fn=lambda a: _FakeCompleted(stdout=b""))
+    assert empty["retryable"] is False
+
+
+def test_transcribe_wav_success_and_failures():
+    import json
+
+    from text_c3po.runtimes.whisper_client import transcribe_wav
+
+    seen = []
+
+    def ok(request):
+        seen.append(request)
+        return _FakeResponse(json.dumps({"text": "  hallo welt "}).encode())
+
+    assert transcribe_wav(b"WAVE", urlopen_fn=ok) == {"text": "hallo welt"}
+    assert "multipart/form-data" in seen[0].get_header("Content-type")
+
+    def down(request):
+        raise ConnectionRefusedError("down")
+
+    failed = transcribe_wav(b"WAVE", urlopen_fn=down)
+    assert failed == {
+        "error": "Couldn't reach whisper-server. Retry.",
+        "retryable": True,
+    }
+    assert (
+        transcribe_wav(b"WAVE", urlopen_fn=lambda r: _FakeResponse(b"nope"))[
+            "retryable"
+        ]
+        is True
+    )
+    assert (
+        transcribe_wav(
+            b"WAVE",
+            urlopen_fn=lambda r: _FakeResponse(json.dumps({"nada": 1}).encode()),
+        )["retryable"]
+        is True
+    )
+    assert transcribe_wav(b"")["retryable"] is True
+
+
+def test_transcribe_file_end_to_end_with_stubs():
+    from text_c3po.services.asr import transcribe_file
+
+    calls = []
+
+    def decode(path):
+        calls.append(("decode", path))
+        return {"wav": b"WAVE"}
+
+    def transcribe(wav):
+        calls.append(("transcribe", wav))
+        return {"text": "Guten Morgen"}
+
+    def translate(text, target, model):
+        calls.append(("translate", text, target, model))
+        return {"formal": "Good morning", "informal": "Morning!"}
+
+    out = transcribe_file(
+        "/tmp/a.wav",
+        "English",
+        "lfm2.5:latest",
+        decode_fn=decode,
+        transcribe_fn=transcribe,
+        translate_fn=translate,
+    )
+    assert out == {"formal": "Good morning", "informal": "Morning!"}
+    assert calls == [
+        ("decode", "/tmp/a.wav"),
+        ("transcribe", b"WAVE"),
+        ("translate", "Guten Morgen", "English", "lfm2.5:latest"),
+    ]
+
+
+def test_transcribe_file_short_circuits():
+    from text_c3po.services.asr import transcribe_file
+
+    calls = []
+
+    def boom_decode(path):
+        return {"error": "Unsupported container '.txt'", "retryable": False}
+
+    def translate(text, target, model):
+        calls.append(text)
+        return {"formal": text}
+
+    out = transcribe_file(
+        "/tmp/a.txt", "English", "m", decode_fn=boom_decode, translate_fn=translate
+    )
+    assert out["retryable"] is False
+    assert calls == []
+
+    def blank_transcribe(wav):
+        return {"text": " [BLANK_AUDIO]\n"}
+
+    out = transcribe_file(
+        "/tmp/a.wav",
+        "English",
+        "m",
+        decode_fn=lambda p: {"wav": b"WAVE"},
+        transcribe_fn=blank_transcribe,
+        translate_fn=translate,
+    )
+    assert out == {"error": "No speech found in that file.", "retryable": False}
+    assert calls == []
+
+    def down_transcribe(wav):
+        return {"error": "Couldn't reach whisper-server. Retry.", "retryable": True}
+
+    out = transcribe_file(
+        "/tmp/a.wav",
+        "English",
+        "m",
+        decode_fn=lambda p: {"wav": b"WAVE"},
+        transcribe_fn=down_transcribe,
+        translate_fn=translate,
+    )
+    assert out["retryable"] is True
+    assert calls == []
