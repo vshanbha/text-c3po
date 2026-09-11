@@ -700,6 +700,128 @@ def test_services_lazy_loader_errors():
     assert callable(services.run_matrix)
     assert callable(services.transcribe_file)
     assert callable(services.VadChunker)
+    assert callable(services.SessionController)
+
+
+def _session_controller():
+    import datetime
+
+    from text_c3po.services.session import SessionController
+
+    ticks = {"n": 0}
+
+    def clock():
+        ticks["n"] += 1
+        return datetime.datetime(
+            2026, 9, 11, 12, 0, ticks["n"], tzinfo=datetime.timezone.utc
+        )
+
+    def translate(text, target, model):
+        if text == "boom":
+            raise RuntimeError("llm down")
+        if text == "badshape":
+            return {"error": "Couldn't parse that one. Retry.", "retryable": True}
+        return {"formal": "[{}] {}".format(target, text)}
+
+    return SessionController(
+        target_language="English", model="m", translate_fn=translate, clock=clock
+    )
+
+
+def test_session_ordering_and_timestamps():
+    ctl = _session_controller()
+    assert ctl.start_session() == 1
+    assert ctl.is_active() is True
+    assert ctl.post_utterance("Hallo", "de") is True
+    assert ctl.post_utterance("Welt", "de") is True
+    assert ctl.pending() == 2
+    added = ctl.drain()
+    assert [c["seq"] for c in added] == [1, 2]
+    assert [c["translation"] for c in added] == ["[English] Hallo", "[English] Welt"]
+    assert added[0]["at"] < added[1]["at"]
+    assert added[0]["source_lang"] == "de"
+    assert ctl.pending() == 0
+
+
+def test_session_drops_blanks_and_closed_posts():
+    ctl = _session_controller()
+    assert ctl.post_utterance("early") is False
+    ctl.start_session()
+    assert ctl.post_utterance("") is False
+    assert ctl.post_utterance("   ") is False
+    assert ctl.post_utterance(None) is False
+    ctl.end_session()
+    assert ctl.is_active() is False
+    assert ctl.post_utterance("late") is False
+    assert ctl.mark_gap("x") is None
+    assert ctl.drain() == []
+    assert ctl.captions() == []
+
+
+def test_session_translate_failures_become_error_captions():
+    ctl = _session_controller()
+    ctl.start_session()
+    ctl.post_utterance("boom")
+    ctl.post_utterance("badshape")
+    ctl.post_utterance("ok")
+    added = ctl.drain()
+    assert [c["kind"] for c in added] == ["error", "error", "caption"]
+    assert [c["seq"] for c in added] == [1, 2, 3]
+    assert "Retry" in added[0]["text"]
+
+
+def test_session_gaps_labeled_and_sequenced():
+    ctl = _session_controller()
+    ctl.start_session()
+    ctl.post_utterance("a")
+    ctl.drain()
+    gap = ctl.mark_gap("restart")
+    assert gap["kind"] == "gap" and gap["seq"] == 2
+    assert "restart" in gap["text"]
+    assert [c["seq"] for c in ctl.captions()] == [1, 2]
+
+
+def test_session_restart_clears_and_bumps_id():
+    ctl = _session_controller()
+    ctl.start_session()
+    ctl.post_utterance("a")
+    ctl.drain()
+    assert ctl.start_session() == 2
+    assert ctl.captions() == []
+    ctl.post_utterance("b")
+    assert [c["seq"] for c in ctl.drain()] == [1]
+
+
+def test_session_captions_are_copies():
+    ctl = _session_controller()
+    ctl.start_session()
+    ctl.post_utterance("a")
+    ctl.drain()
+    snapshot = ctl.captions()
+    snapshot[0]["text"] = "MUTATED"
+    snapshot.clear()
+    assert ctl.captions()[0]["text"] == "a"
+
+
+def test_session_concurrent_posts_drain_complete():
+    import threading
+
+    ctl = _session_controller()
+    ctl.start_session()
+
+    def post_many(prefix):
+        for i in range(25):
+            assert ctl.post_utterance("{}-{}".format(prefix, i)) is True
+
+    threads = [threading.Thread(target=post_many, args=(n,)) for n in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert ctl.pending() == 100
+    added = ctl.drain()
+    assert len(added) == 100
+    assert sorted(c["seq"] for c in added) == list(range(1, 101))
 
 
 def test_verbatim_names_malformed():
