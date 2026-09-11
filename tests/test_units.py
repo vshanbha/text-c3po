@@ -1349,7 +1349,7 @@ def test_captions_error_row_retry_and_follow():
     assert pane.data["follow"]["on"] is True
     assert pane.data["jump"].visible is False
     on_pane_scroll(pane)
-    assert pane.data["follow"]["on"] is True
+    assert pane.data["follow"]["on"] is False
     jump_to_latest(object())
     on_pane_scroll(None)
     jump_to_latest(None)
@@ -1953,6 +1953,7 @@ def test_live_view_session_controls():
     assert view.data["stop_button"].visible is False
     assert view.data["capture_label"].value == "Idle"
     assert view.data["whisper_label"].value == "Whisper: ?"
+    assert view.data["model_label"].value == "Model: ?"
 
 
 class _FakeStream:
@@ -1960,6 +1961,7 @@ class _FakeStream:
         self._frames = list(frames)
         self.started = False
         self.closed = False
+        self.aborted = False
 
     def start(self):
         self.started = True
@@ -1968,6 +1970,9 @@ class _FakeStream:
         if not self._frames:
             raise RuntimeError("stream ended")
         return self._frames.pop(0), False
+
+    def abort(self):
+        self.aborted = True
 
     def stop(self):
         pass
@@ -2086,10 +2091,222 @@ def test_runner_stop_before_run():
 
     ctl = _runner_controller()
     ctl.start_session()
+    reads = []
+    stream = _FakeStream([_vad_frame(0)])
+    orig_read = stream.read
+    stream.read = lambda n: reads.append(n) or orig_read(n)
     runner = LiveRunner(
         ctl,
         transcribe_fn=lambda wav: {"text": "x"},
-        stream_factory=lambda device: _FakeStream([_vad_frame(0)]),
+        stream_factory=lambda device: stream,
     )
     runner.request_stop()
     assert runner.run() == 0
+    assert reads == []
+
+
+def test_runner_reports_open_status():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    statuses = []
+    stream = _FakeStream([_vad_frame(0)])
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: stream,
+        on_status=lambda opened, reason="": statuses.append((opened, reason)),
+    )
+    stream.read = lambda n: (_ for _ in ()).throw(RuntimeError("end"))
+    assert runner.run() == 0
+    assert statuses[0] == (True, "open")
+
+    ctl2 = _runner_controller()
+    ctl2.start_session()
+    statuses2 = []
+    runner2 = LiveRunner(
+        ctl2,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: (_ for _ in ()).throw(OSError("nope")),
+        on_status=lambda opened, reason="": statuses2.append((opened, reason)),
+    )
+    assert runner2.run() == 0
+    assert statuses2 == [(False, "open-failed")]
+
+    ctl3 = _runner_controller()
+    ctl3.start_session()
+    statuses3 = []
+    runner3 = LiveRunner(
+        ctl3,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: _FakeStream([]),
+        on_status=lambda opened, reason="": statuses3.append((opened, reason)),
+    )
+    runner3.request_stop()
+    assert runner3.run() == 0
+    assert statuses3 == [(False, "stop")]
+
+
+def test_runner_flushes_tail_on_stream_end():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    stream = _FakeStream(_speech_frames())
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "Hallo"},
+        stream_factory=lambda device: stream,
+    )
+    assert runner.run() == 1
+    assert ctl.drain()[0]["translation"] == "Hallo"
+
+
+def test_runner_aborts_stream_on_stop():
+    import threading
+    import time
+
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    stream = _FakeStream([_vad_frame(0)] * 100000)
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: stream,
+    )
+    worker = threading.Thread(target=runner.run)
+    worker.start()
+    time.sleep(0.2)
+    runner.request_stop()
+    worker.join(timeout=5)
+    assert stream.aborted is True
+    assert stream.closed is True
+
+
+def test_open_input_stream_closes_on_start_failure(monkeypatch):
+    import sys
+    import types
+
+    from text_c3po.services.live_runner import open_input_stream
+
+    made = []
+
+    class FailingStream:
+        def __init__(self, *args, **kwargs):
+            made.append(self)
+            self.closed = False
+
+        def start(self):
+            raise OSError("denied")
+
+        def close(self):
+            self.closed = True
+
+    fake_sd = types.SimpleNamespace(InputStream=FailingStream)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+    try:
+        open_input_stream(device="Mic")
+        raised = False
+    except OSError:
+        raised = True
+    assert raised is True
+    assert made and made[0].closed is True
+
+
+def test_concurrent_drains_keep_unique_seqs():
+    import threading
+
+    ctl = _session_controller()
+    ctl.start_session()
+    for i in range(50):
+        assert ctl.post_utterance("u{}".format(i)) is True
+
+    def drain_all():
+        while ctl.pending():
+            ctl.drain()
+
+    threads = [threading.Thread(target=drain_all) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    seqs = sorted(c["seq"] for c in ctl.captions())
+    assert seqs == list(range(1, 51))
+
+
+def test_non_dict_translate_becomes_error_caption():
+    from text_c3po.services.session import SessionController
+
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: ["not", "a", "dict"],
+    )
+    ctl.start_session()
+    ctl.post_utterance("Hallo")
+    added = ctl.drain()
+    assert len(added) == 1
+    assert added[0]["kind"] == "error"
+    assert "Retry" in added[0]["text"]
+
+
+def test_retry_flips_row_in_place():
+    from text_c3po.services.session import SessionController
+    from text_c3po.ui.captions import build_captions_pane, sync_captions
+
+    states = {"fail": True}
+
+    def flip(text, target, model):
+        if states["fail"]:
+            return {"error": "down", "retryable": True}
+        return {"formal": "OK:" + text}
+
+    ctl = SessionController(target_language="English", model="m", translate_fn=flip)
+    ctl.start_session()
+    ctl.post_utterance("Hallo")
+    ctl.drain()
+    pane = build_captions_pane()
+    assert sync_captions(pane, ctl.captions()) == 1
+    assert len(pane.data["list"].controls) == 1
+    states["fail"] = False
+    assert ctl.retry_caption(1)["kind"] == "caption"
+    assert sync_captions(pane, ctl.captions()) == 1
+    assert len(pane.data["list"].controls) == 1
+    body = pane.data["list"].controls[0].content.controls[1]
+    assert body.value == "OK:Hallo"
+
+
+def test_scroll_filter_user_only():
+    from flet.controls.scrollable_control import ScrollType
+
+    from text_c3po.ui.captions import build_captions_pane, on_pane_scroll, sync_captions
+
+    class FakeEvent:
+        def __init__(self, event_type):
+            self.event_type = event_type
+
+    pane = build_captions_pane()
+    sync_captions(pane, [_caption(1)])
+    on_pane_scroll(pane, FakeEvent(ScrollType.UPDATE))
+    assert pane.data["follow"]["on"] is True
+    assert pane.data["jump"].visible is False
+    on_pane_scroll(pane, FakeEvent(ScrollType.USER))
+    assert pane.data["follow"]["on"] is False
+    assert pane.data["jump"].visible is True
+
+
+def test_jump_empty_leaves_follow_armed():
+    from text_c3po.ui.captions import (
+        build_captions_pane,
+        jump_to_latest,
+        on_pane_scroll,
+    )
+
+    pane = build_captions_pane()
+    jump_to_latest(pane)
+    assert pane.data["follow"]["on"] is True
+    on_pane_scroll(pane, None)
+    assert pane.data["follow"]["on"] is False

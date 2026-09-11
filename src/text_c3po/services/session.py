@@ -14,6 +14,7 @@ unit tests run headless and deterministic. Nothing here raises.
 
 import datetime
 import queue
+import threading
 
 from text_c3po.services.translation import translate_text
 
@@ -42,6 +43,11 @@ class SessionController:
         self.model = model
         self._translate_fn = translate_fn or translate_text
         self._clock = clock or _utcnow
+        # Serializes drain/mark_gap/retry/start_session: drain runs on the
+        # capture thread while a caption retry may drain from another, and
+        # unguarded seq assignment dropped rows (review). Posts stay
+        # lock-free (queue.Queue is thread-safe).
+        self._lock = threading.Lock()
         self._queue = queue.Queue()
         self._captions = []
         self._seq = 0
@@ -51,14 +57,19 @@ class SessionController:
     def start_session(self) -> int:
         """Begin a new session: clear captions, reset sequence. Never raises."""
         try:
-            self._drain_queue()
-            self._captions = []
-            self._seq = 0
-            self._active = True
-            self._session_id += 1
+            with self._lock:
+                self._drain_queue()
+                self._captions = []
+                self._seq = 0
+                self._active = True
+                self._session_id += 1
+                return self._session_id
+        except Exception:
+            pass
+        try:
             return self._session_id
         except Exception:
-            return self._session_id
+            return 0
 
     def end_session(self) -> None:
         """Freeze the session: later posts are ignored. Never raises."""
@@ -99,16 +110,22 @@ class SessionController:
         try:
             if not self._active:
                 return None
-            self._seq += 1
+            with self._lock:
+                self._seq += 1
+                seq = self._seq
             caption = {
-                "seq": self._seq,
+                "seq": seq,
                 "kind": "gap",
                 "text": "…({})…".format(reason),
                 "translation": "",
                 "source_lang": "",
                 "at": self._now_iso(),
             }
-            self._captions.append(caption)
+            try:
+                with self._lock:
+                    self._captions.append(caption)
+            except Exception:
+                pass
             return dict(caption)
         except Exception:
             return None
@@ -117,7 +134,9 @@ class SessionController:
         """Translate every queued utterance, appending captions in order.
 
         Main-thread only by convention (AD-4). Translate failures become
-        retryable error captions. Never raises. Returns the new captions.
+        retryable error captions. The lock covers seq-assign plus append
+        only — never the translate call itself. Never raises. Returns
+        the new captions.
         """
         added = []
         try:
@@ -126,10 +145,17 @@ class SessionController:
                     item = self._queue.get_nowait()
                 except Exception:
                     break
-                caption = self._render(item)
-                if caption is not None:
-                    self._captions.append(caption)
-                    added.append(dict(caption))
+                built = self._build(item)
+                if built is None:
+                    continue
+                try:
+                    with self._lock:
+                        self._seq += 1
+                        built["seq"] = self._seq
+                        self._captions.append(built)
+                except Exception:
+                    continue
+                added.append(dict(built))
         except Exception:
             pass
         return added
@@ -149,26 +175,35 @@ class SessionController:
         raises.
         """
         try:
+            target = None
             for caption in self._captions:
                 try:
-                    if caption.get("seq") != seq:
-                        continue
-                    if caption.get("kind") != "error":
-                        return dict(caption)
-                    source = caption.get("source") or ""
-                    if not source:
-                        return dict(caption)
-                    try:
-                        result = self._translate_fn(
-                            source, self.target_language, self.model
-                        )
-                    except Exception:
-                        result = {
-                            "error": "Couldn't parse that one. Retry.",
-                            "retryable": True,
-                        }
+                    if caption.get("seq") == seq:
+                        target = caption
+                        break
+                except Exception:
+                    continue
+            if target is None:
+                return None
+            try:
+                if target.get("kind") != "error":
+                    return dict(target)
+                source = target.get("source") or ""
+                if not source:
+                    return dict(target)
+            except Exception:
+                return None
+            try:
+                result = self._translate_fn(source, self.target_language, self.model)
+            except Exception:
+                result = {
+                    "error": "Couldn't parse that one. Retry.",
+                    "retryable": True,
+                }
+            try:
+                with self._lock:
                     if isinstance(result, dict) and result.get("error"):
-                        caption["text"] = str(
+                        target["text"] = str(
                             result.get("error") or "Couldn't parse that one. Retry."
                         )
                     else:
@@ -181,19 +216,21 @@ class SessionController:
                             )
                         except Exception:
                             formal = ""
-                        caption["kind"] = "caption"
-                        caption["text"] = source
-                        caption["translation"] = (
-                            formal if isinstance(formal, str) else ""
-                        )
+                        if not isinstance(result, dict):
+                            target["text"] = "Couldn't parse that one. Retry."
+                        else:
+                            target["kind"] = "caption"
+                            target["text"] = source
+                            target["translation"] = (
+                                formal if isinstance(formal, str) else ""
+                            )
                     try:
-                        caption["at"] = self._now_iso()
+                        target["at"] = self._now_iso()
                     except Exception:
                         pass
-                    return dict(caption)
-                except Exception:
-                    continue
-            return None
+                    return dict(target)
+            except Exception:
+                return None
         except Exception:
             return None
 
@@ -218,8 +255,13 @@ class SessionController:
         except Exception:
             pass
 
-    def _render(self, item) -> "dict | None":
-        """Translate one queued item into a caption dict. Never raises."""
+    def _build(self, item) -> "dict | None":
+        """Translate one queued item into an unsequenced caption dict.
+
+        Non-dict translate results are contract violations, surfaced as
+        retryable error captions (AD-5) rather than blank rows. Never
+        raises. Callers assign ``seq`` and append under the lock.
+        """
         try:
             if not isinstance(item, dict):
                 return None
@@ -233,10 +275,8 @@ class SessionController:
                 )
             except Exception:
                 result = {"error": "Couldn't parse that one. Retry.", "retryable": True}
-            self._seq += 1
             if isinstance(result, dict) and result.get("error"):
                 return {
-                    "seq": self._seq,
                     "kind": "error",
                     "text": str(
                         result.get("error") or "Couldn't parse that one. Retry."
@@ -246,18 +286,39 @@ class SessionController:
                     "source_lang": str(source),
                     "at": self._now_iso(),
                 }
+            if not isinstance(result, dict):
+                return {
+                    "kind": "error",
+                    "text": "Couldn't parse that one. Retry.",
+                    "translation": "",
+                    "source": text.strip(),
+                    "source_lang": str(source),
+                    "at": self._now_iso(),
+                }
             formal = ""
             try:
-                formal = result.get("formal", "") if isinstance(result, dict) else ""
+                formal = result.get("formal", "")
             except Exception:
                 formal = ""
             return {
-                "seq": self._seq,
                 "kind": "caption",
                 "text": text.strip(),
                 "translation": formal if isinstance(formal, str) else "",
                 "source_lang": str(source),
                 "at": self._now_iso(),
             }
+        except Exception:
+            return None
+
+    def _render(self, item) -> "dict | None":
+        """Translate one queued item into a caption dict. Never raises."""
+        try:
+            built = self._build(item)
+            if built is None:
+                return None
+            with self._lock:
+                self._seq += 1
+                built["seq"] = self._seq
+            return built
         except Exception:
             return None
