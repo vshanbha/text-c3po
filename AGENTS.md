@@ -24,6 +24,19 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 - Ollama-backed tests are manual-only and serial (`pytest -m integration`, lfm2.5-first); the eval gate is `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest`. Never run Ollama tests in CI.
 - No lint or typecheck configured in this repo.
 
+### Browser testing (BrowserOS neo)
+
+Flet apps run as native desktop windows by default. To test in a browser via BrowserOS neo:
+
+1. Start the app as a web server: `FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m text_c3po.app`
+2. Open BrowserOS neo, navigate to `http://localhost:8555`
+3. The Flet web UI loads in the browser; interact via snapshot/act as with any web page
+
+Notes:
+- The desktop Flet client also launches automatically (connected to the same port). Kill it with `pkill flet-desktop` if it gets in the way.
+- The server binds to localhost only; no external access.
+- If the port is stale from a prior run, wait a few seconds for `TIME_WAIT` to clear or pick a different port.
+
 ## Conventions that differ from defaults
 
 - Pin `flet==exact` in `requirements.txt` until 1.0 ships; read the changelog before any upgrade.

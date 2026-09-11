@@ -546,10 +546,35 @@ def main(page: ft.Page) -> None:
                 if ollama_state_changed(poll_state["last"], ok, fresh_models):
                     went_down = poll_state["last"][0] and not ok
                     poll_state["last"] = (ok, fresh_models)
-                    _reprobe_and_refresh()
+                    holder = chrome.get("appbar")
+                    if holder is not None:
+                        refresh_ollama_status(holder, ok, None, OLLAMA_BASE_URL)
+                        if ok:
+                            prior = current_model.get("value")
+                            if prior not in fresh_models:
+                                try:
+                                    refs = (
+                                        holder.data
+                                        if isinstance(holder.data, dict)
+                                        else {}
+                                    )
+                                    dropdown = refs.get("model_dropdown")
+                                    dropdown_value = (
+                                        dropdown.value if dropdown is not None else None
+                                    )
+                                    if dropdown_value in fresh_models:
+                                        prior = dropdown_value
+                                except Exception:
+                                    pass
+                            selected = (
+                                prior
+                                if prior in fresh_models
+                                else pick_default_model(fresh_models)
+                            )
+                            refresh_model_picker(holder, fresh_models, selected)
+                            current_model["value"] = selected
+                        page.update()
                     if went_down:
-                        # Material transient-error pattern: dot already red,
-                        # this carries the words plus the one-tap fix.
                         _show_snackbar(page, DISCONNECT_SNACKBAR_HINT, on_retry)
             except Exception:
                 return
