@@ -13,6 +13,7 @@ runtime failures — ``start``/``wait_ready`` return bools and
 utterances as gaps (never silently dropped) during a restart.
 """
 
+import atexit
 import os
 import socket
 import subprocess
@@ -76,6 +77,45 @@ def default_model_path(search_dirs=None, filename=None, env=None, root=None):
     except Exception:
         pass
     return None
+
+
+def install_exit_cleanup(manager) -> bool:
+    """Stop the owned process on interpreter exit and signals. Never raises.
+
+    atexit covers normal exits; SIGTERM/SIGINT handlers cover kills
+    (CPython does not run atexit on signals). Handlers re-raise the
+    signal with default disposition after cleanup so exit semantics
+    (exit code, Ctrl-C) are unchanged.
+    """
+    try:
+        try:
+            atexit.register(manager.stop)
+        except Exception:
+            return False
+        try:
+            import signal as _signal
+
+            def _on_signal(signum, frame):
+                try:
+                    manager.stop()
+                except Exception:
+                    pass
+                try:
+                    _signal.signal(signum, _signal.SIG_DFL)
+                    os.kill(os.getpid(), signum)
+                except Exception:
+                    pass
+
+            for name in ("SIGTERM", "SIGINT"):
+                try:
+                    _signal.signal(getattr(_signal, name), _on_signal)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
 
 
 def resolve_language_code(code) -> str:

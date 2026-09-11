@@ -9,16 +9,18 @@ import flet as ft
 from .captions import build_captions_pane
 from .device_picker import build_device_dropdown
 from .language_pickers import build_source_dropdown, build_target_dropdown
+from .status import status_dot
 
 
 def build_live_view(
-    devices=None, selected_device=None, on_device_change=None, on_caption_retry=None
+    devices=None,
+    selected_device=None,
+    on_device_change=None,
+    on_caption_retry=None,
+    on_start=None,
+    on_stop=None,
 ) -> ft.Column:
-    """Return the Live surface: pickers, captions pane, session controls.
-
-    Session Start/Stop controls arrive in 3-3; the captions pane renders
-    from 3-2 with placeholder hint text until then.
-    """
+    """Return the Live surface: pickers, session controls, status, captions."""
     source = build_source_dropdown()
     target = build_target_dropdown()
     device_dropdown = build_device_dropdown(devices or [], selected_device)
@@ -28,12 +30,33 @@ def build_live_view(
             device_dropdown.on_select = on_device_change
         except Exception:
             pass
+    start_button = ft.Button("Start")
+    stop_button = ft.Button("Stop", visible=False)
+    if on_start is not None:
+        try:
+            start_button.on_click = on_start
+        except Exception:
+            pass
+    if on_stop is not None:
+        try:
+            stop_button.on_click = on_stop
+        except Exception:
+            pass
+    capture_dot = status_dot(None)
+    capture_label = ft.Text("Idle")
+    whisper_dot = status_dot(None)
+    whisper_label = ft.Text("Whisper: ?")
+    status_row = ft.Row(
+        [capture_dot, capture_label, whisper_dot, whisper_label], spacing=6
+    )
     captions_pane = build_captions_pane(on_retry=on_caption_retry)
     view = ft.Column(
         [
             ft.Text("Live"),
             ft.Row([source, target], wrap=True),
             device_dropdown,
+            ft.Row([start_button, stop_button], spacing=8),
+            status_row,
             captions_pane,
             ft.Text("Press Start and speak \u2014 captions appear here."),
         ],
@@ -44,5 +67,11 @@ def build_live_view(
         "captions_pane": captions_pane,
         "source_dropdown": source,
         "target_dropdown": target,
+        "start_button": start_button,
+        "stop_button": stop_button,
+        "capture_dot": capture_dot,
+        "capture_label": capture_label,
+        "whisper_dot": whisper_dot,
+        "whisper_label": whisper_label,
     }
     return view

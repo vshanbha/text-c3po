@@ -83,14 +83,36 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
 - **E7 — double-pick.** Double-click Pick rapidly. Expect: single
   worker (second open suppressed while busy) **[R]** `0906a98`.
 
-## F. Eval gate (E1, repeatable)
+## F. Live session (E3)
+
+- **F1 — mic captions.** Live view → Start, speak German sentences
+  with pauses. Expect: red Live dot, timestamped formal captions
+  append in order; whisper dot stays "ready".
+- **F2 — stop and retain.** Press Stop mid-session. Expect: capture
+  halts within ~2 s, dot returns Idle, caption list stays readable.
+- **F3 — restart is a new session.** Press Start again. Expect: pane
+  clears, seq restarts, old session gone without relaunch.
+- **F4 — whisper crash mid-session.** `kill -9 <whisper pid>` while
+  live. Expect: subsequent utterances render as labeled gap rows,
+  never silent drops.
+- **F5 — scroll and jump.** During a long session, scroll up.
+  Expect: auto-follow stops, "Jump to latest" appears; pressing it
+  returns to the newest row and re-enables follow.
+- **F6 — screen reader.** VoiceOver on, one utterance. Expect: the
+  new row announced once (translation + timestamp).
+- **F7 — BlackHole loopback.** Pick BlackHole 2ch, play a German
+  video, Start. Expect: system audio captioned without a mic.
+- **F8 — no mic permission.** Revoke mic access (TCC), Start.
+  Expect: clean failure, no hang, Stop re-arms.
+
+## G. Eval gate (E1, repeatable)
 
 - **F1.** `PYTHONPATH=src python -m
   text_c3po.services.eval_harness --models lfm2.5:latest`.
   Expect: exit 0, every model ≥95% JSON-valid, dated section appended
   to the model-quality `research.md`. Slow (~125 LLM calls).
 
-## G. Browser testing (agents / headless review)
+## H. Browser testing (agents / headless review)
 
 - **G1.** `FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m
   text_c3po.app`, open `http://localhost:8555` in BrowserOS neo.
