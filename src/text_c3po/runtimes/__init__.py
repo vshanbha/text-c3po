@@ -5,6 +5,11 @@ from .audio_devices import (
     list_devices,
     pick_default_device,
 )
+from .audio_file import (
+    SUPPORTED_EXTENSIONS,
+    decode_to_wav,
+    supported_extensions,
+)
 from .process_manager import (
     AUTO_LANGUAGE,
     DEFAULT_MODEL_FILENAME,
@@ -15,6 +20,11 @@ from .process_manager import (
     ProcessManager,
     probe_serving,
     resolve_language_code,
+)
+from .whisper_client import (
+    TRANSCRIBE_TIMEOUT_S,
+    WHISPER_INFERENCE_URL,
+    transcribe_wav,
 )
 from .ollama_client import (
     DEFAULT_MODEL_PREFIX,
@@ -46,4 +56,10 @@ __all__ = [
     "ProcessManager",
     "probe_serving",
     "resolve_language_code",
+    "SUPPORTED_EXTENSIONS",
+    "decode_to_wav",
+    "supported_extensions",
+    "TRANSCRIBE_TIMEOUT_S",
+    "WHISPER_INFERENCE_URL",
+    "transcribe_wav",
 ]

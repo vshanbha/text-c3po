@@ -16,6 +16,8 @@ from text_c3po.runtimes.ollama_client import (
     pick_default_model,
 )
 from text_c3po.runtimes.audio_devices import list_devices, pick_default_device
+from text_c3po.runtimes.audio_file import supported_extensions
+from text_c3po.services.asr import transcribe_file
 from text_c3po.services.translation import (
     cancel_inflight,
     extract_partial_formal,
@@ -524,6 +526,102 @@ def main(page: ft.Page) -> None:
         stop_control = translate_refs.get("stop_button")
         if stop_control is not None:
             stop_control.on_click = on_stop_translate
+    except Exception:
+        pass
+
+    # E2-4: file mode — FilePicker overlay plus a daemon worker running the
+    # shared decode → transcribe → translate pipeline off the UI thread.
+    file_busy = {"working": False}
+
+    def _set_file_status(message: str, result: str = "") -> None:
+        try:
+            refs = file_view.data if isinstance(file_view.data, dict) else {}
+            status = refs.get("status_text")
+            if status is not None:
+                status.value = message
+            result_control = refs.get("result_text")
+            if result_control is not None and result:
+                result_control.value = result
+            button = refs.get("pick_button")
+            if button is not None:
+                button.disabled = file_busy["working"]
+            page.update()
+        except Exception:
+            pass
+
+    def _run_file(path: str) -> None:
+        try:
+            refs = file_view.data if isinstance(file_view.data, dict) else {}
+            target_dropdown = refs.get("target_dropdown")
+            try:
+                target_value = (
+                    target_dropdown.value if target_dropdown is not None else None
+                )
+            except Exception:
+                target_value = None
+            target_value = name_for_code(target_value)
+            try:
+                result = transcribe_file(path, target_value, current_model.get("value"))
+            except Exception:
+                result = {"error": "Couldn't parse that one. Retry."}
+            if isinstance(result, dict) and result.get("error"):
+                _set_file_status(str(result["error"]))
+                return
+            try:
+                shown = result.get("formal", "") if isinstance(result, dict) else ""
+                tally = (
+                    "Translated · {} chars".format(len(shown))
+                    if isinstance(shown, str)
+                    else ""
+                )
+            except Exception:
+                tally, shown = "", ""
+            _set_file_status(tally, shown if isinstance(shown, str) else "")
+        except Exception:
+            pass
+        finally:
+            file_busy["working"] = False
+            try:
+                refs = file_view.data if isinstance(file_view.data, dict) else {}
+                button = refs.get("pick_button")
+                if button is not None:
+                    button.disabled = False
+                page.update()
+            except Exception:
+                pass
+
+    def on_file_picked(e) -> None:
+        try:
+            files = getattr(e, "files", None) or []
+            picked = files[0] if files else None
+            path = getattr(picked, "path", None) if picked is not None else None
+        except Exception:
+            path = None
+        if not path or file_busy["working"]:
+            return
+        file_busy["working"] = True
+        _set_file_status("Transcribing…")
+        threading.Thread(target=_run_file, args=(path,), daemon=True).start()
+
+    def on_pick_file(e=None) -> None:
+        try:
+            file_picker.pick_files(
+                allow_multiple=False,
+                allowed_extensions=[ext.lstrip(".") for ext in supported_extensions()],
+            )
+        except Exception:
+            pass
+
+    try:
+        file_picker = ft.FilePicker(on_result=on_file_picked)
+        page.overlay.append(file_picker)
+    except Exception:
+        file_picker = None
+    try:
+        file_refs = file_view.data if isinstance(file_view.data, dict) else {}
+        file_pick_control = file_refs.get("pick_button")
+        if file_pick_control is not None:
+            file_pick_control.on_click = on_pick_file
     except Exception:
         pass
 
