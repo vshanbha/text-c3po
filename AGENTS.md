@@ -22,6 +22,7 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 - Use prereqs Node >= 20.12, uv, ollama, whisper-cpp, ffmpeg; verified node v24.11.1, uv 0.12.10, ollama 0.33.3 with lfm2.5 present.
 - Work from the repo root: the app with `PYTHONPATH=src python -m text_c3po.app` (needs `ollama serve`); fast checks with `pytest` (unit only, integration deselected; `pythonpath=src` is wired in pyproject).
 - Ollama-backed tests are manual-only and serial (`pytest -m integration`, lfm2.5-first); the eval gate is `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest`. Never run Ollama tests in CI.
+- Human-run checklist lives in `TEST-PLAN.md` (windows, dialogs, snackbars, hardware, subprocess timing, real speech) — run it top to bottom after any epic lands.
 - No lint or typecheck configured in this repo.
 
 ### Browser testing (BrowserOS neo)

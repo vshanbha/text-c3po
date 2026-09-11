@@ -1,0 +1,108 @@
+# text-c3po manual Test Plan
+
+Human-run checks that unit tests (`pytest`) and the E1 eval gate cannot
+cover: real windows, dialogs, snackbars, device hardware, subprocess
+lifecycle, and end-to-end speech. Run top to bottom after any epic lands;
+regressions fixed in review are tagged **[R]** with their commit.
+
+Environment: macOS Apple Silicon, `ollama serve` running, `brew install
+ffmpeg whisper-cpp portaudio`, `brew install --cask blackhole-2ch`,
+Python 3.12 with `uv`. Fast model for all live checks: `lfm2.5:latest`.
+Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
+
+## A. Launch and connectivity (E1 + snackbar fix)
+
+- **A1 — healthy launch.** `ollama serve` up, then `uv run text-c3po`.
+  Expect: green Connected dot, picker lists installed models with
+  `lfm2.5` preselected, no snackbar.
+- **A2 — launch with Ollama down.** Stop `ollama serve`, launch.
+  Expect: red Down dot; hover reads "start it with `ollama serve`".
+  Start `ollama serve`: dot flips green within ~15 s (background poll),
+  **no snackbar appears** **[R]** `3e59d98` (the poll used to re-probe
+  and desync, firing bogus disconnect snackbars).
+- **A3 — mid-run disconnect.** With the app open, stop `ollama serve`.
+  Expect: **exactly one** "Ollama disconnected" snackbar with a working
+  Retry action. Restart `ollama serve`: dot returns green, no repeat.
+- **A4 — model switch sticks.** Pick another installed model, press
+  Translate. Expect: the new model answers (check `ollama ps`).
+  **[R]** `0906a98` (Dropdown `on_change` never fired in flet 0.86;
+  now `on_select` — before the fix the picker was decorative).
+
+## B. Text translation (E1)
+
+- **B1 — happy path.** Type a sentence, target German, Translate.
+  Expect: formal/informal tabs fill plus "Translated · N chars" tally.
+- **B2 — stop.** Press Stop mid-stream. Expect: "Stopped.", controls
+  re-enable, no late result overwrites the next request.
+- **B3 — input guards.** Empty input → "Type or paste something first.";
+  overlong paste scrolls the window instead of clipping.
+
+## C. Capture devices (E2-1)
+
+- **C1 — picker lists inputs.** Open Live view. Expect: every
+  input-capable device verbatim (mics, headsets, BlackHole 2ch when
+  installed); output-only devices (speakers) absent.
+- **C2 — default is a mic.** Fresh launch: preselected device is the
+  first non-BlackHole input, never BlackHole itself.
+- **C3 — selection sticks.** Change the device, switch Text→Live→File
+  and back. Expect: selection preserved **[R]** `0906a98`.
+- **C4 — no capture hardware path.** (Machine without sounddevice /
+  PortAudio is hard to fake — code-reviewed instead: `list_devices`
+  yields `[]`, app starts, file mode works.)
+
+## D. whisper-server lifecycle (E2-3)
+
+- **D1 — auto-spawn.** Launch, then `curl -X POST
+  http://127.0.0.1:9001/inference`. Expect: HTTP response within ~5 s
+  warm (cold model load longer on first run).
+- **D2 — no orphans.** Quit the app, then `pgrep -f whisper-server`.
+  Expect: empty.
+- **D3 — crash recovery.** `kill -9 <whisper pid>` while the app runs,
+  then use file mode. Expect: transport error surfaces readably
+  (restart-status UI arrives with E3's indicators).
+
+## E. File mode end-to-end (E2-4)
+
+- **E1 gate reference sample.** Generate German speech when needed:
+  `say -v Anna "Guten Morgen. Wie geht es dir heute?" -o /tmp/t.aiff
+  && ffmpeg -i /tmp/t.aiff -ac 1 -ar 16000 /tmp/t.wav`.
+- **E1 — happy path.** File view → Pick audio file → choose a German
+  `.wav`/`.mp3`/`.m4a`/`.mp4`. Expect: "Transcribing…" then formal
+  ("Good morning…") + informal + char tally.
+- **E2 — dialog cancel.** Open the picker, press Esc/cancel. Expect:
+  idle, button enabled, no status text.
+- **E3 — unsupported container.** Pick a `.txt`/`.aiff`. Expect:
+  readable "Unsupported container" error, button re-enabled, no
+  subprocess launched.
+- **E4 — corrupt file.** Truncate an mp3 to 1 KB, pick it. Expect:
+  decode error surfaces, mode never wedges (300 s ffmpeg cap).
+- **E5 — silence-only file.** 2 s of zeros as wav. Expect: "No speech
+  found in that file."
+- **E6 — long file.** ~5 min recording. Expect: completes, UI
+  responsive afterwards, no runaway memory.
+- **E7 — double-pick.** Double-click Pick rapidly. Expect: single
+  worker (second open suppressed while busy) **[R]** `0906a98`.
+
+## F. Eval gate (E1, repeatable)
+
+- **F1.** `PYTHONPATH=src python -m
+  text_c3po.services.eval_harness --models lfm2.5:latest`.
+  Expect: exit 0, every model ≥95% JSON-valid, dated section appended
+  to the model-quality `research.md`. Slow (~125 LLM calls).
+
+## G. Browser testing (agents / headless review)
+
+- **G1.** `FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m
+  text_c3po.app`, open `http://localhost:8555` in BrowserOS neo.
+  Expect: full UI interactive via snapshot/act. Kill the auto-launched
+  Flet desktop client if it gets in the way (`pkill flet-desktop`).
+
+## Coverage map (what automation owns)
+
+- `pytest` (67 unit tests, all headless/deterministic): VAD chunking
+  rules, device/VAD/decode/transcribe pure logic, manager lifecycle
+  with fake processes, pipeline short-circuits, UI construction.
+- `pytest -m integration` (manual, serial, loopback-only): live
+  Ollama/whisper/ffmpeg checks — see `tests/test_integration.py`.
+- This note: everything above a unit cannot reach (windows,
+  dialogs, snackbars, hardware, subprocess timing, real speech).

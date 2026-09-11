@@ -567,6 +567,418 @@ def test_file_view_builds_picker_refs_headless():
     }
     assert view.data["pick_button"].content == "Pick audio file"
     assert view.data["status_text"].value == ""
+    seen = []
+    wired = build_file_view(lambda e: seen.append(True))
+    assert wired.data["pick_button"].on_click is not None
+
+
+def test_normalize_and_as_text():
+    from text_c3po.services.translation import _as_text, _normalize
+
+    assert _as_text("x") == "x"
+    assert _as_text(None) == ""
+    assert _as_text(["a", "b"]) == "a, b"
+    assert _as_text(3) == "3"
+    out = _normalize(
+        {"Formal": "Guten Tag", "INFORMAL": ["Hi"], "origin_language": "en"}
+    )
+    assert out == {"formal": "Guten Tag", "informal": "Hi", "origin_language": "en"}
+    assert _normalize("shapeless") is None
+    assert _normalize(None) is None
+
+
+def test_extract_partial_formal_prefixes():
+    from text_c3po.services.translation import extract_partial_formal
+
+    assert extract_partial_formal("") == ""
+    assert extract_partial_formal(None) == ""
+    assert extract_partial_formal('{"other": 1}') == ""
+    assert extract_partial_formal('{"formal"') == ""
+    assert extract_partial_formal('{"formal": "Guten') == "Guten"
+    assert extract_partial_formal('{"formal": "Hi\\nthere') == "Hi there"
+    assert extract_partial_formal('{"formal": 42}') == ""
+
+
+def test_chunk_text_shapes():
+    from text_c3po.services.translation import _chunk_text
+
+    class StrChunk:
+        content = "hello"
+
+    class BlockChunk:
+        content = ["a", {"text": "b"}, None]
+
+    assert _chunk_text(StrChunk()) == "hello"
+    assert _chunk_text(BlockChunk()) == "ab"
+    assert _chunk_text("raw") == ""
+    assert _chunk_text(None) == ""
+
+
+def test_close_stream_and_cancel_inflight_empty():
+    from text_c3po.services.translation import _close_stream, cancel_inflight
+
+    assert cancel_inflight() == 0
+    seen = []
+
+    class Closer:
+        def close(self):
+            seen.append(True)
+
+    class Raiser:
+        def close(self):
+            raise OSError("stuck")
+
+    _close_stream(Closer())
+    _close_stream(Raiser())
+    _close_stream(None)
+    assert seen == [True]
+
+
+def test_cancel_inflight_hits_registered_stream():
+    from text_c3po.services import translation as tmod
+
+    closed = []
+
+    class Stream:
+        def close(self):
+            closed.append(True)
+
+    tmod._ACTIVE_STREAMS.add(Stream())
+    try:
+        assert tmod.cancel_inflight() >= 1
+    finally:
+        tmod._ACTIVE_STREAMS.clear()
+    assert closed
+
+
+def test_parse_args_defaults_and_overrides():
+    from text_c3po.services.eval_harness import _parse_args
+
+    assert _parse_args([]).models is None
+    parsed = _parse_args(["--models", "a", "b", "--research-path", "/tmp/r.md"])
+    assert parsed.models == ["a", "b"]
+    assert parsed.research_path == "/tmp/r.md"
+
+
+def test_record_results_appends_dated_section(tmp_path):
+    from text_c3po.services.eval_harness import record_results
+
+    target = tmp_path / "research.md"
+    target.write_text("# prior\n")
+    results = {
+        "m:latest": {
+            "valid": 25,
+            "total": 25,
+            "per_language": {},
+            "failures": [],
+        }
+    }
+    assert record_results(results, str(target), date="2026-09-11") == str(target)
+    body = target.read_text()
+    assert body.startswith("# prior\n")
+    assert "## E1 gate" in body and "2026-09-11" in body
+    assert "m:latest" in body
+
+
+def test_name_for_code_never_raises():
+    from text_c3po.languages import name_for_code
+
+    assert name_for_code(123) == ""
+    assert name_for_code(object()) == ""
+
+
+def test_services_lazy_loader_errors():
+    import text_c3po.services as services
+
+    try:
+        services.__getattr__("no_such_entry")
+        raised = False
+    except AttributeError:
+        raised = True
+    assert raised is True
+    assert callable(services.translate_text)
+    assert callable(services.run_matrix)
+    assert callable(services.transcribe_file)
+    assert callable(services.VadChunker)
+
+
+def test_verbatim_names_malformed():
+    from text_c3po.runtimes.ollama_client import _verbatim_names
+
+    assert _verbatim_names({"models": "nope"}) is None
+    assert _verbatim_names({"models": [42]}) is None
+    assert _verbatim_names({"models": [{"name": ""}]}) is None
+    assert _verbatim_names({"models": [{"nope": 1}]}) is None
+    assert _verbatim_names({"models": [{"name": "a"}, {"name": "b"}]}) == ["a", "b"]
+
+
+def test_refresh_status_with_partial_refs():
+    from text_c3po.ui.top_strip import refresh_model_picker, refresh_ollama_status
+
+    class FakeStrip:
+        def __init__(self, data):
+            self.data = data
+
+    refresh_ollama_status(FakeStrip({}), True)
+    refresh_ollama_status(FakeStrip(None), False)
+    refresh_ollama_status(object(), True)
+
+    class FakeDropdown:
+        pass
+
+    holder = FakeStrip({"model_dropdown": FakeDropdown()})
+    refresh_model_picker(holder, [], None)
+    assert holder.data["model_dropdown"].value is None
+    refresh_model_picker(FakeStrip({}), ["m"], "m")
+
+
+def test_audio_file_generic_run_failure():
+    import json
+
+    from text_c3po.runtimes.audio_file import decode_to_wav
+
+    def boom(argv):
+        raise RuntimeError("sandbox denied")
+
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp.write(b"fake")
+        path = tmp.name
+    out = decode_to_wav(path, run_fn=boom)
+    assert out["retryable"] is True
+    assert "Could not decode" in out["error"]
+
+
+def test_hostile_names_never_raise():
+    from text_c3po.runtimes.audio_devices import has_blackhole, pick_default_device
+
+    class EvilStr(str):
+        def lower(self):
+            raise RuntimeError("hostile")
+
+    assert has_blackhole([EvilStr("mic")]) is False
+    assert pick_default_device([EvilStr("mic")]) is None
+
+
+def test_ollama_client_transport_failure(monkeypatch):
+    import urllib.request
+
+    from text_c3po.runtimes.ollama_client import check_ollama, list_models
+
+    def down(*args, **kwargs):
+        raise ConnectionRefusedError("down")
+
+    monkeypatch.setattr(urllib.request, "urlopen", down)
+    assert check_ollama() == (False, [])
+    assert list_models() == []
+
+
+def test_ollama_client_malformed_body(monkeypatch):
+    import io
+    import urllib.request
+
+    from text_c3po.runtimes.ollama_client import check_ollama
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"nope"))
+    assert check_ollama() == (False, [])
+
+
+def test_sounddevice_absent_yields_empty(monkeypatch):
+    import sys
+
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    monkeypatch.setitem(sys.modules, "sounddevice", None)
+    assert list_devices() == []
+
+
+def test_audio_devices_rejects_non_list():
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    assert list_devices(query_fn=lambda: 42) == []
+
+
+def test_paths_helpers(tmp_path, monkeypatch):
+    import os
+    import sys
+
+    from text_c3po.paths import ensure_src_on_path, find_project_root
+
+    marker = tmp_path / "src" / "text_c3po" / "services"
+    marker.mkdir(parents=True)
+    (marker / "eval_harness.py").write_text("# marker\n")
+    # The walk starts at the start-path's parent (__file__ semantics).
+    assert find_project_root(start=str(tmp_path / "sub" / "x.py")) == str(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    assert find_project_root(start=str(tmp_path / "nowhere")) == os.path.abspath(
+        os.getcwd()
+    )
+    src = ensure_src_on_path()
+    assert src in sys.path
+
+
+def test_refresh_options_with_fakes():
+    from text_c3po.ui.device_picker import refresh_device_options
+    from text_c3po.ui.model_picker import refresh_model_options
+
+    class FakeDropdown:
+        pass
+
+    for refresh in (refresh_device_options, refresh_model_options):
+        fake = FakeDropdown()
+        refresh(fake, ["a", "b"], "a")
+        assert [o.key for o in fake.options] == ["a", "b"]
+        assert fake.value == "a"
+
+
+def test_top_strip_model_handler_and_detail():
+    from text_c3po.ui.top_strip import build_appbar, status_detail
+
+    seen = []
+    bar = build_appbar(
+        ollama_connected=True, models=["m"], on_model_change=lambda e: seen.append(True)
+    )
+    dropdown = bar.data["model_dropdown"]
+    assert dropdown.on_select is not None
+    dropdown.on_select(None)
+    assert seen == [True]
+    # The format-fallback branch is unreachable with the constant template
+    # (extra args never raise str.format) — normal path asserted instead.
+    assert status_detail(True, "http://x") == "Ollama connected at http://x."
+
+
+def test_audio_file_junk_completed_and_isfile_raise(tmp_path, monkeypatch):
+    import os
+
+    from text_c3po.runtimes.audio_file import decode_to_wav
+
+    src = tmp_path / "x.wav"
+    src.write_bytes(b"fake")
+    assert decode_to_wav(str(src), run_fn=lambda a: object())["retryable"] is True
+
+    def boom(path):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(os.path, "isfile", boom)
+    out = decode_to_wav("/tmp/x.wav", run_fn=lambda a: None)
+    assert out["retryable"] is False
+
+
+def test_audio_file_stderr_decode_failure(tmp_path):
+    from text_c3po.runtimes.audio_file import decode_to_wav
+
+    class BadErr:
+        def decode(self, *a, **k):
+            raise ValueError("bad")
+
+    class Completed:
+        returncode = 1
+        stdout = b""
+        stderr = BadErr()
+
+    src = tmp_path / "c.mp3"
+    src.write_bytes(b"fake")
+    out = decode_to_wav(str(src), run_fn=lambda a: Completed())
+    assert out["retryable"] is False
+    assert "Could not decode" in out["error"]
+
+
+def test_asr_stage_exceptions():
+    from text_c3po.services.asr import _is_blank, transcribe_file
+
+    assert _is_blank(None) is True
+    assert _is_blank("   ") is True
+    assert _is_blank("[blank_audio] x") is True
+    assert _is_blank("Hallo") is False
+
+    def raising_decode(path):
+        raise OSError("disk gone")
+
+    out = transcribe_file("/tmp/a.wav", "English", "m", decode_fn=raising_decode)
+    assert out["retryable"] is True
+
+    def raising_transcribe(wav):
+        raise ConnectionError("gone")
+
+    out = transcribe_file(
+        "/tmp/a.wav",
+        "English",
+        "m",
+        decode_fn=lambda p: {"wav": b"W"},
+        transcribe_fn=raising_transcribe,
+    )
+    assert out["retryable"] is True
+
+    def raising_translate(text, target, model):
+        raise RuntimeError("llm down")
+
+    out = transcribe_file(
+        "/tmp/a.wav",
+        "English",
+        "m",
+        decode_fn=lambda p: {"wav": b"W"},
+        transcribe_fn=lambda w: {"text": "Hallo"},
+        translate_fn=raising_translate,
+    )
+    assert out["retryable"] is True
+
+    out = transcribe_file(
+        "/tmp/a.wav",
+        "English",
+        "m",
+        decode_fn=lambda p: {"weird": 1},
+        translate_fn=lambda *a: (_ for _ in ()).throw(AssertionError("unreached")),
+    )
+    assert out["retryable"] is True
+
+
+def test_manager_stop_poll_raising_and_enter_raising(monkeypatch):
+    from text_c3po.runtimes.process_manager import ProcessManager
+
+    class PollRaiser:
+        def poll(self):
+            raise OSError("gone")
+
+    mgr = ProcessManager(model_path=__file__)
+    mgr._process = PollRaiser()
+    mgr.stop()
+    assert mgr._process is None
+
+    mgr2 = ProcessManager(model_path=__file__)
+
+    def boom():
+        raise RuntimeError("no spawn")
+
+    monkeypatch.setattr(mgr2, "start", boom)
+    with mgr2:
+        pass
+    assert mgr2._process is None
+
+
+def test_manager_build_command_isfile_raise(monkeypatch):
+    import os
+
+    from text_c3po.runtimes.process_manager import ProcessManager
+
+    def boom(path):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(os.path, "isfile", boom)
+    assert ProcessManager(model_path="/m.bin").build_command() is None
+
+
+def test_whisper_object_wav():
+    from text_c3po.runtimes.whisper_client import transcribe_wav
+
+    assert transcribe_wav(object())["retryable"] is True
+
+
+def test_probe_serving_bad_args():
+    from text_c3po.runtimes.process_manager import probe_serving
+
+    assert probe_serving("127.0.0.1", "notaport") is False
+    assert probe_serving(None, None) is False
 
 
 def _stub_devices():
@@ -958,14 +1370,18 @@ def test_default_model_path_resolution(tmp_path):
     assert default_model_path(
         search_dirs=[str(tmp_path)], env={"WHISPER_MODEL": "/nope.bin"}
     ) == str(model)
-    resolved = default_model_path(search_dirs=None, env={})
-    assert resolved is None or isinstance(resolved, str)
-    # Default search must climb to the repo root (three levels up from
-    # runtimes/), not stop at src/: any returned path must exist.
+    # Root-anchored default search (shared paths helper, no __file__
+    # joins): a models/ dir under the given root resolves, and anything
+    # returned must exist.
     import os
 
-    if resolved is not None:
-        assert os.path.isfile(resolved)
+    assert default_model_path(env={}, root=str(tmp_path / "empty")) is None
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    (models_dir / "ggml-small.bin").write_bytes(b"fake")
+    resolved = default_model_path(env={}, root=str(tmp_path))
+    assert resolved == str(models_dir / "ggml-small.bin")
+    assert os.path.isfile(resolved)
 
 
 def test_ensure_running_reports_ready_restarted_failed():
