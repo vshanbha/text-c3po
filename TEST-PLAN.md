@@ -104,6 +104,14 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
   video, Start. Expect: system audio captioned without a mic.
 - **F8 — no mic permission.** Revoke mic access (TCC), Start.
   Expect: clean failure, no hang, Stop re-arms.
+- **F9 — picker timing.** Change device/target/model mid-session.
+  Expect: running session unaffected; changes apply on the next Start.
+- **F10 — caption retry.** Kill Ollama mid-session, speak (error row
+  appears), restart Ollama, press row Retry. Expect: row flips to the
+  translation; persistent failure raises a SnackBar whose Retry works.
+- **F11 — start guards.** With no capture device (or no model),
+  press Start. Expect: readable refusal in the status line, no spawn,
+  buttons re-armed.
 
 ## G. Eval gate (E1, repeatable)
 

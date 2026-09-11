@@ -141,6 +141,62 @@ class SessionController:
         except Exception:
             return []
 
+    def retry_caption(self, seq) -> "dict | None":
+        """Re-translate one error caption's retained source in place.
+
+        Returns the updated caption, or None for unknown seqs. Allowed
+        on closed sessions (it mutates a row, never adds one). Never
+        raises.
+        """
+        try:
+            for caption in self._captions:
+                try:
+                    if caption.get("seq") != seq:
+                        continue
+                    if caption.get("kind") != "error":
+                        return dict(caption)
+                    source = caption.get("source") or ""
+                    if not source:
+                        return dict(caption)
+                    try:
+                        result = self._translate_fn(
+                            source, self.target_language, self.model
+                        )
+                    except Exception:
+                        result = {
+                            "error": "Couldn't parse that one. Retry.",
+                            "retryable": True,
+                        }
+                    if isinstance(result, dict) and result.get("error"):
+                        caption["text"] = str(
+                            result.get("error") or "Couldn't parse that one. Retry."
+                        )
+                    else:
+                        formal = ""
+                        try:
+                            formal = (
+                                result.get("formal", "")
+                                if isinstance(result, dict)
+                                else ""
+                            )
+                        except Exception:
+                            formal = ""
+                        caption["kind"] = "caption"
+                        caption["text"] = source
+                        caption["translation"] = (
+                            formal if isinstance(formal, str) else ""
+                        )
+                    try:
+                        caption["at"] = self._now_iso()
+                    except Exception:
+                        pass
+                    return dict(caption)
+                except Exception:
+                    continue
+            return None
+        except Exception:
+            return None
+
     def pending(self) -> int:
         """Return the queued utterance count. Never raises."""
         try:
@@ -186,6 +242,7 @@ class SessionController:
                         result.get("error") or "Couldn't parse that one. Retry."
                     ),
                     "translation": "",
+                    "source": text.strip(),
                     "source_lang": str(source),
                     "at": self._now_iso(),
                 }

@@ -568,15 +568,15 @@ def main(page: ft.Page) -> None:
     # shared decode → transcribe → translate pipeline off the UI thread.
     file_busy = {"working": False}
 
-    def _set_file_status(message: str, result: str = "") -> None:
+    def _set_file_status(message: str, result=None) -> None:
         try:
             refs = file_view.data if isinstance(file_view.data, dict) else {}
             status = refs.get("status_text")
             if status is not None:
                 status.value = message
             result_control = refs.get("result_text")
-            if result_control is not None and result:
-                result_control.value = result
+            if result_control is not None and result is not None:
+                result_control.value = result if isinstance(result, str) else ""
             button = refs.get("pick_button")
             if button is not None:
                 button.disabled = file_busy["working"]
@@ -645,7 +645,7 @@ def main(page: ft.Page) -> None:
         if not path or file_busy["working"]:
             return
         file_busy["working"] = True
-        _set_file_status("Transcribing…")
+        _set_file_status("Transcribing…", "")
         threading.Thread(target=_run_file, args=(path,), daemon=True).start()
 
     try:
@@ -809,6 +809,62 @@ def main(page: ft.Page) -> None:
         except Exception:
             pass
 
+    def _refuse_live_start(message: str) -> None:
+        try:
+            refs = _live_refs()
+            label = refs.get("capture_label")
+            if label is not None:
+                try:
+                    label.value = message
+                except Exception:
+                    pass
+            _set_live_buttons(False)
+            _paint_live(False, None)
+            page.update()
+        except Exception:
+            pass
+
+    def on_caption_retry(seq=None) -> None:
+        try:
+            if seq is None:
+                return
+
+            def _work() -> None:
+                try:
+                    updated = live_controller.retry_caption(seq)
+                except Exception:
+                    updated = None
+                try:
+                    _render_session()
+                except Exception:
+                    pass
+                try:
+                    if isinstance(updated, dict) and updated.get("kind") == "error":
+                        _show_snackbar(
+                            page,
+                            "Still failing — check Ollama, then retry.",
+                            lambda e=None: on_caption_retry(seq),
+                        )
+                except Exception:
+                    pass
+
+            threading.Thread(target=_work, daemon=True).start()
+        except Exception:
+            pass
+
+    try:
+        refs = _live_refs()
+        pane = refs.get("captions_pane")
+        if pane is not None:
+            try:
+                pane_data = pane.data if isinstance(pane.data, dict) else None
+                if pane_data is not None:
+                    pane_data["on_retry"] = on_caption_retry
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     def on_start_live(e=None) -> None:
         try:
             refs = _live_refs()
@@ -816,6 +872,12 @@ def main(page: ft.Page) -> None:
                 live_runner.get("current") is not None
                 and live_runner["current"].is_running()
             ):
+                return
+            if not current_device.get("value"):
+                _refuse_live_start("No capture device — plug in a mic, then retry.")
+                return
+            if not current_model.get("value"):
+                _refuse_live_start("Pick a model first.")
                 return
             try:
                 target_dropdown = refs.get("target_dropdown")
