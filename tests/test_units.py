@@ -1188,6 +1188,109 @@ def test_live_view_builds_device_picker_headless():
     assert wired.data["device_dropdown"].on_select is not None
     wired.data["device_dropdown"].on_select(None)
     assert seen == [True]
+    assert "captions_pane" in wired.data
+
+
+def _caption(seq, **over):
+    base = {
+        "seq": seq,
+        "kind": "caption",
+        "text": "Hallo",
+        "translation": "Hello",
+        "source_lang": "de",
+        "at": "2026-09-11T12:00:{:02d}+00:00".format(seq),
+    }
+    base.update(over)
+    return base
+
+
+def test_captions_sync_appends_in_order_once():
+    from text_c3po.ui.captions import build_captions_pane, sync_captions
+
+    pane = build_captions_pane()
+    assert sync_captions(pane, []) == 0
+    assert sync_captions(pane, [_caption(1), _caption(2)]) == 2
+    assert sync_captions(pane, [_caption(1), _caption(2), _caption(3)]) == 1
+    feed = pane.data["list"]
+    assert len(feed.controls) == 3
+    assert pane.data["rendered"] == [1, 2, 3]
+    assert sync_captions(None, [_caption(9)]) == 0
+    assert sync_captions(pane, None) == 0
+
+
+def test_captions_rows_carry_timestamps_and_announcements():
+    from text_c3po.ui.captions import _announce, build_captions_pane, sync_captions
+
+    pane = build_captions_pane()
+    sync_captions(
+        pane,
+        [
+            _caption(1),
+            _caption(2, kind="gap", text="…(restart)…", translation=""),
+            _caption(
+                3, kind="error", text="Couldn't parse that one. Retry.", translation=""
+            ),
+        ],
+    )
+    rows = pane.data["list"].controls
+    assert len(rows) == 3
+    assert rows[0].label.startswith("Hello")
+    assert "Gap in captions" in rows[1].label
+    assert "failed" in rows[2].label
+    assert _announce(None) == ""
+    assert _announce({}) == ""
+
+
+def test_captions_error_row_retry_and_follow():
+    from text_c3po.ui.captions import (
+        build_captions_pane,
+        jump_to_latest,
+        on_pane_scroll,
+        sync_captions,
+    )
+
+    seen = []
+    pane = build_captions_pane(on_retry=lambda e: seen.append(True))
+    sync_captions(pane, [_caption(1, kind="error", text="Boom", translation="")])
+    error_row = pane.data["list"].controls[0].content
+    retry = [c for c in error_row.controls if getattr(c, "on_click", None)]
+    assert len(retry) == 1
+    retry[0].on_click(None)
+    assert seen == [True]
+    assert pane.data["list"].auto_scroll is True
+    assert pane.data["jump"].visible is False
+    on_pane_scroll(pane)
+    assert pane.data["follow"]["on"] is False
+    assert pane.data["jump"].visible is True
+    assert pane.data["list"].auto_scroll is False
+    jump_to_latest(pane)
+    assert pane.data["follow"]["on"] is True
+    assert pane.data["jump"].visible is False
+    on_pane_scroll(pane)
+    assert pane.data["follow"]["on"] is True
+    jump_to_latest(object())
+    on_pane_scroll(None)
+    jump_to_latest(None)
+
+
+def test_jump_async_awaits_scroll():
+    import asyncio
+
+    from text_c3po.ui.captions import (
+        build_captions_pane,
+        jump_to_latest_async,
+        sync_captions,
+    )
+
+    async def drive():
+        pane = build_captions_pane()
+        sync_captions(pane, [_caption(1)])
+        await asyncio.wait_for(jump_to_latest_async(pane), timeout=5)
+        return pane
+
+    pane = asyncio.run(drive())
+    assert pane.data["follow"]["on"] is True
+    assert pane.data["jump"].visible is False
 
 
 def _vad_frame(value, n=8000):
