@@ -804,6 +804,58 @@ def test_session_captions_are_copies():
     assert ctl.captions()[0]["text"] == "a"
 
 
+def test_retry_caption_flips_and_fails():
+    import datetime
+
+    from text_c3po.services.session import SessionController
+
+    states = {"fail": True}
+
+    def flip(text, target, model):
+        if states["fail"]:
+            return {"error": "down", "retryable": True}
+        return {"formal": "OK:" + text}
+
+    clock = lambda: datetime.datetime(
+        2026, 9, 11, 12, 0, 0, tzinfo=datetime.timezone.utc
+    )
+    ctl = SessionController(
+        target_language="English", model="m", translate_fn=flip, clock=clock
+    )
+    ctl.start_session()
+    ctl.post_utterance("Hallo")
+    assert ctl.drain()[0]["kind"] == "error"
+    assert ctl.retry_caption(999) is None
+    still = ctl.retry_caption(1)
+    assert still["kind"] == "error" and still["text"] == "down"
+    states["fail"] = False
+    fixed = ctl.retry_caption(1)
+    assert fixed["kind"] == "caption"
+    assert fixed["text"] == "Hallo" and fixed["translation"] == "OK:Hallo"
+    assert ctl.captions()[0]["kind"] == "caption"
+    ctl.end_session()
+    ctl.post_utterance("after")
+    ctl.drain()
+    assert ctl.retry_caption(1)["kind"] == "caption"
+
+
+def test_retry_caption_passthrough_and_sourceless():
+    from text_c3po.services.session import SessionController
+
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: {"formal": text},
+    )
+    ctl.start_session()
+    ctl.post_utterance("ok")
+    ctl.drain()
+    assert ctl.retry_caption(1)["kind"] == "caption"
+    ctl._captions.append({"seq": 99, "kind": "error"})
+    assert ctl.retry_caption(99)["kind"] == "error"
+    assert ctl.retry_caption("nope") is None
+
+
 def test_session_concurrent_posts_drain_complete():
     import threading
 
@@ -1280,13 +1332,13 @@ def test_captions_error_row_retry_and_follow():
     )
 
     seen = []
-    pane = build_captions_pane(on_retry=lambda e: seen.append(True))
+    pane = build_captions_pane(on_retry=lambda seq: seen.append(seq))
     sync_captions(pane, [_caption(1, kind="error", text="Boom", translation="")])
     error_row = pane.data["list"].controls[0].content
     retry = [c for c in error_row.controls if getattr(c, "on_click", None)]
     assert len(retry) == 1
     retry[0].on_click(None)
-    assert seen == [True]
+    assert seen == [1]
     assert pane.data["list"].auto_scroll is True
     assert pane.data["jump"].visible is False
     on_pane_scroll(pane)

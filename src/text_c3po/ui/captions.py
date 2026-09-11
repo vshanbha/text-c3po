@@ -62,7 +62,18 @@ def _row_for(caption, on_retry=None):
             items = [stamp, body]
             if on_retry is not None:
                 try:
-                    retry = ft.TextButton("Retry", on_click=on_retry)
+                    seq = caption.get("seq")
+                except Exception:
+                    seq = None
+
+                def _fire(e=None, _seq=seq) -> None:
+                    try:
+                        on_retry(_seq)
+                    except Exception:
+                        pass
+
+                try:
+                    retry = ft.TextButton("Retry", on_click=_fire)
                 except Exception:
                     retry = None
                 if retry is not None:
