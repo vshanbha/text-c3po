@@ -161,9 +161,22 @@ ad-hoc signature suffices for local runs.
 
 ## I. Browser testing (agents / headless review)
 
-- **I1.** `FLET_FORCE_WEB_SERVER=true FLET_SERVER_PORT=8555
-  PYTHONPATH=src uv run python -m text_c3po.app`, open
-  `http://localhost:8555` in BrowserOS neo.
+- **I1 — serve + shell.** `FLET_FORCE_WEB_SERVER=true
+  FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m
+  text_c3po.app`, open `http://localhost:8555` in BrowserOS neo.
+  Expect: HTTP 200 with the Flet bootstrap; full shell renders
+  (title, Connected dot + label, model picker, Text/Live/File,
+  target dropdown, Formal/Informal, Translate, input + output).
+  Repeatable form: run `/neo-text-c3po-browser-e2e`.
+- **I2 — dropdown + entry via browser.** Tap the target-language
+  dropdown: all 23 languages render; tap away to dismiss. Click the
+  input, type a sentence: snapshot shows the value, counter advances.
+- **I3 — known web limits (do not assert).** CanvasKit exposes ~3
+  a11y nodes, so ref-based automation is out (coordinates +
+  screenshots only); SegmentedButton/Button taps did not register
+  via automation — mode switching and Translate stay manual; the
+  `FilePicker` overlay paints a red "Unknown control" panel on web
+  only (desktop unaffected).
   Expect: full UI interactive via snapshot/act. Kill the auto-launched
   Flet desktop client if it gets in the way (`pkill flet-desktop`).
 
