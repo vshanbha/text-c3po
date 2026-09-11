@@ -109,14 +109,47 @@ SENTENCES = [
 # (Latin, Devanagari, and CJK scripts). Order matches the gate-table columns.
 MATRIX_LANGUAGES = ["German", "French", "Spanish", "Hindi", "Chinese"]
 
-# Short codes for the gate-table column headers (blueprint §2.1 codes).
+# E4-2: the full 23-language matrix, verbatim from the same constant.
+from text_c3po.languages import LANGUAGES as _LANGUAGES
+
+ALL_LANGUAGES = [entry["name"] for entry in _LANGUAGES]
+
+# Short codes for the gate-table column headers (blueprint §2.1 codes),
+# derived from the constant so the full matrix needs no second source.
 _LANGUAGE_CODES = {
-    "German": "de",
-    "French": "fr",
-    "Spanish": "es",
-    "Hindi": "hi",
-    "Chinese": "zh",
+    entry["name"]: entry["code"]
+    for entry in _LANGUAGES
+    if isinstance(entry, dict) and entry.get("name") and entry.get("code")
 }
+
+
+def resolve_languages(spec) -> "list[str] | None":
+    """Resolve a --languages value to language names, or None when invalid.
+
+    ``None``/``"matrix"`` → the 5-language E1 gate; ``"all"`` → all 23;
+    otherwise a comma-separated subset validated against the constant.
+    Pure helper; never raises.
+    """
+    try:
+        if spec is None:
+            return list(MATRIX_LANGUAGES)
+        text = str(spec).strip()
+        if not text or text.lower() == "matrix":
+            return list(MATRIX_LANGUAGES)
+        if text.lower() == "all":
+            return list(ALL_LANGUAGES)
+        names = [part.strip() for part in text.split(",") if part.strip()]
+        known = set(ALL_LANGUAGES)
+        if not names or any(name not in known for name in names):
+            return None
+        seen = []
+        for name in names:
+            if name not in seen:
+                seen.append(name)
+        return seen
+    except Exception:
+        return None
+
 
 GATE_THRESHOLD = 0.95
 
@@ -154,10 +187,12 @@ def passes_gate(valid, total):
         return False
 
 
-def run_matrix(models=None, translate_fn=translate_text):
-    """Run the 5-sentence x 5-language matrix per model; never aborts mid-matrix.
+def run_matrix(models=None, translate_fn=translate_text, languages=None):
+    """Run the 5-sentence x N-language matrix per model; never aborts mid-matrix.
 
-    ``models`` defaults to the live ``list_models()`` output. ``translate_fn``
+    ``models`` defaults to the live ``list_models()`` output. ``languages``
+    defaults to the 5-language E1 gate (``MATRIX_LANGUAGES``); pass
+    ``ALL_LANGUAGES`` for the E4 full matrix. ``translate_fn``
     is injectable (same ``(text, target_language, model)`` signature) so
     headless checks can score stubbed outcomes with zero LLM calls. Any
     per-cell failure (``{error, retryable}`` result or a raising stub) counts
@@ -173,13 +208,17 @@ def run_matrix(models=None, translate_fn=translate_text):
         models = list_models()
     if translate_fn is None:
         translate_fn = translate_text
+    if languages is None:
+        languages = MATRIX_LANGUAGES
+    else:
+        languages = list(languages)
     results = {}
     for model in models:
-        per_language = {language: 0 for language in MATRIX_LANGUAGES}
+        per_language = {language: 0 for language in languages}
         failures = []
         valid = 0
         total = 0
-        for language in MATRIX_LANGUAGES:
+        for language in languages:
             for index, sentence in enumerate(SENTENCES):
                 total += 1
                 try:
@@ -206,14 +245,26 @@ def run_matrix(models=None, translate_fn=translate_text):
     return results
 
 
-def format_table(results):
+def _code_for(language: str) -> str:
+    """Return the blueprint code for a language name (name itself as fallback)."""
+    try:
+        return _LANGUAGE_CODES.get(language, language)
+    except Exception:
+        return language
+
+
+def format_table(results, languages=None):
     """Return the gate table as markdown rows (header + one row per model)."""
+    if languages is None:
+        languages = MATRIX_LANGUAGES
+    else:
+        languages = list(languages)
     header = (
         "| Model | "
-        + " | ".join(_LANGUAGE_CODES[language] for language in MATRIX_LANGUAGES)
+        + " | ".join(_code_for(language) for language in languages)
         + " | Valid | Score | Gate |"
     )
-    separator = "|---|---|---|---|---|---|---|---|---|"
+    separator = "|" + "---|" * (len(languages) + 4)
     lines = [header, separator]
     for model, summary in results.items():
         try:
@@ -222,7 +273,7 @@ def format_table(results):
             per_language = {}
         cells = [
             "{}/{}".format(per_language.get(language, 0), len(SENTENCES))
-            for language in MATRIX_LANGUAGES
+            for language in languages
         ]
         valid = summary.get("valid", 0)
         total = summary.get("total", 0)
@@ -239,24 +290,32 @@ def format_table(results):
     return "\n".join(lines)
 
 
-def record_results(results, path, date=None):
-    """Append the dated E1-gate section to the model-quality research file.
+def record_results(results, path, date=None, languages=None, label=None):
+    """Append the dated gate section to the model-quality research file.
 
     Append-only: existing content is never read or rewritten. Adds the
     per-model table plus a one-line failure detail per invalid cell
-    (model, language, sentence index). Returns the path written.
+    (model, language, sentence index). Defaults preserve the exact E1
+    section shape; pass ``languages`` plus ``label`` for wider gates.
+    Returns the path written.
     """
     if date is None:
         date = datetime.date.today().isoformat()
+    if languages is None:
+        languages = MATRIX_LANGUAGES
+    else:
+        languages = list(languages)
+    if label is None:
+        label = "E1 gate — 5x5 smoke"
     lines = [
         "",
-        "## E1 gate — 5x5 smoke ({})".format(date),
+        "## {} ({})".format(label, date),
         "",
         "Target: {} (loopback only). Matrix: {} sentences x {} languages.".format(
-            OLLAMA_BASE_URL, len(SENTENCES), len(MATRIX_LANGUAGES)
+            OLLAMA_BASE_URL, len(SENTENCES), len(languages)
         ),
         "",
-        format_table(results),
+        format_table(results, languages),
         "",
     ]
     failures = [
@@ -308,11 +367,19 @@ def _parse_args(argv=None):
         default=_DEFAULT_RESEARCH_PATH,
         help="research.md file to append the gate section to.",
     )
+    parser.add_argument(
+        "--languages",
+        default="matrix",
+        help=(
+            "'matrix' (default 5-language E1 gate), 'all' (full 23-language "
+            "E4 matrix), or comma-separated language names from the constant."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv=None):
-    """Wire --models/--research-path; exit 0 iff every model passes the gate."""
+    """Wire --models/--research-path/--languages; exit 0 iff the gate passes."""
     args = _parse_args(argv)
     if args.models:
         models = []
@@ -322,6 +389,21 @@ def main(argv=None):
             )
     else:
         models = None
+
+    languages = resolve_languages(getattr(args, "languages", None))
+    if languages is None:
+        print(
+            "Unknown --languages value {!r} — use 'matrix', 'all', or "
+            "comma-separated names from the 23-language constant. "
+            "No scores written.".format(getattr(args, "languages", None))
+        )
+        return EXIT_ABORT
+    full = len(languages) > len(MATRIX_LANGUAGES)
+    label = (
+        "E4 gate — {}x{} full matrix".format(len(languages), len(SENTENCES))
+        if full
+        else None
+    )
 
     connected, _ = check_ollama()
     if not connected:
@@ -342,13 +424,17 @@ def main(argv=None):
         return EXIT_ABORT
 
     print(
-        "E1 gate 5x5 smoke: {} model(s) x {} sentences x {} languages "
-        "via {} ...".format(
-            len(models), len(SENTENCES), len(MATRIX_LANGUAGES), OLLAMA_BASE_URL
+        "Gate {}x{}: {} model(s) x {} sentences x {} languages via {} ...".format(
+            len(languages),
+            len(SENTENCES),
+            len(models),
+            len(SENTENCES),
+            len(languages),
+            OLLAMA_BASE_URL,
         )
     )
-    results = run_matrix(models=models)
-    table = format_table(results)
+    results = run_matrix(models=models, languages=languages)
+    table = format_table(results, languages)
     print("")
     print(table)
     print("")
@@ -361,7 +447,7 @@ def main(argv=None):
                     failure.get("sentence_index", 0) + 1,
                 )
             )
-    record_results(results, args.research_path)
+    record_results(results, args.research_path, languages=languages, label=label)
     print("")
     print("Appended gate section to {}".format(args.research_path))
     failed = [

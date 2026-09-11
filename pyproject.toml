@@ -17,6 +17,11 @@ dependencies = [
     "sounddevice==0.5.6",
 ]
 
+[dependency-groups]
+# Dev-only tooling (unit runner). `uv sync` / `uv run` include this group
+# by default, so plain `uv run pytest` keeps working after any sync.
+dev = ["pytest>=8"]
+
 [project.scripts]
 text-c3po = "text_c3po.app:run"
 

@@ -43,8 +43,9 @@ uv pip install --editable .   # one-time setup (same as: uv pip install -e .)
 uv run text-c3po              # or: uv run python -m text_c3po.app
 ```
 
-Live speech and file modes (whisper-server + sounddevice) land in E2/E3;
-their placeholders are visible in the UI.
+Live speech (mic/BlackHole → whisper-server → timestamped captions) and
+file translation (mp3/wav/m4a/mp4 → translate) ship in E2/E3. First run
+`./setup.sh` on a clean machine (brews, models, `lfm2.5`, unit suite).
 
 ## Testing
 
@@ -56,14 +57,19 @@ their placeholders are visible in the UI.
   `_bmad-output/planning-artifacts/research/`. Full policy (serial-only,
   memory-hog exclusions) is documented in `pyproject.toml` and the harness
   docstring — CI runs unit tests only, by design.
+- Human-run checklist (windows, dialogs, hardware, real speech):
+  `TEST-PLAN.md` — run top to bottom after any epic lands.
 
 ## Layout
 
 - `src/text_c3po/` — product code (src layout): `app.py` (Flet entry;
-  run `text-c3po`), `ui/`, `services/`
-  (translation + eval harness), `runtimes/` (Ollama client), `languages.py`
-  (23-language constant)
-- `tests/` — fast unit tests (run `pytest` from the repo root)
+  run `text-c3po`), `ui/` (views, pickers, captions, status),
+  `services/` (translation, VAD, session, live runner, ASR, eval
+  harness), `runtimes/` (Ollama, audio devices, whisper manager /
+  client, file decode), `languages.py` (23-language constant),
+  `paths.py` (root resolution)
+- `tests/` — fast unit tests (`test_units.py`) + manual integration
+  (`test_integration.py`); run `pytest` from the repo root
 - Provenance: an earlier live-translate proof-of-concept validated the
   speech-to-translation pipeline; its patterns are re-implemented here,
   never imported

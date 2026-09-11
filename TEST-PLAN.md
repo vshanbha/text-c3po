@@ -10,6 +10,16 @@ ffmpeg whisper-cpp portaudio`, `brew install --cask blackhole-2ch`,
 Python 3.12 with `uv`. Fast model for all live checks: `lfm2.5:latest`.
 Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
 
+## 0. Setup (E4-1)
+
+- **S1 — clean-machine install.** On a fresh Mac: `./setup.sh`.
+  Expect: brews install, `models/ggml-small.bin` downloads once,
+  `lfm2.5` pulls, unit suite ends green, exit 0. Re-run: every step
+  prints "present, skipping".
+- **S2 — setup failure modes.** No Homebrew → readable abort naming
+  https://brew.sh; `ollama serve` down at pull time → warning naming
+  the retry, everything else still completes.
+
 ## A. Launch and connectivity (E1 + snackbar fix)
 
 - **A1 — healthy launch.** `ollama serve` up, then `uv run text-c3po`.
@@ -127,7 +137,27 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
   Expect: exit 0, every model ≥95% JSON-valid, dated section appended
   to the model-quality `research.md`. Slow (~125 LLM calls).
 
-## H. Browser testing (agents / headless review)
+## H. Packaging (E4-3, manual session)
+
+Prereqs: Xcode + Apple Developer signing identity for distribution;
+ad-hoc signature suffices for local runs.
+
+- **P1 — bundle build.** Approve the Flutter SDK 3.44.8 install when
+  `flet build` prompts (it duplicates `~/src/flutter` — that's
+  expected), then: `uv run flet build macos --project text-c3po
+  --product text-c3po --org <you> --bundle-id <you>.textc3po`.
+  Expect: `build/macos/` bundle, exit 0.
+- **P2 — mic permission.** Add `NSMicrophoneUsageDescription` to the
+  macOS Info.plist, rebuild, launch, press Start. Expect: the macOS
+  mic prompt appears once; denying yields the clean F8 failure.
+- **P3 — ad-hoc run.** Launch the `.app` with no terminal present.
+  Expect: window opens, Connected dot green, file mode translates.
+- **P4 — no strays.** Quit via Cmd-Q and via Dock. Expect: `pgrep -f
+  whisper-server` empty both ways.
+- **P5 — first launch on another Mac.** Copy the bundle over.
+  Expect: Gatekeeper path documented (ad-hoc vs signed).
+
+## I. Browser testing (agents / headless review)
 
 - **G1.** `FLET_SERVER_PORT=8555 PYTHONPATH=src uv run python -m
   text_c3po.app`, open `http://localhost:8555` in BrowserOS neo.
