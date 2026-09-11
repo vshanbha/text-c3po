@@ -182,10 +182,11 @@ ad-hoc signature suffices for local runs.
 
 ## Coverage map (what automation owns)
 
-- `pytest` (131 unit tests, all headless/deterministic — recount with
-  `pytest --collect-only -q`): VAD chunking rules, device/VAD/decode/
-  transcribe pure logic, manager lifecycle with fake processes,
-  session ordering/gaps/retry, captions sync, pipeline short-circuits,
+- `pytest` (134 unit + 1 web smoke, all headless/deterministic —
+  recount with `pytest --collect-only -q`): VAD chunking rules,
+  device/VAD/decode/transcribe pure logic, manager lifecycle with
+  fake processes, session ordering/gaps/retry under lock, captions
+  sync incl. in-place retry updates, pipeline short-circuits,
   UI construction.
 - `pytest -m integration` (manual, serial, loopback-only): live
   Ollama/whisper/ffmpeg checks — see `tests/test_integration.py`.

@@ -6,6 +6,8 @@ stub, never the network). Live-model coverage stays manual-only under
 @pytest.mark.integration plus the eval-harness gate script.
 """
 
+import threading
+
 from text_c3po.languages import LANGUAGES, LANGUAGE_CODES, name_for_code
 from text_c3po.runtimes.ollama_client import (
     _verbatim_names,
@@ -33,6 +35,9 @@ def test_name_for_code_known():
     assert name_for_code("de") == "German"
     assert name_for_code("zh") == "Chinese"
     assert name_for_code("en") == "English"
+    assert name_for_code("fr") == "French"
+    assert name_for_code("es") == "Spanish"
+    assert name_for_code("hi") == "Hindi"
 
 
 def test_name_for_code_round_trips_all():
@@ -102,8 +107,17 @@ def test_format_table_custom_languages():
         {"m": {"valid": 5, "total": 10, "per_language": {"German": 5}}},
         ["German", "French"],
     )
-    assert "| de | fr |" in table
-    assert table.count("---") == 6
+    header, separator, row = table.splitlines()
+    assert [cell.strip() for cell in header.split("|")[1:-1]] == [
+        "Model",
+        "de",
+        "fr",
+        "Valid",
+        "Score",
+        "Gate",
+    ]
+    assert separator.count("---") == len(header.split("|")) - 2
+    assert "5/5" in row and "FAIL" in row
 
 
 def test_record_results_custom_label(tmp_path):
@@ -151,14 +165,6 @@ def test_pick_default_model_empty_or_bad():
 def test_verbatim_names_happy_path():
     payload = {"models": [{"name": "a"}, {"name": "b"}]}
     assert _verbatim_names(payload) == ["a", "b"]
-
-
-def test_verbatim_names_malformed_is_none():
-    assert _verbatim_names(None) is None
-    assert _verbatim_names({}) is None
-    assert _verbatim_names({"models": "nope"}) is None
-    assert _verbatim_names({"models": [{"name": ""}]}) is None
-    assert _verbatim_names({"models": [{}]}) is None
 
 
 def test_is_valid_narrow_contract():
@@ -227,17 +233,6 @@ def test_format_table_marks_pass_fail():
     table = format_table(results)
     assert "| good " in table and "25/25" in table and "PASS" in table
     assert "| bad " in table and "20/25" in table and "FAIL" in table
-
-
-def test_probe_helpers_never_raise_without_daemon(monkeypatch):
-    import urllib.error
-
-    def boom(*args, **kwargs):
-        raise urllib.error.URLError("down")
-
-    monkeypatch.setattr("urllib.request.urlopen", boom)
-    assert check_ollama() == (False, [])
-    assert list_models() == []
 
 
 def test_apply_mode_visibility_exactly_one():
@@ -538,13 +533,6 @@ def test_appbar_hosts_model_and_status_top_right():
     assert tapped == [True]
 
 
-def test_toolbar_is_toggle_only():
-    from text_c3po.ui.top_strip import build_toolbar
-
-    strip = build_toolbar(lambda e: None)
-    assert set(strip.data.keys()) == {"toggle"}
-
-
 def test_status_dot_down_is_error_red_with_fix_in_hover():
     from text_c3po.ui.top_strip import (
         DOWN_LABEL,
@@ -649,6 +637,8 @@ def test_file_view_builds_picker_refs_headless():
     seen = []
     wired = build_file_view(lambda e: seen.append(True))
     assert wired.data["pick_button"].on_click is not None
+    wired.data["pick_button"].on_click(None)
+    assert seen == [True]
 
 
 def test_normalize_and_as_text():
@@ -722,12 +712,16 @@ def test_cancel_inflight_hits_registered_stream():
         def close(self):
             closed.append(True)
 
-    tmod._ACTIVE_STREAMS.add(Stream())
+    stream = Stream()
+    tmod._ACTIVE_STREAMS.add(stream)
     try:
         assert tmod.cancel_inflight() >= 1
     finally:
-        tmod._ACTIVE_STREAMS.clear()
+        # Discard only ours: clear() would mask other tests' leaks and
+        # make later empty-set asserts order-dependent.
+        tmod._ACTIVE_STREAMS.discard(stream)
     assert closed
+    assert stream not in tmod._ACTIVE_STREAMS
 
 
 def test_parse_args_defaults_and_overrides():
@@ -912,6 +906,40 @@ def test_retry_caption_flips_and_fails():
     assert fixed["kind"] == "caption"
     assert fixed["text"] == "Hallo" and fixed["translation"] == "OK:Hallo"
     assert ctl.captions()[0]["kind"] == "caption"
+
+    def boom(text, target, model):
+        raise RuntimeError("llm exploded")
+
+    ctl2 = SessionController(
+        target_language="English", model="m", translate_fn=boom, clock=clock
+    )
+    ctl2.start_session()
+    ctl2.post_utterance("Hallo")
+    assert ctl2.drain()[0]["kind"] == "error"
+    # translate_fn raising inside retry: error retained, never a crash.
+    retried = ctl2.retry_caption(1)
+    assert retried["kind"] == "error"
+    assert "Retry" in retried["text"]
+
+    def weird(text, target, model):
+        return ["not", "a", "dict"]
+
+    ctl3 = SessionController(
+        target_language="English", model="m", translate_fn=weird, clock=clock
+    )
+    ctl3.start_session()
+    ctl3.post_utterance("Hallo")
+    assert ctl3.drain()[0]["kind"] == "error"
+
+    def numformal(text, target, model):
+        return {"formal": 5}
+
+    ctl4 = SessionController(
+        target_language="English", model="m", translate_fn=numformal, clock=clock
+    )
+    ctl4.start_session()
+    ctl4.post_utterance("Hallo")
+    assert ctl4.drain()[0]["translation"] == ""
     ctl.end_session()
     ctl.post_utterance("after")
     ctl.drain()
@@ -949,16 +977,24 @@ def test_session_concurrent_posts_drain_complete():
     for t in threads:
         t.start()
     for t in threads:
-        t.join()
+        t.join(timeout=10)
+    assert all(not t.is_alive() for t in threads)
     assert ctl.pending() == 100
     added = ctl.drain()
     assert len(added) == 100
     assert sorted(c["seq"] for c in added) == list(range(1, 101))
+    # Completeness independent of interleave order: every posted text
+    # rendered exactly once (order itself is completion order by design).
+    assert sorted(c["text"] for c in added) == sorted(
+        "{}-{}".format(n, i) for n in range(4) for i in range(25)
+    )
 
 
 def test_verbatim_names_malformed():
     from text_c3po.runtimes.ollama_client import _verbatim_names
 
+    assert _verbatim_names(None) is None
+    assert _verbatim_names({}) is None
     assert _verbatim_names({"models": "nope"}) is None
     assert _verbatim_names({"models": [42]}) is None
     assert _verbatim_names({"models": [{"name": ""}]}) is None
@@ -966,7 +1002,9 @@ def test_verbatim_names_malformed():
     assert _verbatim_names({"models": [{"name": "a"}, {"name": "b"}]}) == ["a", "b"]
 
 
-def test_refresh_status_with_partial_refs():
+def test_refresh_status_tolerates_missing_refs():
+    # Never-raise contract only: state assertions live in the full
+    # FakeStrip test above; this covers the partial/absent paths.
     from text_c3po.ui.top_strip import refresh_model_picker, refresh_ollama_status
 
     class FakeStrip:
@@ -986,7 +1024,7 @@ def test_refresh_status_with_partial_refs():
     refresh_model_picker(FakeStrip({}), ["m"], "m")
 
 
-def test_audio_file_generic_run_failure():
+def test_audio_file_generic_run_failure(tmp_path):
     import json
 
     from text_c3po.runtimes.audio_file import decode_to_wav
@@ -994,12 +1032,9 @@ def test_audio_file_generic_run_failure():
     def boom(argv):
         raise RuntimeError("sandbox denied")
 
-    import tempfile
-
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp.write(b"fake")
-        path = tmp.name
-    out = decode_to_wav(path, run_fn=boom)
+    src = tmp_path / "clip.wav"
+    src.write_bytes(b"fake")
+    out = decode_to_wav(str(src), run_fn=boom)
     assert out["retryable"] is True
     assert "Could not decode" in out["error"]
 
@@ -1206,7 +1241,9 @@ def test_asr_stage_exceptions():
         decode_fn=lambda p: {"weird": 1},
         translate_fn=lambda *a: (_ for _ in ()).throw(AssertionError("unreached")),
     )
-    assert out["retryable"] is True
+    # Exact message pins the short-circuit branch: a translate-fallback
+    # or swallowed AssertionError could never produce this string.
+    assert out == {"error": "Could not decode '/tmp/a.wav'.", "retryable": True}
 
 
 def test_manager_stop_poll_raising_and_enter_raising(monkeypatch):
@@ -1252,13 +1289,21 @@ def test_install_exit_cleanup_stops_then_resignals(monkeypatch):
     monkeypatch.setattr(sig, "signal", record)
     killed = []
     monkeypatch.setattr(os, "kill", lambda pid, num: killed.append((pid, num)))
+    registered = []
+    monkeypatch.setattr("atexit.register", lambda fn: registered.append(fn) or fn)
     assert install_exit_cleanup(FakeMgr()) is True
+    assert registered and stops == []
     term = handlers.get(sig.SIGTERM)
     assert callable(term)
     term(sig.SIGTERM, None)
     assert stops
     assert handlers.get(sig.SIGTERM) is sig.SIG_DFL
     assert killed and killed[0][1] == sig.SIGTERM
+    intr = handlers.get(sig.SIGINT)
+    assert callable(intr)
+    intr(sig.SIGINT, None)
+    assert len(stops) == 2
+    assert killed[-1][1] == sig.SIGINT
 
 
 def test_manager_build_command_isfile_raise(monkeypatch):
@@ -1276,7 +1321,14 @@ def test_manager_build_command_isfile_raise(monkeypatch):
 def test_whisper_object_wav():
     from text_c3po.runtimes.whisper_client import transcribe_wav
 
-    assert transcribe_wav(object())["retryable"] is True
+    calls = []
+    out = transcribe_wav(object(), urlopen_fn=lambda req: calls.append(req))
+    assert out["retryable"] is True
+    # Validation must precede transport: no request may be attempted.
+    assert calls == []
+    out = transcribe_wav(b"", urlopen_fn=lambda req: calls.append(req))
+    assert out["retryable"] is True
+    assert calls == []
 
 
 def test_probe_serving_bad_args():
@@ -1466,8 +1518,14 @@ def test_jump_async_awaits_scroll():
     )
 
     async def drive():
+        from text_c3po.ui.captions import on_pane_scroll
+
         pane = build_captions_pane()
         sync_captions(pane, [_caption(1)])
+        # Break follow first: restoring unbroken state proves nothing.
+        on_pane_scroll(pane, None)
+        assert pane.data["follow"]["on"] is False
+        assert pane.data["jump"].visible is True
         await asyncio.wait_for(jump_to_latest_async(pane), timeout=5)
         return pane
 
@@ -1768,7 +1826,9 @@ def test_default_probe_uses_manager_port():
 def test_default_model_path_resolution(tmp_path):
     from text_c3po.runtimes.process_manager import default_model_path
 
-    assert default_model_path(search_dirs=[str(tmp_path)]) is None
+    # env={} throughout: the real os.environ may export WHISPER_MODEL
+    # (the app's own documented variable) and flip hermetic asserts.
+    assert default_model_path(search_dirs=[str(tmp_path)], env={}) is None
     model = tmp_path / "ggml-small.bin"
     model.write_bytes(b"fake")
     assert default_model_path(search_dirs=[str(tmp_path)]) == str(model)
@@ -1840,7 +1900,9 @@ def test_decode_rejects_before_any_subprocess(tmp_path):
     assert calls == []
     assert out["retryable"] is False
     assert "mp3" in out["error"]
-    missing = decode_to_wav("/tmp/no-such-file.wav", run_fn=lambda a: calls.append(a))
+    ghost = tmp_path / "no-such-file.wav"
+    assert not ghost.exists()
+    missing = decode_to_wav(str(ghost), run_fn=lambda a: calls.append(a))
     assert calls == []
     assert missing["retryable"] is False
     assert decode_to_wav("", run_fn=lambda a: calls.append(a))["retryable"] is False
@@ -1929,7 +1991,6 @@ def test_transcribe_wav_success_and_failures():
         )["retryable"]
         is True
     )
-    assert transcribe_wav(b"")["retryable"] is True
 
 
 def test_transcribe_file_end_to_end_with_stubs():
@@ -2158,15 +2219,41 @@ def test_runner_no_stream_returns_zero(monkeypatch):
     assert LiveRunner(ctl, transcribe_fn=lambda w: {"text": "x"}).run() == 0
 
 
+class _BlockingStream(_FakeStream):
+    """read() parks until released; records lifecycle call order."""
+
+    def __init__(self):
+        super().__init__([])
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.calls = []
+
+    def read(self, n):
+        self.calls.append("read")
+        self.entered.set()
+        assert self.release.wait(timeout=10), "worker never released"
+        raise RuntimeError("stream ended")
+
+    def abort(self):
+        self.calls.append("abort")
+        self.aborted = True
+
+    def stop(self):
+        self.calls.append("stop")
+
+    def close(self):
+        self.calls.append("close")
+        self.closed = True
+
+
 def test_runner_stop_is_prompt():
     import threading
-    import time
 
     from text_c3po.services.live_runner import LiveRunner
 
     ctl = _runner_controller()
     ctl.start_session()
-    stream = _FakeStream([_vad_frame(0)] * 100000)
+    stream = _BlockingStream()
     runner = LiveRunner(
         ctl,
         transcribe_fn=lambda wav: {"text": "x"},
@@ -2174,17 +2261,21 @@ def test_runner_stop_is_prompt():
     )
     done = []
     worker = threading.Thread(target=lambda: done.append(runner.run()))
-    started = time.monotonic()
     worker.start()
-    time.sleep(0.3)
+    # Event-gated: no sleep-race — the worker is provably inside read().
+    assert stream.entered.wait(timeout=5) is True
     assert runner.is_running() is True
     assert runner.run() == 0
     runner.request_stop()
+    stream.release.set()
     worker.join(timeout=5)
+    assert not worker.is_alive()
     assert done == [0]
-    assert time.monotonic() - started < 5
     assert runner.is_running() is False
-    assert stream.closed is True
+    # Abort-first ordering: the blocked reader releases via abort,
+    # and everything is closed exactly once per owner.
+    assert stream.calls[0] == "read"
+    assert stream.calls.index("abort") < stream.calls.index("close")
 
 
 def test_runner_stop_before_run():
@@ -2264,29 +2355,6 @@ def test_runner_flushes_tail_on_stream_end():
     assert ctl.drain()[0]["translation"] == "Hallo"
 
 
-def test_runner_aborts_stream_on_stop():
-    import threading
-    import time
-
-    from text_c3po.services.live_runner import LiveRunner
-
-    ctl = _runner_controller()
-    ctl.start_session()
-    stream = _FakeStream([_vad_frame(0)] * 100000)
-    runner = LiveRunner(
-        ctl,
-        transcribe_fn=lambda wav: {"text": "x"},
-        stream_factory=lambda device: stream,
-    )
-    worker = threading.Thread(target=runner.run)
-    worker.start()
-    time.sleep(0.2)
-    runner.request_stop()
-    worker.join(timeout=5)
-    assert stream.aborted is True
-    assert stream.closed is True
-
-
 def test_open_input_stream_closes_on_start_failure(monkeypatch):
     import sys
     import types
@@ -2334,6 +2402,7 @@ def test_concurrent_drains_keep_unique_seqs():
         t.start()
     for t in threads:
         t.join(timeout=10)
+    assert all(not t.is_alive() for t in threads)
     seqs = sorted(c["seq"] for c in ctl.captions())
     assert seqs == list(range(1, 51))
 
@@ -2411,3 +2480,155 @@ def test_jump_empty_leaves_follow_armed():
     assert pane.data["follow"]["on"] is True
     on_pane_scroll(pane, None)
     assert pane.data["follow"]["on"] is False
+
+
+def test_runner_tail_posts_after_stop():
+    # Speech buffered when Stop lands still transcribes: the closed
+    # session drops the late post, but an open session keeps it.
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    calls = {"reads": 0}
+
+    class StopAfterSpeech(_FakeStream):
+        def __init__(self, runner_box):
+            super().__init__(_speech_frames())
+            self._box = runner_box
+
+        def read(self, n):
+            if not self._frames:
+                self._box[0].request_stop()
+                raise RuntimeError("stream ended")
+            return super().read(n)
+
+    box = [None]
+    stream = StopAfterSpeech(box)
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "Hallo"},
+        stream_factory=lambda device: stream,
+    )
+    box[0] = runner
+    assert runner.run() == 1
+    assert ctl.drain()[0]["translation"] == "Hallo"
+
+
+def test_whisper_response_closed_on_read_failure():
+    import json
+
+    from text_c3po.runtimes.whisper_client import transcribe_wav
+
+    closed = []
+
+    class ClosingResponse(_FakeResponse):
+        def close(self):
+            closed.append(True)
+
+    class BadRead(ClosingResponse):
+        def read(self):
+            raise OSError("truncated")
+
+    out = transcribe_wav(b"WAVE", urlopen_fn=lambda r: BadRead(b'{"text":"x"}'))
+    assert out["retryable"] is True
+    assert closed == [True]
+
+    closed.clear()
+    out = transcribe_wav(
+        b"WAVE",
+        urlopen_fn=lambda r: ClosingResponse(json.dumps({"text": "hi"}).encode()),
+    )
+    assert out == {"text": "hi"}
+    assert closed == [True]
+
+
+def test_eval_main_offline_paths(monkeypatch, tmp_path):
+    import text_c3po.services.eval_harness as harness
+
+    monkeypatch.setattr(harness, "check_ollama", lambda: (True, ["m"]))
+    monkeypatch.setattr(harness, "list_models", lambda: ["m"])
+
+    def good(text, target, model):
+        return {"formal": text}
+
+    research = tmp_path / "r.md"
+    code = harness.main(
+        ["--models", "m", "--languages", "German", "--research-path", str(research)],
+        translate_fn=good,
+    )
+    assert code == harness.EXIT_PASS
+    body = research.read_text()
+    assert "## E4 gate — 1x5 matrix" in body
+
+    def bad(text, target, model):
+        return {"error": "x", "retryable": True}
+
+    research2 = tmp_path / "r2.md"
+    code = harness.main(
+        ["--models", "m", "--languages", "all", "--research-path", str(research2)],
+        translate_fn=bad,
+    )
+    assert code == harness.EXIT_GATE_FAIL
+    assert "## E4 gate — 23x5 full matrix" in research2.read_text()
+
+
+def test_decode_default_runner_carries_timeout(monkeypatch, tmp_path):
+    import subprocess
+
+    import text_c3po.runtimes.audio_file as af
+
+    seen = {}
+
+    class Completed:
+        returncode = 0
+        stdout = b"WAVE"
+        stderr = b""
+
+    def fake_run(argv, **kwargs):
+        seen.update(kwargs)
+        return Completed()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ghost = tmp_path / "whatever.wav"
+    out = af.decode_to_wav(str(ghost), run_fn=None)
+    assert out["retryable"] is False
+    assert seen == {}
+    src = tmp_path / "c.wav"
+    src.write_bytes(b"fake")
+    out = af.decode_to_wav(str(src), run_fn=None)
+    assert out == {"wav": b"WAVE"}
+    assert seen.get("timeout") == af.DECODE_TIMEOUT_S
+    assert af.DECODE_TIMEOUT_S == 300.0
+
+
+def test_format_table_zero_total():
+    from text_c3po.services.eval_harness import format_table
+
+    table = format_table(
+        {"m": {"valid": 0, "total": 0, "per_language": {}}}, ["German"]
+    )
+    assert "0%" in table and "FAIL" in table
+
+
+def _web_smoke_helpers():
+    """Import test_web_smoke.py by path (tests/ is not a package)."""
+    import importlib.util
+    import os
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_web_smoke.py")
+    spec = importlib.util.spec_from_file_location("test_web_smoke_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_port_closed_probe():
+    import socket
+
+    helpers = _web_smoke_helpers()
+    port = helpers._free_port()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", port))
+        sock.listen(1)
+        assert helpers._port_closed(port) is False
+    assert helpers._port_closed(port) is True

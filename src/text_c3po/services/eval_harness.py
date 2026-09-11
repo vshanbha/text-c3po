@@ -378,8 +378,12 @@ def _parse_args(argv=None):
     return parser.parse_args(argv)
 
 
-def main(argv=None):
-    """Wire --models/--research-path/--languages; exit 0 iff the gate passes."""
+def main(argv=None, translate_fn=None):
+    """Wire --models/--research-path/--languages; exit 0 iff the gate passes.
+
+    ``translate_fn`` is injectable for offline tests (same signature as
+    ``translate_text``); the CLI path always uses the live service.
+    """
     args = _parse_args(argv)
     if args.models:
         models = []
@@ -433,7 +437,7 @@ def main(argv=None):
             OLLAMA_BASE_URL,
         )
     )
-    results = run_matrix(models=models, languages=languages)
+    results = run_matrix(models=models, translate_fn=translate_fn, languages=languages)
     table = format_table(results, languages)
     print("")
     print(table)
