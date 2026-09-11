@@ -8,6 +8,9 @@ does not double-import the submodule (which emits a runpy RuntimeWarning).
 __all__ = [
     "Translation",
     "translate_text",
+    "VadChunker",
+    "frame_rms",
+    "utterance_to_wav",
     "SENTENCES",
     "MATRIX_LANGUAGES",
     "GATE_THRESHOLD",
@@ -20,6 +23,9 @@ __all__ = [
 _LAZY = {
     "Translation": ".translation",
     "translate_text": ".translation",
+    "VadChunker": ".vad",
+    "frame_rms": ".vad",
+    "utterance_to_wav": ".vad",
     "SENTENCES": ".eval_harness",
     "MATRIX_LANGUAGES": ".eval_harness",
     "GATE_THRESHOLD": ".eval_harness",
