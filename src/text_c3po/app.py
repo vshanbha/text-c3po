@@ -262,13 +262,17 @@ def main(page: ft.Page) -> None:
         current_device["value"] = new_value
 
     # E2-3: own whisper-server for the session. Skipped silently when no
-    # model file resolves (file mode errors readably at use time); spawned
-    # off the UI thread so first paint never waits on model load; atexit
+    # model file resolves (file mode errors readably at use time) or when
+    # TEXT_C3PO_NO_WHISPER is set (web-smoke tests); spawned off the UI
+    # thread so first paint never waits on model load; exit cleanup
     # guarantees no orphan on exit. Crash-restart status UI arrives with
     # E3's indicators.
     whisper_manager = None
     try:
-        whisper_model = default_model_path()
+        if os.getenv("TEXT_C3PO_NO_WHISPER"):
+            whisper_model = None
+        else:
+            whisper_model = default_model_path()
         if whisper_model:
             whisper_manager = ProcessManager(model_path=whisper_model)
             # atexit plus SIGTERM/SIGINT so kills never orphan the server.
