@@ -398,12 +398,12 @@ def main(argv=None):
             "No scores written.".format(getattr(args, "languages", None))
         )
         return EXIT_ABORT
-    full = len(languages) > len(MATRIX_LANGUAGES)
-    label = (
-        "E4 gate — {}x{} full matrix".format(len(languages), len(SENTENCES))
-        if full
-        else None
-    )
+    if languages == MATRIX_LANGUAGES:
+        label = "E1 gate — 5x5 smoke"
+    elif len(languages) == len(ALL_LANGUAGES):
+        label = "E4 gate — {}x{} full matrix".format(len(languages), len(SENTENCES))
+    else:
+        label = "E4 gate — {}x{} matrix".format(len(languages), len(SENTENCES))
 
     connected, _ = check_ollama()
     if not connected:
