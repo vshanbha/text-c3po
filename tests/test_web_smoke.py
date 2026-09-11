@@ -39,6 +39,12 @@ def _port_closed(port: int) -> bool:
 
 
 def _whisper_pids():
+    # Returns None (not empty) when pgrep is missing, so callers can tell
+    # "cannot observe" apart from "nothing running".
+    import shutil
+
+    if shutil.which("pgrep") is None:
+        return None
     try:
         out = subprocess.run(
             ["pgrep", "-f", "whisper-server"],
@@ -51,7 +57,9 @@ def _whisper_pids():
         return set()
 
 
-def test_web_serve_smoke():
+def test_web_serve_smoke(tmp_path):
+    import tempfile
+
     root = find_project_root()
     port = _free_port()
     before = _whisper_pids()
@@ -60,12 +68,14 @@ def test_web_serve_smoke():
     env["FLET_SERVER_PORT"] = str(port)
     env["PYTHONPATH"] = os.path.join(root, "src")
     env["TEXT_C3PO_NO_WHISPER"] = "1"
+    log_path = os.path.join(str(tmp_path), "web-smoke.log")
+    log_handle = open(log_path, "wb")
     proc = subprocess.Popen(
         ["uv", "run", "python", "-m", "text_c3po.app"],
         cwd=root,
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
         start_new_session=True,
     )
     try:
@@ -83,10 +93,25 @@ def test_web_serve_smoke():
                         break
             except Exception:
                 time.sleep(POLL_STEP_S)
-        assert body is not None, "web server never served GET / on :{}".format(port)
+        if body is None:
+            try:
+                log_handle.flush()
+                with open(log_path, "rb") as handle:
+                    tail = handle.read()[-2000:].decode("utf-8", "replace")
+            except Exception:
+                tail = "<unreadable>"
+            raise AssertionError(
+                "web server never served GET / on :{} (exit={}); log tail:\n{}".format(
+                    port, proc.poll(), tail
+                )
+            )
         lowered = body.lower()
-        assert b"flutter_bootstrap" in lowered or b"flet" in lowered
+        assert b"flutter_bootstrap" in lowered
     finally:
+        try:
+            log_handle.close()
+        except Exception:
+            pass
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except Exception:
@@ -99,4 +124,8 @@ def test_web_serve_smoke():
             except Exception:
                 pass
     assert _port_closed(port), "port {} still open after teardown".format(port)
-    assert _whisper_pids() <= before, "web smoke spawned whisper-server"
+    after = _whisper_pids()
+    if before is None or after is None:
+        pass  # pgrep missing: leak observation impossible, skip the check
+    else:
+        assert after <= before, "web smoke spawned whisper-server"

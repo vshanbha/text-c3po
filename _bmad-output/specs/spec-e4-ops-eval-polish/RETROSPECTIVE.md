@@ -38,6 +38,41 @@ headless: false
 
 **accepted-with-open-items** — 4-1, 4-2 (+115/115 evidence), 4-4, 4-5 done + reviewed + live-proven; 4-3 honestly backlog. No silent gaps: everything unproven is named above with its manual script.
 
+## Test-quality audit (post-acceptance, three fresh lenses)
+
+Assert-strength, flakiness/hermeticity, and coverage-honesty passes over
+all of `tests/` (139 tests read) produced 30+ findings; triage below.
+Suite now 134 unit + 1 web smoke + 6 integration, all green
+(unit headless, integration live in 6 s).
+
+- **Patched (strength):** async-jump test now breaks follow first;
+  whisper validation asserts transport-never-attempted (recording
+  urlopen); integration shape test injects a stub translate and
+  asserts `formal`; asr short-circuit asserts the exact message;
+  probe asserts `ok is True`; translate asserts non-echo output;
+  file-view handler actually fired; concurrency asserts order-free
+  completeness; table asserts parsed structure, not separator count.
+- **Patched (flakiness):** both stop/abort tests rebuilt on
+  event-gated streams (zero sleeps); registry test discards only its
+  own entry; `WHISPER_MODEL` injected everywhere; web smoke logs to
+  a file and prints the tail on boot failure; `atexit.register`
+  patched in the cleanup test; `/tmp` litter moved to `tmp_path`;
+  joins asserted; integration fixture skips on a squatted :9001.
+- **Patched (coverage):** retry-raising, tail-with-stop, close
+  recording, offline `main()` pass/fail/labels (via new injectable
+  `translate_fn` param), SIGINT invocation, timeout-kwarg capture,
+  non-dict/non-str shapes, `_port_closed` unit, session `_render`
+  deleted as dead code.
+- **Rejected with evidence:** `main()`-fake app test (covers
+  construction only, adds threading-flake surface); TTS-based
+  integration assertions (nondeterministic across model builds —
+  the shape/branch structure is the deterministic part).
+- **Open measurement anomaly:** successive `--cov` runs reported
+  1724 vs 2739 statements on the same tree (unpinned ephemeral
+  `pytest-cov`, coverage 7.16.0 this run). Counts in TEST-PLAN are
+  test cardinalities (stable), not coverage ratios; pin the tool
+  if the ratio ever gates anything.
+
 ## Open questions
 
 1. Is `flet test` (control-level, golden screenshots) wanted as the UI-regression layer, or do unit + smoke + neo-skill suffice?

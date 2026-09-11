@@ -49,11 +49,19 @@ def _require_ffmpeg():
 
 @pytest.fixture(scope="module")
 def whisper_server():
-    from text_c3po.runtimes.process_manager import ProcessManager, default_model_path
+    from text_c3po.runtimes.process_manager import (
+        ProcessManager,
+        default_model_path,
+        probe_serving,
+    )
 
     model = default_model_path()
     if not model:
         pytest.skip("no whisper model file resolved")
+    if probe_serving():
+        pytest.skip(
+            "port 9001 already serving: refusing to test against a foreign server"
+        )
     mgr = ProcessManager(model_path=model)
     try:
         assert mgr.start() is True
@@ -71,7 +79,10 @@ def whisper_server():
 
 
 def test_ollama_probe_live():
-    models = _require_ollama()
+    from text_c3po.runtimes.ollama_client import check_ollama
+
+    ok, models = check_ollama()
+    assert ok is True
     assert isinstance(models, list)
 
 
@@ -81,7 +92,11 @@ def test_translate_live_lfm25():
 
     out = translate_text("Good morning", "German", MODEL)
     assert isinstance(out, dict) and "formal" in out, out
-    assert out["formal"].strip()
+    formal = out["formal"].strip()
+    assert formal
+    # A translation must differ from the input: an English echo would
+    # prove the target-language contract broken while staying JSON-valid.
+    assert formal != "Good morning"
 
 
 def test_whisper_lifecycle_live(whisper_server):
@@ -95,7 +110,6 @@ def test_transcribe_silence_live(whisper_server):
 
     from text_c3po.runtimes.whisper_client import transcribe_wav
 
-    del whisper_server
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
@@ -145,7 +159,6 @@ def test_file_pipeline_shape_live(whisper_server, tmp_path):
     _require_ffmpeg()
     from text_c3po.services.asr import transcribe_file
 
-    del whisper_server
     src = str(tmp_path / "tone.wav")
     subprocess.run(
         [
@@ -163,6 +176,23 @@ def test_file_pipeline_shape_live(whisper_server, tmp_path):
         check=True,
         timeout=60,
     )
-    out = transcribe_file(src, "English", MODEL)
-    assert isinstance(out, dict)
-    assert ("formal" in out) or ("error" in out), out
+
+    # Stub translate with a real formal shape: decode + transcribe run
+    # live. A sine tone may transcribe to text (flows into translate) or
+    # to blank (no-speech error) depending on the model build — both are
+    # honest pipeline outcomes; anything else is a real breakage.
+    calls = []
+
+    def stub_translate(text, target, model):
+        calls.append(text)
+        return {"formal": "stub:" + text.strip()}
+
+    out = transcribe_file(src, "English", MODEL, translate_fn=stub_translate)
+    assert isinstance(out, dict), out
+    if calls:
+        assert out.get("formal", "").startswith("stub:"), out
+    else:
+        assert out == {
+            "error": "No speech found in that file.",
+            "retryable": False,
+        }, out

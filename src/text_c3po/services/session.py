@@ -309,16 +309,3 @@ class SessionController:
             }
         except Exception:
             return None
-
-    def _render(self, item) -> "dict | None":
-        """Translate one queued item into a caption dict. Never raises."""
-        try:
-            built = self._build(item)
-            if built is None:
-                return None
-            with self._lock:
-                self._seq += 1
-                built["seq"] = self._seq
-            return built
-        except Exception:
-            return None
