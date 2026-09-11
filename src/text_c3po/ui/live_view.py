@@ -19,7 +19,8 @@ def build_live_view(
     device_dropdown = build_device_dropdown(devices or [], selected_device)
     if on_device_change is not None:
         try:
-            device_dropdown.on_change = on_device_change
+            # Dropdown emits on_select in flet 0.86 (no on_change event).
+            device_dropdown.on_select = on_device_change
         except Exception:
             pass
     view = ft.Column(

@@ -74,7 +74,8 @@ def build_appbar(
         pass
     if on_model_change is not None:
         try:
-            model_dropdown.on_change = on_model_change
+            # Dropdown emits on_select in flet 0.86 (no on_change event).
+            model_dropdown.on_select = on_model_change
         except Exception:
             pass
     dot = _status_dot(bool(ollama_connected))

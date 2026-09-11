@@ -30,6 +30,44 @@ PROBE_TIMEOUT_S = 1.0
 STOP_TIMEOUT_S = 5.0
 
 
+def default_model_path(search_dirs=None, filename=None, env=None):
+    """Return the first existing whisper model file, or None when absent.
+
+    Honors ``WHISPER_MODEL`` first, then ``models/<filename>`` under the
+    repo root, then the sibling live-translate models dir (present in this
+    workspace today). Pure filesystem lookup; never raises.
+    """
+    try:
+        name = filename or DEFAULT_MODEL_FILENAME
+        mapping = env if env is not None else os.environ
+        try:
+            override = (mapping.get("WHISPER_MODEL") or "").strip()
+        except Exception:
+            override = ""
+        if override and os.path.isfile(override):
+            return override
+        if search_dirs is None:
+            here = os.path.dirname(os.path.abspath(__file__))
+            root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+            search_dirs = [
+                os.path.join(root, "models"),
+                os.path.join(os.path.dirname(root), "live-translate", "models"),
+            ]
+        for directory in search_dirs or []:
+            try:
+                candidate = os.path.join(directory, name)
+            except Exception:
+                continue
+            try:
+                if os.path.isfile(candidate):
+                    return candidate
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
 def resolve_language_code(code) -> str:
     """Return a valid ``-l`` value: the code when known, else ``auto``.
 
@@ -71,7 +109,13 @@ class ProcessManager:
             self.port = WHISPER_PORT
         self.language_code = resolve_language_code(language_code)
         self._popen_factory = popen_factory or subprocess.Popen
-        self._probe_fn = probe_fn or probe_serving
+        if probe_fn is not None:
+            self._probe_fn = probe_fn
+        else:
+            # Bind the default probe to this manager's port (review: the
+            # bare probe_serving default always checked 9001).
+            host, port = WHISPER_HOST, self.port
+            self._probe_fn = lambda: probe_serving(host, port)
         self._sleep_fn = sleep_fn or time.sleep
         self._process = None
 
@@ -87,8 +131,12 @@ class ProcessManager:
                 "whisper-server",
                 "-m",
                 str(self.model_path),
+                "--host",
+                WHISPER_HOST,
                 "--port",
                 str(self.port),
+                "--inference-path",
+                WHISPER_INFERENCE_PATH,
                 "-l",
                 self.language_code,
             ]

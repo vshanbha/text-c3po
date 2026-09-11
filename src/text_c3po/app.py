@@ -4,6 +4,8 @@ Mounts the always-visible top strip plus the Text/Live/File mode views.
 Views are built once and toggled visible so input text survives switches.
 """
 
+import atexit
+import os
 import threading
 import time
 
@@ -17,6 +19,7 @@ from text_c3po.runtimes.ollama_client import (
 )
 from text_c3po.runtimes.audio_devices import list_devices, pick_default_device
 from text_c3po.runtimes.audio_file import supported_extensions
+from text_c3po.runtimes.process_manager import ProcessManager, default_model_path
 from text_c3po.services.asr import transcribe_file
 from text_c3po.services.translation import (
     cancel_inflight,
@@ -249,6 +252,32 @@ def main(page: ft.Page) -> None:
         except Exception:
             new_value = None
         current_device["value"] = new_value
+
+    # E2-3: own whisper-server for the session. Skipped silently when no
+    # model file resolves (file mode errors readably at use time); spawned
+    # off the UI thread so first paint never waits on model load; atexit
+    # guarantees no orphan on exit. Crash-restart status UI arrives with
+    # E3's indicators.
+    whisper_manager = None
+    try:
+        whisper_model = default_model_path()
+        if whisper_model:
+            whisper_manager = ProcessManager(model_path=whisper_model)
+            try:
+                atexit.register(whisper_manager.stop)
+            except Exception:
+                pass
+
+            def _start_whisper() -> None:
+                try:
+                    whisper_manager.start()
+                    whisper_manager.wait_ready()
+                except Exception:
+                    pass
+
+            threading.Thread(target=_start_whisper, daemon=True).start()
+    except Exception:
+        whisper_manager = None
 
     text_view = build_text_view()
     live_view = build_live_view(startup_devices, selected_device, on_device_change)
@@ -590,10 +619,20 @@ def main(page: ft.Page) -> None:
             except Exception:
                 pass
 
-    def on_file_picked(e) -> None:
+    async def on_pick_file(e=None) -> None:
+        # flet 0.86 FilePicker is awaitable-only (no on_result event):
+        # pick_files returns the picked list, [] on cancel.
+        if file_busy["working"]:
+            return
         try:
-            files = getattr(e, "files", None) or []
-            picked = files[0] if files else None
+            files = await file_picker.pick_files(
+                allow_multiple=False,
+                allowed_extensions=[ext.lstrip(".") for ext in supported_extensions()],
+            )
+        except Exception:
+            return
+        try:
+            picked = (files or [None])[0]
             path = getattr(picked, "path", None) if picked is not None else None
         except Exception:
             path = None
@@ -603,17 +642,8 @@ def main(page: ft.Page) -> None:
         _set_file_status("Transcribing…")
         threading.Thread(target=_run_file, args=(path,), daemon=True).start()
 
-    def on_pick_file(e=None) -> None:
-        try:
-            file_picker.pick_files(
-                allow_multiple=False,
-                allowed_extensions=[ext.lstrip(".") for ext in supported_extensions()],
-            )
-        except Exception:
-            pass
-
     try:
-        file_picker = ft.FilePicker(on_result=on_file_picked)
+        file_picker = ft.FilePicker()
         page.overlay.append(file_picker)
     except Exception:
         file_picker = None
