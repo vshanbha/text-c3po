@@ -25,7 +25,11 @@ def _query_all_devices(query_fn=None):
 
 
 def _verbatim_input_names(raw):
-    """Return verbatim names of input-capable devices, or None when malformed."""
+    """Return verbatim names of input-capable devices, or None when malformed.
+
+    One bad entry no longer voids the whole list (review): unparseable
+    entries are skipped so a single odd device can't empty the picker.
+    """
     try:
         entries = list(raw)
     except Exception:
@@ -40,9 +44,9 @@ def _verbatim_input_names(raw):
                 else entry.max_input_channels
             )
         except Exception:
-            return None
+            continue
         if not isinstance(name, str) or not name:
-            return None
+            continue
         if not isinstance(inputs, int) or inputs <= 0:
             continue
         names.append(name)

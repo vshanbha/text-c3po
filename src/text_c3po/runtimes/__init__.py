@@ -6,6 +6,7 @@ from .audio_devices import (
     pick_default_device,
 )
 from .audio_file import (
+    DECODE_TIMEOUT_S,
     SUPPORTED_EXTENSIONS,
     decode_to_wav,
     supported_extensions,
@@ -18,6 +19,7 @@ from .process_manager import (
     WHISPER_INFERENCE_PATH,
     WHISPER_PORT,
     ProcessManager,
+    default_model_path,
     probe_serving,
     resolve_language_code,
 )
@@ -54,8 +56,10 @@ __all__ = [
     "WHISPER_INFERENCE_PATH",
     "WHISPER_PORT",
     "ProcessManager",
+    "default_model_path",
     "probe_serving",
     "resolve_language_code",
+    "DECODE_TIMEOUT_S",
     "SUPPORTED_EXTENSIONS",
     "decode_to_wav",
     "supported_extensions",

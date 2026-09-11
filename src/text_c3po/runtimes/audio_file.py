@@ -11,6 +11,11 @@ import subprocess
 
 SUPPORTED_EXTENSIONS = (".mp3", ".wav", ".m4a", ".mp4")
 
+# Hung ffmpeg (corrupt container) must not wedge file mode forever; the
+# timeout applies to the default runner only so stubbed run_fn keeps its
+# single-arg shape in tests.
+DECODE_TIMEOUT_S = 300.0
+
 NOT_FOUND_MESSAGE = "Pick a file first."
 MISSING_MESSAGE = "File not found: {}."
 UNSUPPORTED_MESSAGE = "Unsupported container '{}' \u2014 use mp3, wav, m4a or mp4."
@@ -64,7 +69,9 @@ def decode_to_wav(path, ffmpeg_exe="ffmpeg", run_fn=None) -> dict:
             "wav",
             "-",
         ]
-        runner = run_fn or (lambda a: subprocess.run(a, capture_output=True))
+        runner = run_fn or (
+            lambda a: subprocess.run(a, capture_output=True, timeout=DECODE_TIMEOUT_S)
+        )
         try:
             completed = runner(argv)
         except FileNotFoundError:

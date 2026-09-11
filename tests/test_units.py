@@ -615,6 +615,19 @@ def test_has_blackhole_case_insensitive():
     assert has_blackhole(None) is False
 
 
+def test_list_devices_skips_bad_entries():
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    mixed = [
+        {"name": "Mic", "max_input_channels": 1},
+        {"name": "", "max_input_channels": 1},
+        {"name": "Ghost"},
+        "not-a-device",
+        {"name": "Speakers", "max_input_channels": 0},
+    ]
+    assert list_devices(query_fn=lambda: mixed) == ["Mic"]
+
+
 def test_pick_default_device_prefers_mic():
     from text_c3po.runtimes.audio_devices import pick_default_device
 
@@ -636,6 +649,11 @@ def test_live_view_builds_device_picker_headless():
     assert [o.key for o in dropdown.options] == ["Mic", "BlackHole 2ch"]
     empty = build_live_view([], None)
     assert empty.data["device_dropdown"].options == []
+    seen = []
+    wired = build_live_view(["Mic"], "Mic", lambda e: seen.append(True))
+    assert wired.data["device_dropdown"].on_select is not None
+    wired.data["device_dropdown"].on_select(None)
+    assert seen == [True]
 
 
 def _vad_frame(value, n=8000):
@@ -838,8 +856,12 @@ def test_build_command_transcribe_only():
         "whisper-server",
         "-m",
         mgr.model_path,
+        "--host",
+        "127.0.0.1",
         "--port",
         "9001",
+        "--inference-path",
+        "/inference",
         "-l",
         "auto",
     ]
@@ -895,6 +917,55 @@ def test_wait_ready_times_out():
     mgr, _, probes, _ = _manager(process=_FakeProcess(), probe=[])
     assert mgr.wait_ready(timeout_s=0) is False
     assert probes["calls"] >= 1
+
+
+def test_wait_ready_bad_timeout_forms():
+    mgr, _, _, _ = _manager(process=_FakeProcess(), probe=True)
+    assert mgr.wait_ready(timeout_s=None) is True
+    assert mgr.wait_ready(timeout_s=-5) is True
+
+
+def test_default_probe_uses_manager_port():
+    import text_c3po.runtimes.process_manager as pm
+
+    from text_c3po.runtimes.process_manager import ProcessManager
+
+    seen = []
+    orig = pm.probe_serving
+    pm.probe_serving = lambda host, port=9001: seen.append((host, port)) or False
+    try:
+        mgr = ProcessManager(
+            model_path=__file__,
+            port=9999,
+            sleep_fn=lambda s: None,
+        )
+        assert mgr.wait_ready(timeout_s=0) is False
+    finally:
+        pm.probe_serving = orig
+    assert seen and seen[0] == ("127.0.0.1", 9999)
+
+
+def test_default_model_path_resolution(tmp_path):
+    from text_c3po.runtimes.process_manager import default_model_path
+
+    assert default_model_path(search_dirs=[str(tmp_path)]) is None
+    model = tmp_path / "ggml-small.bin"
+    model.write_bytes(b"fake")
+    assert default_model_path(search_dirs=[str(tmp_path)]) == str(model)
+    assert default_model_path(
+        search_dirs=[str(tmp_path)], env={"WHISPER_MODEL": str(model)}
+    ) == str(model)
+    assert default_model_path(
+        search_dirs=[str(tmp_path)], env={"WHISPER_MODEL": "/nope.bin"}
+    ) == str(model)
+    resolved = default_model_path(search_dirs=None, env={})
+    assert resolved is None or isinstance(resolved, str)
+    # Default search must climb to the repo root (three levels up from
+    # runtimes/), not stop at src/: any returned path must exist.
+    import os
+
+    if resolved is not None:
+        assert os.path.isfile(resolved)
 
 
 def test_ensure_running_reports_ready_restarted_failed():
@@ -1017,6 +1088,20 @@ def test_transcribe_wav_success_and_failures():
         transcribe_wav(
             b"WAVE",
             urlopen_fn=lambda r: _FakeResponse(json.dumps({"nada": 1}).encode()),
+        )["retryable"]
+        is True
+    )
+    assert (
+        transcribe_wav(
+            b"WAVE",
+            urlopen_fn=lambda r: _FakeResponse(json.dumps([1, 2]).encode()),
+        )["retryable"]
+        is True
+    )
+    assert (
+        transcribe_wav(
+            b"WAVE",
+            urlopen_fn=lambda r: _FakeResponse(json.dumps({"text": 123}).encode()),
         )["retryable"]
         is True
     )

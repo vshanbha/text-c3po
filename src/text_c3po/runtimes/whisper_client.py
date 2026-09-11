@@ -53,7 +53,15 @@ def transcribe_wav(wav_bytes, inference_url=None, urlopen_fn=None) -> dict:
         )
         try:
             response = opener(request)
-            raw = response.read()
+            try:
+                raw = response.read()
+            finally:
+                try:
+                    close = getattr(response, "close", None)
+                    if callable(close):
+                        close()
+                except Exception:
+                    pass
         except Exception:
             return {"error": TRANSPORT_MESSAGE, "retryable": True}
         try:
