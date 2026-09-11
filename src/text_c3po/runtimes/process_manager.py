@@ -30,13 +30,19 @@ PROBE_TIMEOUT_S = 1.0
 STOP_TIMEOUT_S = 5.0
 
 
-def default_model_path(search_dirs=None, filename=None, env=None):
+def default_model_path(search_dirs=None, filename=None, env=None, root=None):
     """Return the first existing whisper model file, or None when absent.
 
     Honors ``WHISPER_MODEL`` first, then ``models/<filename>`` under the
-    repo root, then the sibling live-translate models dir (present in this
-    workspace today). Pure filesystem lookup; never raises.
+    repo root (via the shared ``paths.find_project_root`` helper per the
+    A6 convention — never ``__file__`` joins), then the sibling
+    live-translate models dir (present in this workspace today). Pure
+    filesystem lookup; never raises.
     """
+    try:
+        from text_c3po.paths import find_project_root
+    except Exception:
+        find_project_root = None
     try:
         name = filename or DEFAULT_MODEL_FILENAME
         mapping = env if env is not None else os.environ
@@ -47,11 +53,15 @@ def default_model_path(search_dirs=None, filename=None, env=None):
         if override and os.path.isfile(override):
             return override
         if search_dirs is None:
-            here = os.path.dirname(os.path.abspath(__file__))
-            root = os.path.dirname(os.path.dirname(os.path.dirname(here)))
+            try:
+                base = root or (
+                    find_project_root() if find_project_root else os.getcwd()
+                )
+            except Exception:
+                base = os.getcwd()
             search_dirs = [
-                os.path.join(root, "models"),
-                os.path.join(os.path.dirname(root), "live-translate", "models"),
+                os.path.join(base, "models"),
+                os.path.join(os.path.dirname(base), "live-translate", "models"),
             ]
         for directory in search_dirs or []:
             try:

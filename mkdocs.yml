@@ -18,6 +18,7 @@ nav:
   - Feasibility research: research-feasibility.md
   - Model-quality research: research-model-quality.md
   - E1 retrospective: retrospective-e1.md
+  - Test plan: test-plan.md
 
 markdown_extensions:
   - tables
