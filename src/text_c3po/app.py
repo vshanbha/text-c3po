@@ -50,6 +50,24 @@ WINDOW_MIN_HEIGHT = 640
 RETRY_CARD_HINT = "Couldn't parse that one. Retry."
 EMPTY_INPUT_HINT = "Type or paste something first."
 
+# E3-9 stage 1 (D3-B): single serialized UI-update helper. The live
+# capture drain (_render_session) funnels page.update() through here under
+# one lock so concurrent renders cannot interleave. Remaining background
+# threads (supervise, retry, poll, file worker) still call page.update()
+# directly and migrate in stage 2. Full run_thread pump
+# (page.run_thread onto the Flet loop) is staged for manual F1/F5
+# verification — see TEST-PLAN §J.
+_UI_LOCK = threading.Lock()
+
+
+def _ui_update(page) -> None:
+    """Serialized page.update(); never raises."""
+    try:
+        with _UI_LOCK:
+            page.update()
+    except Exception:
+        pass
+
 
 def apply_mode_visibility(views, current):
     """Pure mode-switch helper (A8 V3 close-out): exactly one view visible.
@@ -540,10 +558,12 @@ def main(page: ft.Page) -> None:
         threading.Thread(target=_work, daemon=True).start()
 
     def on_stop_translate(e=None) -> None:
-        # Full stop: signal the streaming loop, close the connection so the
-        # server aborts mid-generation, then bump the generation so any late
-        # result is dropped. The worker thread itself can't be killed, but it
-        # holds no connection afterwards and the UI is free immediately.
+        # Global stop (D4-A, 2026-09-13): signal the streaming loop, close
+        # every registered stream/HTTP client so the server aborts
+        # mid-generation — including any concurrent File-mode or
+        # caption-retry LLM work — then bump the generation so late results
+        # drop. The worker thread itself can't be killed, but it holds no
+        # connection afterwards and the UI is free immediately.
         refs = text_view.data if isinstance(text_view.data, dict) else {}
         try:
             event = translate_stop.get("event")
@@ -758,7 +778,7 @@ def main(page: ft.Page) -> None:
                     sync_captions(pane, live_controller.captions())
                 except Exception:
                     pass
-            page.update()
+            _ui_update(page)
         except Exception:
             pass
 

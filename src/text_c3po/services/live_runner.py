@@ -85,6 +85,9 @@ class LiveRunner:
         self._stop_event = threading.Event()
         self._stream = None
         self._running = False
+        self._callback_threads = []
+        self._callback_lock = threading.Lock()
+        self._in_overflow = False
 
     def is_running(self) -> bool:
         """True while the run loop is active. Never raises."""
@@ -177,9 +180,24 @@ class LiveRunner:
             try:
                 while not self._stop_event.is_set():
                     try:
-                        data, _overflow = stream.read(FRAME_SAMPLES)
+                        data, overflow = stream.read(FRAME_SAMPLES)
                     except Exception:
                         break
+                    if overflow:
+                        if not self._in_overflow:
+                            self._in_overflow = True
+                            try:
+                                self.controller.mark_gap("capture overflow")
+                            except Exception:
+                                pass
+                            try:
+                                callback = self._on_utterance
+                                if callable(callback):
+                                    self._fire_callback_async(callback)
+                            except Exception:
+                                pass
+                    else:
+                        self._in_overflow = False
                     raw = _frame_bytes(data)
                     if not raw:
                         continue
@@ -211,6 +229,7 @@ class LiveRunner:
                     stream.close()
                 except Exception:
                     pass
+                self._join_callbacks()
             return posted
         except Exception:
             try:
@@ -218,6 +237,55 @@ class LiveRunner:
             except Exception:
                 pass
             return 0
+
+    def _fire_callback_async(self, callback) -> None:
+        """Run the drain/render callback off the capture read path (E3-6).
+
+        Capture keeps reading frames while an in-flight translation drains
+        in a daemon thread. Callbacks are serialized through
+        _callback_lock so concurrent workers cannot interleave
+        sync_captions on the same pane (review #2). run() joins these
+        before returning so unit callers observe fired callbacks
+        deterministically. Prunes finished threads to bound growth
+        (review #7). Never raises.
+        """
+        try:
+            try:
+                self._callback_threads = [
+                    t for t in self._callback_threads if t.is_alive()
+                ]
+            except Exception:
+                pass
+
+            def _serialized() -> None:
+                try:
+                    with self._callback_lock:
+                        callback()
+                except Exception:
+                    pass
+
+            worker = threading.Thread(target=_serialized, daemon=True)
+            try:
+                self._callback_threads.append(worker)
+            except Exception:
+                pass
+            worker.start()
+        except Exception:
+            try:
+                callback()
+            except Exception:
+                pass
+
+    def _join_callbacks(self) -> None:
+        try:
+            threads, self._callback_threads = list(self._callback_threads), []
+        except Exception:
+            return
+        for worker in threads:
+            try:
+                worker.join(timeout=30)
+            except Exception:
+                pass
 
     def _submit(self, wav: bytes) -> int:
         """Transcribe one utterance WAV and post it; gap on failure."""
@@ -251,7 +319,7 @@ class LiveRunner:
             try:
                 callback = self._on_utterance
                 if callable(callback):
-                    callback()
+                    self._fire_callback_async(callback)
             except Exception:
                 pass
             return posted

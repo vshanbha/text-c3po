@@ -194,3 +194,45 @@ ad-hoc signature suffices for local runs.
   Ollama/whisper/ffmpeg checks — see `tests/test_integration.py`.
 - This note: everything above a unit cannot reach (windows,
   dialogs, snackbars, hardware, subprocess timing, real speech).
+
+## J. Post-audit release-verification gate (2026-09-13)
+
+The 2026-09-13 spec/code audit added no new automation-reachable checks; the
+gaps it found are either fixed in code (E3-5–E3-7, E4-7–E4-8) or decided in
+`sprint-change-proposal-2026-09-13.md`. What remains is human-only: no unit,
+headless build, or browser automation can reach a real microphone, TCC, an
+interactive Flutter/SDK install, a signing identity, or GitHub repo settings.
+Run this gate top to bottom before calling v2 shippable. A new agent session
+executes the code stories first; **this section is deliberately last.**
+
+- [ ] **S1/S2 — fresh-machine `setup.sh`.** Full §0 run on a clean Mac
+  (not a re-run): installs finish, `models/ggml-small.bin` downloads once,
+  `lfm2.5` pulls, unit suite green, ≤15 min, exit 0; second run prints
+  "present, skipping" everywhere. *(Only re-run/idempotency is proven today —
+  E4 retro, "Evidence inventory (missing)".)*
+- [ ] **§F — real-mic live session, all rows.** The live path has never run
+  with a real microphone. Minimum: F1 (captions), F2/F13 (stop timing),
+  F5 (scroll + Jump under load), F7 (BlackHole loopback), F8 (revoked TCC),
+  F10 (caption retry), F12 (double-start), F14 (device unplug). Failing F5
+  or F1 reopens E3-5.
+- [ ] **F6 — VoiceOver.** One utterance; new row announced once. Requires a
+  screen reader, not automation.
+- [ ] **§H P1–P5 — macOS packaging session.** Approve the interactive Flutter
+  SDK 3.44.8 install; build with the signing identity; add
+  `NSMicrophoneUsageDescription`; verify the one-time TCC mic prompt and that
+  denial yields the clean F8 failure; launch the `.app` with no terminal;
+  confirm `pgrep -f whisper-server` empty after Cmd-Q **and** Dock quit; copy
+  to another Mac and document the Gatekeeper path. *(E4-3 remains backlog —
+  record the `flet build macos` tool-of-record decision when done.)*
+- [ ] **D1–D3 — whisper subprocess timing.** Cold-model readiness vs the 5 s
+  `READY_TIMEOUT_S`; `kill -9` mid-session gap rows; no orphans after quit.
+- [ ] **E6 — long file (~5 min).** Completes, UI responsive after, no runaway
+  memory (NFR-4 soak companion).
+- [ ] **GitHub Pages repo settings.** Repo API still reports a legacy
+  `source: master//docs` alongside `build_type: workflow`. Confirm in
+  Settings → Pages that the workflow (not a branch folder) is the active
+  source, and that `https://vshanbha.github.io/text-c3po/` serves the MkDocs
+  Material build. Settings-only; not code.
+- [ ] **Deployment scope decision (S3-D5).** If distribution beyond
+  "copy the bundle" is wanted: sign + notarize, and document Gatekeeper for
+  the receiving Mac. Otherwise record ad-hoc-only as accepted.

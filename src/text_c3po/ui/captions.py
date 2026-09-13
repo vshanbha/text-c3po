@@ -127,7 +127,7 @@ def build_captions_pane(on_retry=None) -> ft.Column:
         pass
 
     def _on_scroll(e=None) -> None:
-        on_pane_scroll(pane)
+        on_pane_scroll(pane, e)
 
     try:
         feed.on_scroll = _on_scroll

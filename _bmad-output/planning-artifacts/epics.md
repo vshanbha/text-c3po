@@ -130,6 +130,45 @@ caption-row pattern) on the E2 decode path; verify mode-switch retention
 and memory-only session labeling per CAP-4 and CAP-3. Any
 model-by-language combo stays submittable; quality is measured in E4.
 
+### Story 3.5: Fix captions auto-follow and Jump-to-latest wiring
+
+Forward the ListView scroll event into on_pane_scroll so the USER filter
+works; follow disables only on a genuine user scroll and Jump re-enables
+it per CAP-1. Audit defect: the event was dropped, so every scroll
+disabled follow.
+
+### Story 3.6: Decouple translation from capture loop and label overflow
+
+Keep the LLM drain off the capture read path so frames are still read
+during translation, and surface PortAudio overflow as labeled gap rows
+per AD-8. Audit defect: synchronous drain inside the read loop plus a
+discarded overflow flag could silently drop speech.
+
+### Story 3.7: Fix session queue and seq races on start and gap
+
+Assign the mark_gap sequence and append under one lock; stop
+start_session silently discarding queued utterances and label them as a
+gap per AD-8. Audit defect: two-lock mark_gap could reorder rows.
+
+### Story 3.8: Relabel source picker to Auto-detect (D2-A)
+
+Remove the false affordance of the Live/File source-language dropdown:
+relabel as read-only Auto-detect (or remove) to match the `-l auto`
+whisper behavior per D2-A approved 2026-09-13; functional per-language
+whisper restart deferred out of v1.
+
+### Story 3.9: Build main-thread render pump (D3-B)
+
+Serialize all Flet control mutation through a single main-thread render
+queue/pump per D3-B approved 2026-09-13 (owner override of ratify);
+background threads post dicts only. E3-6 lands first, then the pump.
+
+### Story 3.10: Document and test global Stop scope (D4-A)
+
+Document Text Stop as global abort per D4-A approved 2026-09-13 (owner
+override of per-mode); add unit test asserting concurrent File/retry work
+is aborted by Text Stop.
+
 ## Epic 4: Ops, Eval & Polish
 
 Source: `_bmad-output/specs/spec-e4-ops-eval-polish/SPEC.md`
@@ -169,3 +208,22 @@ Delete all langchain-openai code and secrets.toml, then refresh README and
 AGENTS.md with the true Flet run, smoke, and harness commands; grep plus
 absence check both return empty per CAP-5. Never commit secrets; do not
 use streamlit run to verify v2.
+
+### Story 4.6: Publish updated docs to GitHub Pages
+
+Replace the stub hosting experiment with a real docs landing page and
+publish via the static.yml Pages workflow per CAP-6. Delivered by the
+MkDocs Material migration; tracked here after the audit found it missing
+from sprint-status.
+
+### Story 4.7: Fix unit CI and repair sprint tracking
+
+Make the web-serve smoke runnable without uv, stop masking empty
+collection, and reconcile stories.yaml with sprint-status.yaml. Audit
+defect: the master unit run is red (FileNotFoundError 'uv').
+
+### Story 4.8: Refresh stale v1 docs and infra
+
+Update the parent workspace AGENTS.md, fix .devcontainer, drop the stale
+pyproject "no CI" comment, and pin docs/requirements.txt. Audit hygiene;
+no behavior change.
