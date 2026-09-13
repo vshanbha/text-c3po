@@ -105,8 +105,11 @@ class SessionController:
         Blank payloads are dropped at the door (VAD already filters
         silence; double-guard here). Returns False when dropped or the
         session is closed. Each item is tagged with the current session id
-        (review #6) so a drain racing a restart drops stale utterances
-        instead of landing them in the new session.
+        (review #6) so a drain racing a restart drops post-before-restart
+        items instead of landing them in the new session. Note the limit:
+        an old runner that posts *after* the restart is tagged with the
+        new epoch by construction — epoch closes the drain race only;
+        runner lifecycle is owned by the 3-9 pump stage.
         """
         try:
             if not self._active:
@@ -170,20 +173,21 @@ class SessionController:
                     item = self._queue.get_nowait()
                 except Exception:
                     break
+                try:
+                    item_session = (
+                        item.get("session") if isinstance(item, dict) else None
+                    )
+                except Exception:
+                    item_session = None
+                if item_session is not None and item_session != self._session_id:
+                    continue
                 built = self._build(item)
                 if built is None:
                     continue
                 try:
                     with self._lock:
-                        try:
-                            item_session = (
-                                item.get("session") if isinstance(item, dict) else None
-                            )
-                        except Exception:
-                            item_session = None
-                        if (
-                            item_session is not None
-                            and item_session != self._session_id
+                        if item_session is not None and (
+                            item_session != self._session_id
                         ):
                             continue
                         self._seq += 1

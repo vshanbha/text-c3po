@@ -175,6 +175,7 @@ class LiveRunner:
                 return 0
             self._stream = stream
             self._running = True
+            self._in_overflow = False
             self._report_open(True, "open")
             posted = 0
             try:
