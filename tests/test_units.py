@@ -2278,6 +2278,23 @@ def test_runner_stop_is_prompt():
     assert stream.calls.index("abort") < stream.calls.index("close")
 
 
+def test_runner_was_stopped_distinguishes_stop_from_stream_end():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: _FakeStream([_vad_frame(0)]),
+    )
+    assert runner.was_stopped() is False
+    runner.run()
+    assert runner.was_stopped() is False
+    runner.request_stop()
+    assert runner.was_stopped() is True
+
+
 def test_runner_stop_before_run():
     from text_c3po.services.live_runner import LiveRunner
 
