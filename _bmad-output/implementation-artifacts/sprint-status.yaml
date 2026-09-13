@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 18:30
-last_updated: 09-13-2026 12:00
+last_updated: 09-13-2026 14:30
 project: text-c3po
 project_key: NOKEY
 tracking_system: file-system
@@ -52,7 +52,7 @@ development_status:
   2-4-file-decode-path-into-the-shared-asr-entry-point: done
   epic-2-retrospective: done
 
-  epic-3: in-progress
+  epic-3: done
   3-1-session-controller-with-owned-caption-list: done
   3-2-captions-pane-with-history-and-timestamps: done
   3-3-start-stop-toggle-with-live-status-indicators: done
@@ -61,7 +61,7 @@ development_status:
   3-6-decouple-translation-from-capture-loop-and-label-overflow: done
   3-7-fix-session-queue-and-seq-races-on-start-and-gap: done
   3-8-relabel-source-picker-to-auto-detect-d2-a: done
-  3-9-build-main-thread-render-pump-d3-b: in-progress
+  3-9-serialize-background-ui-updates-through-one-render-point: done
   3-10-document-and-test-global-stop-scope-d4-a: done
   epic-3-retrospective: done
 

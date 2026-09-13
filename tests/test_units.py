@@ -2827,3 +2827,95 @@ def test_e3_10_global_stop_aborts_all_streams():
         tmod._ACTIVE_STREAMS.discard(s1)
         tmod._ACTIVE_STREAMS.discard(s2)
     assert sorted(closed) == ["s1", "s2"]
+
+
+def test_e3_9_render_point_tripwire():
+    """E3-9 B+: page.update() is direct only in whitelisted main-thread fns.
+
+    AST-scans app.py: every `page.update()` call must live in _ui_update
+    itself or one of the six main-thread event handlers; all background
+    paths must go through _ui_update. Prevents contract regression.
+    """
+    import ast
+    import os
+
+    from text_c3po.paths import find_project_root
+
+    path = os.path.join(find_project_root(), "src", "text_c3po", "app.py")
+    tree = ast.parse(open(path).read())
+    whitelist = {
+        "_ui_update",
+        "on_mode_change",
+        "_reprobe_and_refresh",
+        "on_translate",
+        "on_start_live",
+        "on_stop_live",
+        "main",
+    }
+    offenders = []
+
+    def visit(node, stack):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                visit(child, stack + [child.name])
+            elif (
+                isinstance(child, ast.Call)
+                and isinstance(child.func, ast.Attribute)
+                and child.func.attr == "update"
+                and isinstance(child.func.value, ast.Name)
+                and child.func.value.id == "page"
+            ):
+                innermost = stack[-1] if stack else "<module>"
+                if innermost not in whitelist:
+                    offenders.append(innermost)
+            else:
+                visit(child, stack)
+
+    visit(tree, [])
+    assert offenders == [], "direct page.update() outside whitelist: {}".format(
+        sorted(set(offenders))
+    )
+
+
+def test_e3_9_ui_update_serializes_concurrent_calls():
+    """E3-9 B+: concurrent _ui_update calls never interleave page.update()."""
+    import threading
+
+    from text_c3po.app import _ui_update
+
+    violations = []
+    state = {"active": False, "count": 0}
+    guard = threading.Lock()
+
+    class StrictPage:
+        def update(self):
+            with guard:
+                if state["active"]:
+                    violations.append(True)
+                    return
+                state["active"] = True
+            try:
+                state["count"] += 1
+            finally:
+                with guard:
+                    state["active"] = False
+
+    page = StrictPage()
+    errors = []
+
+    def hammer():
+        try:
+            for _ in range(50):
+                _ui_update(page)
+        except Exception as exc:  # never raises by contract
+            errors.append(exc)
+
+    threads = [threading.Thread(target=hammer) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert not [t for t in threads if t.is_alive()]
+    assert errors == []
+    assert violations == []
+    assert state["count"] == 8 * 50

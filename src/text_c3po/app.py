@@ -50,13 +50,15 @@ WINDOW_MIN_HEIGHT = 640
 RETRY_CARD_HINT = "Couldn't parse that one. Retry."
 EMPTY_INPUT_HINT = "Type or paste something first."
 
-# E3-9 stage 1 (D3-B): single serialized UI-update helper. The live
-# capture drain (_render_session) funnels page.update() through here under
-# one lock so concurrent renders cannot interleave. Remaining background
-# threads (supervise, retry, poll, file worker) still call page.update()
-# directly and migrate in stage 2. Full run_thread pump
-# (page.run_thread onto the Flet loop) is staged for manual F1/F5
-# verification — see TEST-PLAN §J.
+# E3-9 (D3 re-decision B+, 2026-09-13): single serialized render point.
+# Every background thread (capture drain, supervise, retry, poll, file
+# worker, translate worker) funnels page.update() through _ui_update(page),
+# serialized under _UI_LOCK so concurrent renders cannot interleave. Only
+# main-thread event handlers (mode/mode-switch, Start/Stop, Translate,
+# pickers, main) call page.update() directly. The literal main-thread loop
+# pump (page.run_thread) was rejected: it runs in an executor thread, not
+# the main thread (flet 0.86.5 controls/page.py) — deferred as a-lite
+# pending manual F1/F5 evidence. AD-4 records this tolerance.
 _UI_LOCK = threading.Lock()
 
 
@@ -140,7 +142,7 @@ def _set_translating(refs, page, busy: bool, status: str = "") -> None:
                 status_text.value = status
             except Exception:
                 pass
-        page.update()
+        _ui_update(page)
     except Exception:
         pass
 
@@ -167,7 +169,7 @@ def _show_snackbar(page, message, on_retry) -> None:
                 snack.open = True
             except Exception:
                 pass
-        page.update()
+        _ui_update(page)
     except Exception:
         pass
 
@@ -511,10 +513,7 @@ def main(page: ft.Page) -> None:
                                 formal_control.value = preview + "…"
                         except Exception:
                             pass
-                    try:
-                        page.update()
-                    except Exception:
-                        pass
+                    _ui_update(page)
 
                 try:
                     result = translate_text(
@@ -548,10 +547,7 @@ def main(page: ft.Page) -> None:
                     if is_current_request(my_seq, translate_seq["current"]):
                         _set_translating(refs, page, False, tally)
                     else:
-                        try:
-                            page.update()
-                        except Exception:
-                            pass
+                        _ui_update(page)
             except Exception:
                 pass
 
@@ -613,7 +609,7 @@ def main(page: ft.Page) -> None:
             button = refs.get("pick_button")
             if button is not None:
                 button.disabled = file_busy["working"]
-            page.update()
+            _ui_update(page)
         except Exception:
             pass
 
@@ -654,7 +650,7 @@ def main(page: ft.Page) -> None:
                 button = refs.get("pick_button")
                 if button is not None:
                     button.disabled = False
-                page.update()
+                _ui_update(page)
             except Exception:
                 pass
 
@@ -798,10 +794,7 @@ def main(page: ft.Page) -> None:
                 pass
             _set_live_buttons(False)
             _paint_live(False, None)
-            try:
-                page.update()
-            except Exception:
-                pass
+            _ui_update(page)
         except Exception:
             pass
 
@@ -842,10 +835,7 @@ def main(page: ft.Page) -> None:
                 _paint_live(False, False)
                 _set_live_buttons(False)
                 live_state["starting"] = False
-                try:
-                    page.update()
-                except Exception:
-                    pass
+                _ui_update(page)
                 return
             try:
                 state = manager.ensure_running()
@@ -855,10 +845,7 @@ def main(page: ft.Page) -> None:
                 _paint_live(False, False)
                 _set_live_buttons(False)
                 live_state["starting"] = False
-                try:
-                    page.update()
-                except Exception:
-                    pass
+                _ui_update(page)
                 return
             if token != live_state["gen"]:
                 # Stopped while supervising: leave stop's state alone.
@@ -896,10 +883,7 @@ def main(page: ft.Page) -> None:
             live_state["starting"] = False
             _paint_live(True, True)
             _set_live_buttons(True)
-            try:
-                page.update()
-            except Exception:
-                pass
+            _ui_update(page)
             live_runner["thread"] = threading.Thread(
                 target=_run_live, args=(runner,), daemon=True
             )
@@ -922,7 +906,7 @@ def main(page: ft.Page) -> None:
                     pass
             _set_live_buttons(False)
             _paint_live(False, None)
-            page.update()
+            _ui_update(page)
         except Exception:
             pass
 
@@ -1141,7 +1125,7 @@ def main(page: ft.Page) -> None:
                                     current_model["value"] = selected
                             except Exception:
                                 pass
-                        page.update()
+                        _ui_update(page)
                     if went_down:
                         _show_snackbar(page, DISCONNECT_SNACKBAR_HINT, on_retry)
             except Exception:

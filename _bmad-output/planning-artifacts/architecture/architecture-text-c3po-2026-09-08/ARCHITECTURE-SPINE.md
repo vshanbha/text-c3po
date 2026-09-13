@@ -61,11 +61,20 @@ flowchart LR
 - **Prevents:** reorder/loss of captions on mode switch or concurrent utterance completion.
 - **Rule:** The session controller is the sole mutator of the ordered in-memory Caption list; it alone drains the utterance queue and the UI re-renders from controller state. Mode switch never clears the list; only new Start or app close does.
 
-### AD-4 — UI-thread confinement
+### AD-4 — UI-thread confinement (single serialized render point)
 
 - **Binds:** FR-10, FR-11
 - **Prevents:** Flet cross-thread races/crashes from capture/ASR/LLM threads.
-- **Rule:** Only the main thread touches Flet controls; background threads post to a thread-safe queue drained by the session controller (AD-3), which then issues UI callbacks.
+- **Rule:** Only the main thread touches Flet controls directly, and every
+  background thread funnels `page.update()` through the single serialized
+  `_ui_update(page)` helper (`app.py`, under `_UI_LOCK`); only main-thread
+  event handlers call `page.update()` directly (guarded by the E3-9 AST
+  tripwire). Background threads post dicts/queue entries and never own the
+  render. Rationale (D3 re-decision B+, 2026-09-13): `page.run_thread` runs
+  in an executor thread, not the main thread (flet 0.86.5
+  `controls/page.py`), so a literal main-thread loop pump cannot satisfy
+  this rule — the true loop pump (a-lite) is deferred pending manual F1/F5
+  evidence.
 
 ### AD-5 — Split translation contract
 

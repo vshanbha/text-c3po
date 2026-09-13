@@ -157,11 +157,14 @@ relabel as read-only Auto-detect (or remove) to match the `-l auto`
 whisper behavior per D2-A approved 2026-09-13; functional per-language
 whisper restart deferred out of v1.
 
-### Story 3.9: Build main-thread render pump (D3-B)
+### Story 3.9: Serialize background UI updates through one render point
 
-Serialize all Flet control mutation through a single main-thread render
-queue/pump per D3-B approved 2026-09-13 (owner override of ratify);
-background threads post dicts only. E3-6 lands first, then the pump.
+Route every background page.update() through the serialized
+_ui_update(page) helper, leaving only main-thread event handlers as direct
+callers per the 2026-09-13 D3 re-decision (B+ tolerance). The literal
+run_thread pump was rejected (executor thread, not main); record AD-4 as
+the single serialized render point. Built from
+`stories/9-serialize-background-ui-updates-through-one-render-point.md`.
 
 ### Story 3.10: Document and test global Stop scope (D4-A)
 
