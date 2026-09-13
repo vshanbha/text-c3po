@@ -762,6 +762,29 @@ def main(page: ft.Page) -> None:
         except Exception:
             pass
 
+    def _on_live_ended_naturally(runner) -> None:
+        # Stream died on its own (unplugged device, driver error) while no
+        # Stop was pressed: reset the running chrome instead of lying
+        # "Live". Skipped when a newer session already owns the slot, and
+        # when the user stopped (on_stop_live owns that path).
+        try:
+            if live_runner.get("current") is not runner:
+                return
+            live_runner["current"] = None
+            live_runner["thread"] = None
+            try:
+                live_controller.end_session()
+            except Exception:
+                pass
+            _set_live_buttons(False)
+            _paint_live(False, None)
+            try:
+                page.update()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _run_live(runner) -> None:
         try:
             runner.run()
@@ -770,6 +793,11 @@ def main(page: ft.Page) -> None:
         finally:
             try:
                 _render_session()
+            except Exception:
+                pass
+            try:
+                if not runner.was_stopped():
+                    _on_live_ended_naturally(runner)
             except Exception:
                 pass
 

@@ -108,7 +108,8 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
   never silent drops.
 - **F5 — scroll and jump.** During a long session, scroll up.
   Expect: auto-follow stops, "Jump to latest" appears; pressing it
-  returns to the newest row and re-enables follow.
+  returns to the newest row and re-enables follow. Very long sessions
+  (1000+ rows) stay usable.
 - **F6 — screen reader.** VoiceOver on, one utterance. Expect: the
   new row announced once (translation + timestamp).
 - **F7 — BlackHole loopback.** Pick BlackHole 2ch, play a German
@@ -130,6 +131,9 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
 - **F13 — stop timing.** Start, speak, press Stop mid-sentence.
   Expect: capture halts within ~2 s; trailing speech may still land
   one final caption; list retained.
+- **F14 — device unplug mid-session.** Start, then unplug the USB mic
+  (or disable the device). Expect: session ends gracefully — buttons
+  reset to Idle, list retained, no hang, no stuck red "Live".
 
 ## G. Eval gate (E1, repeatable)
 
@@ -177,12 +181,10 @@ ad-hoc signature suffices for local runs.
   via automation — mode switching and Translate stay manual; the
   `FilePicker` overlay paints a red "Unknown control" panel on web
   only (desktop unaffected).
-  Expect: full UI interactive via snapshot/act. Kill the auto-launched
-  Flet desktop client if it gets in the way (`pkill flet-desktop`).
 
 ## Coverage map (what automation owns)
 
-- `pytest` (134 unit + 1 web smoke, all headless/deterministic —
+- `pytest` (135 unit + 1 web smoke, all headless/deterministic —
   recount with `pytest --collect-only -q`): VAD chunking rules,
   device/VAD/decode/transcribe pure logic, manager lifecycle with
   fake processes, session ordering/gaps/retry under lock, captions

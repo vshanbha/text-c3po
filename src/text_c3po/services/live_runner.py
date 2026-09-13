@@ -93,6 +93,18 @@ class LiveRunner:
         except Exception:
             return False
 
+    def was_stopped(self) -> bool:
+        """True when a stop was latched (vs the stream ending on its own).
+
+        Lets the UI tell user-initiated Stop apart from a died stream
+        (unplugged device): the latter must reset the running chrome
+        instead of lying "Live". Never raises.
+        """
+        try:
+            return bool(self._stop_event.is_set())
+        except Exception:
+            return False
+
     def request_stop(self) -> None:
         """Halt capture promptly and latch stopped. Never raises.
 
