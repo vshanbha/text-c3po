@@ -92,16 +92,18 @@
     source value stays unread; update DESIGN/EXPERIENCE source-picker copy.
     Verify TEST-PLAN C1-C3 still pass with Auto-detect shown.
 - id: "9"
-  title: Build main-thread render pump (D3-B)
+  title: Serialize background UI updates through one render point
   description: >-
-    Serialize all Flet control mutation through a single main-thread render
-    queue/pump per D3-B approved 2026-09-13 (owner override of ratify);
-    background capture/ASR/LLM threads post dicts only, session controller
-    drains via pump; update AD-4 spine text on completion.
+    Route every background page.update() through the serialized
+    _ui_update(page) helper, leaving only main-thread event handlers as
+    direct callers, per the 2026-09-13 D3 re-decision (B+ tolerance; the
+    literal run_thread pump was rejected because it runs in an executor
+    thread); record AD-4 as the single serialized render point.
   invoke_dev_with: >-
-    E3-6 lands first to shrink the concurrency surface, then the pump.
-    Revisit verified by TEST-PLAN F1/F5 (no flicker, no lost rows under
-    load). No new ASR or translation logic.
+    E3-6 already shrank the concurrency surface. Do not add page.run_thread
+    or an asyncio pump (deferred a-lite). Add an AST tripwire plus a
+    re-entrancy concurrency test. Verified by TEST-PLAN F1/F5 under load;
+    no new ASR or translation logic.
 - id: "10"
   title: Document and test global Stop scope (D4-A)
   description: >-
