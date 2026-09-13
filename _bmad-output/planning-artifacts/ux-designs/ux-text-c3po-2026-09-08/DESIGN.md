@@ -110,8 +110,8 @@ Rules: translated output always renders at `{typography.body.fontSize}` or large
 Single fixed window, minimum 960×640, resizable larger. Spacing scale is `{spacing.1}`–`{spacing.8}` (4–32px); default gaps are `{spacing.4}` (16px) between blocks, `{spacing.2}` (8px) inside rows.
 
 - **Top strip:** mode toggle (`SegmentedButton`: Text / Live / File) left, Ollama status dot + model `Dropdown` right. One row, always visible, identical across modes.
-- **Text mode:** two-column above 1100px (input left, output cards right), single stacked column below. Input `TextField` (multiline, min 6 lines) → row of target-language `Dropdown` + model `Dropdown` + Translate `FilledButton` → three output cards (formal / informal / commentary) + origin-language caption.
-- **Live mode:** controls row (Start/Stop `FilledButton` toggle + device `Dropdown` + source `Dropdown` + target `Dropdown`) → status row (three dots: capture / whisper / model + latency text) → captions `ListView` filling remaining height, newest at bottom, auto-follow with scroll-back escape.
+- **Text mode:** two-column above 1100px (input left, output cards right), single stacked column below. Input `TextField` (multiline, min 6 lines) → row of target-language `Dropdown` + model `Dropdown` + Translate `FilledButton` → two output cards (formal / informal) + origin-language caption (commentary cut per D1-A 2026-09-13).
+- **Live mode:** controls row (Start/Stop `FilledButton` toggle + device `Dropdown` + read-only Auto-detect source indicator + target `Dropdown`) → status row (three dots: capture / whisper / model + latency text) → captions `ListView` filling remaining height, newest at bottom, auto-follow with scroll-back escape.
 - **File mode:** picker row (`FilePicker` button + chosen path label) → `ProgressBar` → results `ListView` reusing the caption-row pattern.
 
 Avoid: sidebars, drawers, tabs-inside-tabs, multi-window flows. If it doesn't fit the single window, it doesn't ship in v1.

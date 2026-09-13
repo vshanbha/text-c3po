@@ -24,6 +24,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
+        # Pinned-exact per requirements.txt (== pyproject [project]; D6-B tracks
+        # uv.lock for `uv sync --frozen` clean-machine installs — CI stays on
+        # pip here by design, no uv on the runner).
         run: pip install -r requirements.txt pytest
       - name: Syntax check (no deps, no Ollama)
         run: python -m compileall -q src tests
