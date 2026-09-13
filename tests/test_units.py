@@ -2649,3 +2649,181 @@ def test_port_closed_probe():
         sock.listen(1)
         assert helpers._port_closed(port) is False
     assert helpers._port_closed(port) is True
+
+
+def test_e3_5_scroll_event_forwarding():
+    """E3-5: USER scroll disables follow, programmatic does not."""
+    from text_c3po.ui.captions import build_captions_pane
+
+    pane = build_captions_pane()
+    feed = pane.data["list"]
+    assert callable(feed.on_scroll)
+
+    class FakeType:
+        name = "USER"
+
+    class FakeEvent:
+        event_type = FakeType()
+
+    feed.on_scroll(FakeEvent())
+    assert pane.data["follow"]["on"] is False
+
+    from text_c3po.ui.captions import jump_to_latest
+
+    jump_to_latest(pane)
+    assert pane.data["follow"]["on"] is True
+
+    class ProgType:
+        name = "UPDATE"
+
+    class ProgEvent:
+        event_type = ProgType()
+
+    feed.on_scroll(ProgEvent())
+    assert pane.data["follow"]["on"] is True
+
+
+def test_e3_7_mark_gap_single_lock_ordering():
+    """E3-7: mark_gap seq+append atomic; drain cannot interleave."""
+    from text_c3po.services.session import SessionController
+
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: {"formal": text},
+    )
+    ctl.start_session()
+    ctl.post_utterance("a")
+    ctl.drain()
+    gap = ctl.mark_gap("restart")
+    assert gap["seq"] == 2
+    assert [c["seq"] for c in ctl.captions()] == [1, 2]
+
+
+def test_e3_7_restart_labels_queued_as_gap():
+    """E3-7: start_session no longer silently drops queued utterances."""
+    from text_c3po.services.session import SessionController
+
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: {"formal": text},
+    )
+    ctl.start_session()
+    ctl.post_utterance("queued-but-never-drained")
+    sid = ctl.start_session()
+    assert sid == 2
+    caps = ctl.captions()
+    assert len(caps) == 1 and caps[0]["kind"] == "gap"
+    assert "discarded" in caps[0]["text"]
+
+
+def test_e3_7_stale_drain_after_restart_is_dropped():
+    """Review #6: items posted in session 1 never land in session 2."""
+    from text_c3po.services.session import SessionController
+
+    translated = []
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: (
+            translated.append(text) or {"formal": text}
+        ),
+    )
+    ctl.start_session()
+    ctl.post_utterance("stale-from-session-1")
+    ctl.start_session()  # restart without draining: gap row + new epoch
+    added = ctl.drain()
+    assert added == []
+    caps = ctl.captions()
+    assert len(caps) == 1 and caps[0]["kind"] == "gap"
+    ctl.post_utterance("fresh-in-session-2")
+    added = ctl.drain()
+    assert [c["seq"] for c in added] == [2]
+    assert added[0]["translation"] == "fresh-in-session-2"
+
+
+def test_e3_8_source_picker_is_auto_detect():
+    """D2-A: source picker is read-only Auto-detect, not 23 languages."""
+    from text_c3po.languages import name_for_code
+    from text_c3po.ui.language_pickers import build_source_dropdown
+
+    picker = build_source_dropdown()
+    assert picker.disabled is True
+    assert picker.value == "auto"
+    assert [o.key for o in picker.options] == ["auto"]
+    assert "auto" in str(picker.label).lower()
+    # Review #11 close-out: "auto" normalizes to "" at the app boundary
+    # (no such language code), so it never reaches whisper or the UI.
+    assert name_for_code("auto") == ""
+
+
+def test_e3_6_overflow_marks_gap_and_callback_async():
+    """E3-6: PortAudio overflow becomes a gap row; callback off read path."""
+    from text_c3po.services.live_runner import LiveRunner
+    from text_c3po.services.session import SessionController
+
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=lambda text, target, model: {"formal": text},
+    )
+    ctl.start_session()
+
+    class OverflowOnceStream:
+        """First read reports overflow, then the stream ends."""
+
+        def __init__(self):
+            self.closed = False
+            self.calls = 0
+
+        def read(self, n):
+            import struct
+
+            self.calls += 1
+            if self.calls == 1:
+                return struct.pack("<8000h", *([0] * 8000)), True
+            raise RuntimeError("stream ended")
+
+        def stop(self):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    fired = []
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda device: OverflowOnceStream(),
+        on_utterance=lambda: fired.append(True),
+    )
+    assert runner.run() == 0
+    gaps = [c for c in ctl.captions() if c["kind"] == "gap"]
+    assert gaps and "overflow" in gaps[0]["text"]
+    assert fired
+
+
+def test_e3_10_global_stop_aborts_all_streams():
+    """D4-A: cancel_inflight closes every registered stream (global)."""
+    from text_c3po.services import translation as tmod
+
+    closed = []
+
+    class S1:
+        def close(self):
+            closed.append("s1")
+
+    class S2:
+        def close(self):
+            closed.append("s2")
+
+    s1, s2 = S1(), S2()
+    tmod._ACTIVE_STREAMS.add(s1)
+    tmod._ACTIVE_STREAMS.add(s2)
+    try:
+        assert tmod.cancel_inflight() >= 2
+    finally:
+        tmod._ACTIVE_STREAMS.discard(s1)
+        tmod._ACTIVE_STREAMS.discard(s2)
+    assert sorted(closed) == ["s1", "s2"]

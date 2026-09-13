@@ -26,8 +26,8 @@ vshanbha's v1 translator needs a cloud key and a browser; the live-translate PoC
   - **intent:** App can probe Ollama at 127.0.0.1:11434 on startup and show connected / not-running state with retry.
   - **success:** With `ollama serve` stopped the top strip shows not-running guidance within 5s; with it running the state flips to connected without restart.
 - **CAP-3**
-  - **intent:** User can submit typed text with a target language and receive formal / informal / commentary / origin_language.
-  - **success:** Valid input returns all four fields; malformed model JSON surfaces as a retryable inline error, never raw; empty input is rejected client-side with no LLM call.
+  - **intent:** User can submit typed text with a target language and receive formal / informal / origin_language.
+  - **success:** Valid input returns all three fields; malformed model JSON surfaces as a retryable inline error, never raw; empty input is rejected client-side with no LLM call.
 - **CAP-4**
   - **intent:** User can pick any installed Ollama model listed from `/api/tags`, defaulting to lfm2.5 when present else first available.
   - **success:** Picker lists exactly what `/api/tags` returns at launch plus a refresh action; default-selection rule holds with and without lfm2.5 installed.
@@ -58,7 +58,7 @@ vshanbha's v1 translator needs a cloud key and a browser; the live-translate PoC
 
 ## Success signal
 
-vshanbha pastes a paragraph in Text mode, picks a target language and model, gets formal/informal/commentary plus origin language, and the 5×5 smoke matrix is recorded — the shell, translation core, and repeatable gate all demonstrably work before E2 begins.
+vshanbha pastes a paragraph in Text mode, picks a target language and model, gets formal/informal plus origin language, and the 5×5 smoke matrix is recorded — the shell, translation core, and repeatable gate all demonstrably work before E2 begins.
 
 ## Assumptions
 

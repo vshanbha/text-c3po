@@ -39,3 +39,76 @@
   invoke_dev_with: >-
     Any model-by-language combo stays submittable; quality is measured in
     E4, never gated here.
+- id: "5"
+  title: Fix captions auto-follow and Jump-to-latest wiring
+  description: >-
+    Forward the ListView scroll event from feed.on_scroll into
+    on_pane_scroll so _is_user_scroll can distinguish ScrollType.USER from
+    programmatic auto-scrolls; follow disables only on a genuine user
+    scroll and Jump-to-latest re-enables it per CAP-1.
+  invoke_dev_with: >-
+    2026-09-13 audit defect: captions.py _on_scroll() drops the event, so
+    the USER filter is unreachable and every scroll (including the
+    auto-scroll and the Jump scroll itself) turns follow off. Verify the
+    installed flet OnScrollEvent shape before patching; add a regression
+    test that drives a non-USER event and asserts follow stays on, and a
+    USER event and asserts it turns off. Re-run TEST-PLAN F5.
+- id: "6"
+  title: Decouple translation from capture loop and label overflow
+  description: >-
+    Keep the LLM drain off the capture read path so LiveRunner keeps
+    reading frames during an in-flight translation, and surface PortAudio
+    overflow / dropped frames as labeled gap rows per AD-8 rather than
+    discarding the read overflow flag per CAP-1 and NFR-1.
+  invoke_dev_with: >-
+    2026-09-13 audit defect: _submit() calls the on_utterance callback that
+    drains and translates synchronously inside the read loop, while
+    stream.read's _overflow flag is discarded — speech during a translation
+    can be silently dropped, contradicting AD-8. Preserve the existing
+    gap-row contract; no silent drops. Verify capture continuity and that a
+    forced overflow produces a gap row.
+- id: "7"
+  title: Fix session queue and seq races on start and gap
+  description: >-
+    Assign the mark_gap sequence number and append the caption under one
+    lock acquisition so an interleaved drain cannot reorder rows, and stop
+    start_session silently discarding queued utterances — label them as a
+    gap per AD-8 instead per CAP-3.
+  invoke_dev_with: >-
+    2026-09-13 audit defect: session.py mark_gap increments _seq and appends
+    under two separate lock acquisitions, and start_session's _drain_queue
+    throws away just-posted utterances with no gap row. Keep the translate
+    call outside the lock. Add deterministic race tests (interleaver) and a
+    stop-then-restart test asserting no silent drop.
+- id: "8"
+  title: Relabel source picker to Auto-detect (D2-A)
+  description: >-
+    Remove the false affordance of the Live/File source-language dropdown:
+    relabel as read-only Auto-detect (or remove) to match the `-l auto`
+    whisper behavior per D2-A approved 2026-09-13; functional per-language
+    whisper restart deferred out of v1.
+  invoke_dev_with: >-
+    D2-A v1 decision: honest UI matching transcribe auto-detect; File mode
+    source value stays unread; update DESIGN/EXPERIENCE source-picker copy.
+    Verify TEST-PLAN C1-C3 still pass with Auto-detect shown.
+- id: "9"
+  title: Build main-thread render pump (D3-B)
+  description: >-
+    Serialize all Flet control mutation through a single main-thread render
+    queue/pump per D3-B approved 2026-09-13 (owner override of ratify);
+    background capture/ASR/LLM threads post dicts only, session controller
+    drains via pump; update AD-4 spine text on completion.
+  invoke_dev_with: >-
+    E3-6 lands first to shrink the concurrency surface, then the pump.
+    Revisit verified by TEST-PLAN F1/F5 (no flicker, no lost rows under
+    load). No new ASR or translation logic.
+- id: "10"
+  title: Document and test global Stop scope (D4-A)
+  description: >-
+    Document Text Stop as global abort (cancels every registered
+    stream/HTTP client including File and caption-retry) per D4-A approved
+    2026-09-13 (owner override of per-mode); add unit test asserting
+    concurrent File/retry work is aborted by Text Stop.
+  invoke_dev_with: >-
+    Least-surprise overridden by owner intent: one Stop cancels everything;
+    a per-mode abort would need explicit new control. Update UX copy.

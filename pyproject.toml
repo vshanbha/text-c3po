@@ -31,8 +31,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 # Product test policy:
 # - Plain `pytest` runs FAST unit tests only (no Ollama, no whisper-server,
-#   no network). Ollama-backed tests are expensive on CPU/GPU and never run
-#   in CI (there is no test CI workflow by design).
+#   no network). Ollama-backed tests are expensive on CPU/GPU and manual-only
+#   (`pytest -m integration`, plus the eval-harness gate script). Unit CI
+#   (.github/workflows/tests.yml) runs the fast suite on every push to
+#   master; integration never runs in CI by design.
 # - Mark any test that calls Ollama with @pytest.mark.integration and run it
 #   manually when needed: `pytest -m integration` (CLI -m overrides addopts).
 #   Integration tests are SERIAL ONLY: one LLM request at a time (hardware

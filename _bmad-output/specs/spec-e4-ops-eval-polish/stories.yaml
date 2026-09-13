@@ -20,8 +20,11 @@
     --windowed decision recorded) carrying NSMicrophoneUsageDescription so
     first Live start prompts and TCC grants mic access per CAP-3.
   invoke_dev_with: >-
-    Bundle runs loopback-only to 127.0.0.1:11434 and 127.0.0.1:9001 after
-    download; verify with the loopback-only check.
+    D5-A approved 2026-09-13: tool of record is `flet build macos`
+    (PyInstaller not chosen); ad-hoc local bundle only, no sign/notarize;
+    document Gatekeeper copy path for another Mac. Bundle runs loopback-only
+    to 127.0.0.1:11434 and 127.0.0.1:9001 after download; verify with the
+    loopback-only check. Manual session per TEST-PLAN section H.
 - id: "4"
   title: Regression tests for VAD parser and whisper health
   description: >-
@@ -44,3 +47,30 @@
     architecture); push to master updates the site via the existing
     static.yml Pages workflow per CAP-6.
   done_checkpoint: true
+- id: "7"
+  title: Fix unit CI and repair sprint tracking
+  description: >-
+    Make the web-serve smoke runnable where uv is absent (invoke the test
+    interpreter directly, install uv, or skip explicitly) and stop masking
+    the empty-collection exit code, so the master unit run is green again;
+    reconcile stories.yaml with sprint-status.yaml and track the Pages story.
+  invoke_dev_with: >-
+    2026-09-13 audit: CI run 34746382984 is RED on master with
+    FileNotFoundError 'uv' from test_web_smoke.py; tests.yml installs pip
+    only and its `|| [ $? -eq 5 ]` mask hides a zero-collection break. This
+    is an ops fix, not a product decision — choose the minimal durable
+    option and keep plain pytest fast and hermetic.
+- id: "8"
+  title: Refresh stale v1 docs and infra
+  description: >-
+    Update the parent workspace AGENTS.md (still describes Streamlit +
+    OpenAI + secrets.toml), fix the .devcontainer (Python 3.11, nonexistent
+    text-c3po/app.py, Streamlit 8501), remove the stale "no test CI
+    workflow" comment in pyproject.toml, and pin docs/requirements.txt.
+    Include D1-A (ratify commentary cut: fix README.md:4 + E1 SPEC Success
+    signal to formal/informal/origin_language) and D6-B (track uv.lock:
+    remove from .gitignore + stale comment, commit lock).
+  invoke_dev_with: >-
+    2026-09-13 audit hygiene items; no behavior change. Keep requirements.txt
+    and pyproject [project] dependencies identical (test_dependency_pins_agree).
+    D1 docs-only, D6 reproducible `uv sync` for clean-machine goal.

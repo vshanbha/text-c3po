@@ -15,6 +15,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import time
 import urllib.request
 
@@ -71,7 +72,7 @@ def test_web_serve_smoke(tmp_path):
     log_path = os.path.join(str(tmp_path), "web-smoke.log")
     log_handle = open(log_path, "wb")
     proc = subprocess.Popen(
-        ["uv", "run", "python", "-m", "text_c3po.app"],
+        [sys.executable, "-m", "text_c3po.app"],
         cwd=root,
         env=env,
         stdout=log_handle,

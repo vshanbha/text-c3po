@@ -1,7 +1,7 @@
 # 🤖 Text C-3PO — Local-first Translator (v2)
 
 Flet desktop app. Type text → local Ollama model → structured translation
-(formal / informal / commentary / detected language). No API keys, no cloud:
+(formal / informal / detected language). No API keys, no cloud:
 after the first model download, everything runs on loopback.
 
 Inspired by the Star Wars character C-3PO. Product direction lives in

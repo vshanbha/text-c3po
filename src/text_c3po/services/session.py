@@ -58,11 +58,25 @@ class SessionController:
         """Begin a new session: clear captions, reset sequence. Never raises."""
         try:
             with self._lock:
-                self._drain_queue()
+                dropped = self._drain_queue()
                 self._captions = []
                 self._seq = 0
                 self._active = True
                 self._session_id += 1
+                if dropped:
+                    self._seq += 1
+                    self._captions.append(
+                        {
+                            "seq": self._seq,
+                            "kind": "gap",
+                            "text": "…(session restarted, {} queued utterance{} discarded)…".format(
+                                dropped, "" if dropped == 1 else "s"
+                            ),
+                            "translation": "",
+                            "source_lang": "",
+                            "at": self._now_iso(),
+                        }
+                    )
                 return self._session_id
         except Exception:
             pass
@@ -90,14 +104,26 @@ class SessionController:
 
         Blank payloads are dropped at the door (VAD already filters
         silence; double-guard here). Returns False when dropped or the
-        session is closed.
+        session is closed. Each item is tagged with the current session id
+        (review #6) so a drain racing a restart drops stale utterances
+        instead of landing them in the new session.
         """
         try:
             if not self._active:
                 return False
             if not isinstance(text, str) or not text.strip():
                 return False
-            self._queue.put({"text": text.strip(), "source_lang": source_lang})
+            try:
+                session = self._session_id
+            except Exception:
+                session = 0
+            self._queue.put(
+                {
+                    "text": text.strip(),
+                    "source_lang": source_lang,
+                    "session": session,
+                }
+            )
             return True
         except Exception:
             return False
@@ -113,19 +139,18 @@ class SessionController:
             with self._lock:
                 self._seq += 1
                 seq = self._seq
-            caption = {
-                "seq": seq,
-                "kind": "gap",
-                "text": "…({})…".format(reason),
-                "translation": "",
-                "source_lang": "",
-                "at": self._now_iso(),
-            }
-            try:
-                with self._lock:
+                caption = {
+                    "seq": seq,
+                    "kind": "gap",
+                    "text": "…({})…".format(reason),
+                    "translation": "",
+                    "source_lang": "",
+                    "at": self._now_iso(),
+                }
+                try:
                     self._captions.append(caption)
-            except Exception:
-                pass
+                except Exception:
+                    pass
             return dict(caption)
         except Exception:
             return None
@@ -150,6 +175,17 @@ class SessionController:
                     continue
                 try:
                     with self._lock:
+                        try:
+                            item_session = (
+                                item.get("session") if isinstance(item, dict) else None
+                            )
+                        except Exception:
+                            item_session = None
+                        if (
+                            item_session is not None
+                            and item_session != self._session_id
+                        ):
+                            continue
                         self._seq += 1
                         built["seq"] = self._seq
                         self._captions.append(built)
@@ -248,12 +284,18 @@ class SessionController:
         except Exception:
             return ""
 
-    def _drain_queue(self) -> None:
+    def _drain_queue(self) -> int:
         try:
+            dropped = 0
             while True:
                 self._queue.get_nowait()
+                dropped += 1
         except Exception:
             pass
+        try:
+            return dropped
+        except Exception:
+            return 0
 
     def _build(self, item) -> "dict | None":
         """Translate one queued item into an unsequenced caption dict.
