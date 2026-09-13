@@ -65,12 +65,12 @@ flowchart LR
 
 - **Binds:** FR-10, FR-11
 - **Prevents:** Flet cross-thread races/crashes from capture/ASR/LLM threads.
-- **Rule:** Only the main thread touches Flet controls directly, and every
-  background thread funnels `page.update()` through the single serialized
-  `_ui_update(page)` helper (`app.py`, under `_UI_LOCK`); only main-thread
-  event handlers call `page.update()` directly (guarded by the E3-9 AST
-  tripwire). Background threads post dicts/queue entries and never own the
-  render. Rationale (D3 re-decision B+, 2026-09-13): `page.run_thread` runs
+- **Rule:** Background threads may mutate control properties but must funnel
+  every `page.update()` through the single serialized `_ui_update(page)`
+  helper (`app.py`, under `_UI_LOCK`); only main-thread event handlers call
+  `page.update()` directly (guarded by the E3-9 AST tripwire). Main-thread-only
+  mutation (a-lite) is deferred pending manual F1/F5 evidence.
+  Rationale (D3 re-decision B+, 2026-09-13): `page.run_thread` runs
   in an executor thread, not the main thread (flet 0.86.5
   `controls/page.py`), so a literal main-thread loop pump cannot satisfy
   this rule — the true loop pump (a-lite) is deferred pending manual F1/F5
