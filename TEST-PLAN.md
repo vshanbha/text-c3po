@@ -240,7 +240,7 @@ ad-hoc signature suffices for local runs.
 
 ## Coverage map (what automation owns)
 
-- `pytest` (173 unit + 1 web smoke, all headless/deterministic —
+- `pytest` (176 unit + 1 web smoke, all headless/deterministic —
   recount with `pytest --collect-only -q` after any test-adding diff):
   VAD chunking rules, device/VAD/decode/transcribe pure logic, manager
   lifecycle with fake processes, session ordering/gaps/retry under

@@ -16,7 +16,7 @@ import datetime
 import queue
 import threading
 
-from text_c3po.services.translation import translate_text
+from text_c3po.services.translation import RETRY_MESSAGE, translate_text
 
 UTTERANCE_CONTRACT_KEYS = ("text", "source_lang")
 
@@ -237,15 +237,22 @@ class SessionController:
                 result = self._translate_fn(source, self.target_language, self.model)
             except Exception:
                 result = {
-                    "error": "Couldn't parse that one. Retry.",
+                    "error": RETRY_MESSAGE,
                     "retryable": True,
                 }
             try:
                 with self._lock:
                     if isinstance(result, dict) and result.get("error"):
                         target["text"] = str(
-                            result.get("error") or "Couldn't parse that one. Retry."
+                            result.get("error") or RETRY_MESSAGE
                         )
+                        # Refresh the flag from the new result: a retry that
+                        # lands on a non-retryable error (output ceiling)
+                        # must drop the row's Retry button with it.
+                        try:
+                            target["retryable"] = result.get("retryable", True)
+                        except Exception:
+                            pass
                     else:
                         formal = ""
                         try:
@@ -257,7 +264,7 @@ class SessionController:
                         except Exception:
                             formal = ""
                         if not isinstance(result, dict):
-                            target["text"] = "Couldn't parse that one. Retry."
+                            target["text"] = RETRY_MESSAGE
                         else:
                             target["kind"] = "caption"
                             target["text"] = source
@@ -320,7 +327,7 @@ class SessionController:
                     text.strip(), self.target_language, self.model
                 )
             except Exception:
-                result = {"error": "Couldn't parse that one. Retry.", "retryable": True}
+                result = {"error": RETRY_MESSAGE, "retryable": True}
             if isinstance(result, dict) and result.get("error"):
                 try:
                     retryable = result.get("retryable", True)
@@ -329,7 +336,7 @@ class SessionController:
                 return {
                     "kind": "error",
                     "text": str(
-                        result.get("error") or "Couldn't parse that one. Retry."
+                        result.get("error") or RETRY_MESSAGE
                     ),
                     "translation": "",
                     "source": text.strip(),
@@ -342,7 +349,7 @@ class SessionController:
             if not isinstance(result, dict):
                 return {
                     "kind": "error",
-                    "text": "Couldn't parse that one. Retry.",
+                    "text": RETRY_MESSAGE,
                     "translation": "",
                     "source": text.strip(),
                     "source_lang": str(source),

@@ -486,7 +486,7 @@ def record_support(results, path, date=None, languages=None, label=None):
             )
         lines.append("")
     else:
-        lines.append("No echoes — every valid cell rendered the target.")
+        lines.append("No unsupported cells — every valid cell rendered the target.")
         lines.append("")
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.isdir(parent):

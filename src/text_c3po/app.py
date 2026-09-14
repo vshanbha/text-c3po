@@ -277,6 +277,13 @@ def _spill_web_pick(picked_bytes, picked_name):
         suffix = os.path.splitext(picked_name or "")[1].lower() or ".wav"
         tmp = _tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
         path = tmp.name
+        # Track before writing: a write failure — or interpreter exit
+        # mid-write — must still be reaped, and only tracked paths are.
+        try:
+            with _SPILLED_LOCK:
+                _SPILLED_TEMPS.add(path)
+        except Exception:
+            pass
         try:
             with tmp:
                 tmp.write(picked_bytes)
@@ -284,8 +291,6 @@ def _spill_web_pick(picked_bytes, picked_name):
             _discard_spilled(path)
             return None, False
         try:
-            with _SPILLED_LOCK:
-                _SPILLED_TEMPS.add(path)
             if not _SPILL_REAPER_ARMED["armed"]:
                 _SPILL_REAPER_ARMED["armed"] = True
                 atexit.register(_reap_spilled)
@@ -310,20 +315,21 @@ def _overlay_snackbar(page, snack) -> None:
         pass
 
 
-def _show_snackbar(page, message, on_retry) -> None:
-    """Render a SnackBar with a Retry action; never raises.
+def _show_snackbar(page, message, on_retry, with_retry=True) -> None:
+    """Render a SnackBar, with a Retry action unless suppressed; never raises.
 
     Material's transient-error pattern: the dot shows state, this carries
     the words plus the one-tap fix. flet 0.86 routes DialogControl via
     show_dialog (Dialogs stack), not page.overlay. The presentation runs
     through the same loop marshaling as _ui_update: retry toasts fire
     from worker threads, and show_dialog's internal _dialogs.update()
-    would drop off-loop exactly like the F3 spinner did.
+    would drop off-loop exactly like the F3 spinner did. with_retry=False
+    renders a bare notice (wiring breaks: retry re-renders the same break).
     """
     try:
         snack = ft.SnackBar(
             content=ft.Text(message),
-            action="Retry",
+            action="Retry" if with_retry else None,
             on_action=lambda e: on_retry(),
         )
 
@@ -400,6 +406,9 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                 if control is not None:
                     try:
                         control.value = shown or RETRY_CARD_HINT
+                        # Error prose is diagnosis, not translation — and a
+                        # prior success may have left copyable=True behind.
+                        control.data = {"copyable": False}
                     except Exception:
                         pass
             origin = refs.get("origin_caption")
@@ -473,12 +482,15 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                     origin_control.value = SOURCE_TITLE
         except Exception:
             pass
-        if wiring_broken and formal_value_ok:
+        if wiring_broken:
+            # Regardless of result quality: nothing on screen can be
+            # trusted, and retry re-renders into the same break — so no
+            # Retry affordance, and no model-blaming copy on any path.
             try:
                 logger.warning("translation rendered with missing refs")
             except Exception:
                 pass
-            _show_snackbar(page, WIRING_HINT, on_retry)
+            _show_snackbar(page, WIRING_HINT, on_retry, with_retry=False)
         elif not formal_ok:
             _show_retry_snackbar(page, on_retry)
     except Exception:
@@ -770,20 +782,16 @@ def main(page: ft.Page) -> None:
                     return
                 # Completeness cue: char count of what actually rendered, so
                 # a short result is visible as a number, not a feeling.
-                # Errors carry no tally — "Translated · 0 chars" next to an
-                # error card is a lie told by len("").
+                # Errors and blank primaries carry no tally — "Translated ·
+                # 0 chars" next to an error card is a lie told by len("").
                 try:
+                    shown = result.get("formal", "") if isinstance(result, dict) else ""
                     if isinstance(result, dict) and result.get("error"):
                         tally = ""
+                    elif not (isinstance(shown, str) and shown.strip()):
+                        tally = ""
                     else:
-                        shown = (
-                            result.get("formal", "") if isinstance(result, dict) else ""
-                        )
-                        tally = (
-                            "Translated · {} chars".format(len(shown))
-                            if isinstance(shown, str)
-                            else ""
-                        )
+                        tally = "Translated · {} chars".format(len(shown))
                 except Exception:
                     tally = ""
                 try:
@@ -878,7 +886,7 @@ def main(page: ft.Page) -> None:
             try:
                 result = transcribe_file(path, target_value, current_model.get("value"))
             except Exception:
-                result = {"error": "Couldn't parse that one. Retry."}
+                result = {"error": RETRY_CARD_HINT}
             if isinstance(result, dict) and result.get("error"):
                 _set_file_status(str(result["error"]))
                 return
@@ -1240,11 +1248,18 @@ def main(page: ft.Page) -> None:
                     pass
                 try:
                     if isinstance(updated, dict) and updated.get("kind") == "error":
-                        _show_snackbar(
-                            page,
-                            "Still failing — check Ollama, then retry.",
-                            lambda e=None: on_caption_retry(seq),
-                        )
+                        try:
+                            retryable = updated.get("retryable", True)
+                        except Exception:
+                            retryable = True
+                        if retryable is not False:
+                            _show_snackbar(
+                                page,
+                                "Still failing — check Ollama, then retry.",
+                                lambda e=None: on_caption_retry(seq),
+                            )
+                        else:
+                            _ui_update(page)
                 except Exception:
                     pass
 
