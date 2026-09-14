@@ -120,6 +120,80 @@ def test_format_table_custom_languages():
     assert "5/5" in row and "FAIL" in row
 
 
+def test_is_supported_echo_detection():
+    """Capability scoring: echoes are valid JSON but unsupported targets."""
+    from text_c3po.services.eval_harness import is_supported
+
+    assert is_supported({"formal": "Guten Tag"}, "Good morning") is True
+    assert is_supported({"formal": "Good morning"}, "Good morning") is False
+    assert is_supported({"formal": "  good MORNING "}, "Good morning") is False
+    assert is_supported({"error": "x"}, "Good morning") is False
+    assert is_supported({"formal": ""}, "Good morning") is False
+    assert is_supported("nope", "Good morning") is False
+
+
+def test_run_matrix_records_echoes_without_moving_gate():
+    """Echo cells stay gate-valid but are flagged for capability."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    def stub(text, target, model):
+        if target == "German":
+            return {"formal": "echt: " + text}
+        return {"formal": text}  # Kannada-style echo
+
+    results = run_matrix(
+        models=["m"], translate_fn=stub, languages=["German", "Kannada"]
+    )
+    summary = results["m"]
+    assert (summary["valid"], summary["total"]) == (10, 10)  # gate untouched
+    assert len(summary["echoes"]) == 5
+    assert {e["language"] for e in summary["echoes"]} == {"Kannada"}
+
+
+def test_identity_target_skips_echo_check():
+    """English input into English is identity: echo is correct, not a gap."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    results = run_matrix(
+        models=["m"],
+        translate_fn=lambda text, target, model: {"formal": text},
+        languages=["English", "Kannada"],
+    )
+    summary = results["m"]
+    assert summary["valid"] == 10  # gate untouched
+    assert summary["echoes"] == [] or {e["language"] for e in summary["echoes"]} == {
+        "Kannada"
+    }
+
+
+def test_format_support_table_ranks_best_first():
+    """Capability table sorts models by supported cells descending."""
+    from text_c3po.services.eval_harness import format_support_table
+
+    results = {
+        "echo-model": {
+            "valid": 10,
+            "total": 10,
+            "per_language": {"German": 5, "Kannada": 5},
+            "echoes": [
+                {"model": "echo-model", "language": "Kannada", "sentence_index": i}
+                for i in range(5)
+            ],
+        },
+        "full-model": {
+            "valid": 10,
+            "total": 10,
+            "per_language": {"German": 5, "Kannada": 5},
+            "echoes": [],
+        },
+    }
+    table = format_support_table(results, ["German", "Kannada"])
+    rows = table.splitlines()[2:]
+    assert rows[0].startswith("| full-model |") and "| 10 |" in rows[0]
+    assert rows[1].startswith("| echo-model |") and "| 5 |" in rows[1]
+    assert "0/5" in rows[1]  # Kannada unsupported
+
+
 def test_record_results_custom_label(tmp_path):
     from text_c3po.services.eval_harness import record_results
 
@@ -2830,11 +2904,13 @@ def test_e3_10_global_stop_aborts_all_streams():
 
 
 def test_e3_9_render_point_tripwire():
-    """E3-9 B+: page.update() is direct only in whitelisted main-thread fns.
+    """E3-9 B+ (loop marshaling 2026-09-14): page.update() is direct only here.
 
-    AST-scans app.py: every `page.update()` call must live in _ui_update
-    itself or one of the six main-thread event handlers; all background
-    paths must go through _ui_update. Prevents contract regression.
+    AST-scans app.py: every `page.update()` call must live in
+    _locked_update (the single render point, reached via _ui_update's
+    loop marshaling) or one of the six main-thread event handlers; all
+    background paths must go through _ui_update. Prevents regression to
+    raw-thread updates, which flet 0.86 silently drops.
     """
     import ast
     import os
@@ -2845,6 +2921,7 @@ def test_e3_9_render_point_tripwire():
     tree = ast.parse(open(path).read())
     whitelist = {
         "_ui_update",
+        "_locked_update",
         "on_mode_change",
         "_reprobe_and_refresh",
         "on_translate",
@@ -2875,6 +2952,104 @@ def test_e3_9_render_point_tripwire():
     assert offenders == [], "direct page.update() outside whitelist: {}".format(
         sorted(set(offenders))
     )
+
+
+def test_ui_update_marshals_to_session_loop():
+    """Loop marshaling 2026-09-14: a background _ui_update posts to the loop.
+
+    Raw-thread page.update() is silently dropped by flet 0.86 (the
+    stuck-spinner symptom), so _ui_update must schedule the locked update
+    via call_soon_threadsafe instead of updating inline.
+    """
+    from text_c3po.app import _ui_update
+
+    posted = []
+
+    class FakeLoop:
+        def is_running(self):
+            return True
+
+        def call_soon_threadsafe(self, cb, *args):
+            posted.append((cb, args))
+
+    class FakePage:
+        def __init__(self):
+            self.session = type(
+                "S", (), {"connection": type("C", (), {"loop": FakeLoop()})()}
+            )()
+            self.updated = 0
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    # Call from a real worker thread, as the translate/file/live workers do:
+    # raw-thread page.update() is what flet 0.86 silently drops.
+    t = threading.Thread(target=_ui_update, args=(page,))
+    t.start()
+    t.join(timeout=30)
+    assert not t.is_alive()
+    assert page.updated == 0  # not inline: must go through the loop
+    assert len(posted) == 1
+    cb, args = posted[0]
+    cb(*args)  # loop thread runs it
+    assert page.updated == 1
+
+
+def test_ui_update_falls_back_without_loop():
+    """No session loop (headless fakes): _ui_update updates inline, locked."""
+
+    from text_c3po.app import _ui_update
+
+    class FakePage:
+        def __init__(self):
+            self.updated = 0
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    _ui_update(page)
+    assert page.updated == 1
+
+
+def test_translate_single_unbounded_output():
+    """Long translations must not hit the server's default token cap.
+
+    The installed langchain_ollama documents a 128-token server default;
+    multi-paragraph output truncated mid-JSON surfaces as a parse error or
+    a cut-off formal text. _translate_single must request infinite
+    generation (num_predict=-1).
+    """
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    seen = {}
+
+    class FakeChunk:
+        def __init__(self, content, meta=None):
+            self.content = content
+            self.response_metadata = meta or {}
+
+    payload = '{"formal": "Hallo", "informal": "Hi", "origin_language": "English"}'
+
+    class FakeLLM:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def stream(self, messages):
+            return iter([FakeChunk(payload, {"done_reason": "stop", "eval_count": 10})])
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        out = tr._translate_single("Hello", "German", "m", parser)
+    finally:
+        tr.ChatOllama = orig
+    assert seen.get("num_predict") == -1
+    assert out.get("formal") == "Hallo"
+    assert out.get("informal") == "Hi"
 
 
 def test_e3_9_ui_update_serializes_concurrent_calls():

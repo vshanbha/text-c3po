@@ -196,3 +196,70 @@ def test_file_pipeline_shape_live(whisper_server, tmp_path):
             "error": "No speech found in that file.",
             "retryable": False,
         }, out
+
+
+_LIGHTHOUSE_PARAS = [
+    "The old lighthouse stood at the edge of the cliff, its lamp long extinguished.",
+    "Every morning the keeper climbed the ninety-seven steps to polish the great lens.",
+    "Gulls nested in the eaves, and their cries echoed across the cold grey water.",
+    "One autumn evening a storm rolled in, black clouds swallowing the horizon.",
+    "The keeper lit the reserve lantern and kept watch until dawn broke clear.",
+    "Ships in the channel below altered course, guided by that single point of light.",
+    "By spring the lighthouse board sent engineers to restore the electric lamp.",
+    "The village celebrated with music, bread, and wine on the harbour wall.",
+    "Years later the keeper would say those were the finest days of his life.",
+    "And the light never went dark again, not once in all the years that followed.",
+]
+
+
+def test_unsupported_target_echoes_input_live():
+    """Documents current accepted behavior for targets lfm2.5 cannot render.
+
+    Kannada/Marathi are offered in the 23-language picker, but lfm2.5
+    echoes the English input back as valid JSON (silent wrong-language
+    success — no error, no retry). Owner-accepted for now (2026-09-14);
+    MODEL-scoped: owner-verified gemma4:e4b-mlx genuinely translates
+    both, so this documents lfm2.5, not the software. If lfm2.5 itself
+    ever translates, this test MUST fail so the acceptance is revisited
+    — do not weaken it to match.
+    """
+    _require_model()
+    from text_c3po.services.translation import translate_text
+
+    text = "Good morning. How are you today?"
+    for target in ("Kannada", "Marathi"):
+        out = translate_text(text, target, MODEL)
+        assert isinstance(out, dict) and not out.get("error"), out
+        assert out.get("formal", "").strip() == text, out
+
+
+def test_spanish_multipara_collapse_recreates_live():
+    """Recreates the TEST-PLAN B6 early-stop flake against live lfm2.5.
+
+    The 10-paragraph lighthouse text into Spanish collapses to the
+    first-sentence-only formal (~3/5 runs, byte-identical when it fires)
+    with a clean done_reason='stop'. Up to five serial attempts: the
+    collapse must be observed at least once. MODEL-scoped to lfm2.5
+    (owner-verified gemma4:e4b-mlx renders both scenarios fully). If
+    this test starts failing because the collapse NEVER appears, the
+    model improved — celebrate by deleting the test and closing B6,
+    not by retrying harder.
+    """
+    _require_model()
+    from text_c3po.services.translation import translate_text
+
+    text = "\n\n".join(_LIGHTHOUSE_PARAS)
+    assert len(text) > 700
+    seen_collapse = False
+    for _attempt in range(5):
+        out = translate_text(text, "Spanish", MODEL)
+        assert isinstance(out, dict) and not out.get("error"), out
+        formal = (out.get("formal") or "").strip()
+        assert formal, out
+        if len(formal) < 150:
+            seen_collapse = True
+            break
+    assert seen_collapse, (
+        "collapse never appeared in 5 attempts — model may have improved; "
+        "see TEST-PLAN B6"
+    )

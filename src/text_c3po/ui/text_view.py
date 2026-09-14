@@ -14,6 +14,10 @@ from .language_pickers import build_target_dropdown
 
 EMPTY_HINT = "Type or paste something first."
 RETRY_HINT = "Couldn't parse that one. Retry."
+# Non-error placeholder: the model returned a good formal translation but no
+# separate informal variant (many languages have no formal/informal
+# distinction). Not a technical failure, so never paired with a retry toast.
+NO_VARIANT_HINT = "No separate informal version for this translation — see Formal."
 INPUT_PLACEHOLDER = "Type or paste text to translate"
 INPUT_SOFT_LIMIT = 5000
 
@@ -36,7 +40,11 @@ def _make_copy_handler(body):
             if page is None or clipboard is None:
                 return
             text = target.value or ""
-            if not text.strip() or text.strip() == RETRY_HINT:
+            if (
+                not text.strip()
+                or text.strip() == RETRY_HINT
+                or text.strip() == NO_VARIANT_HINT
+            ):
                 return
             result = clipboard.set(text)
             import inspect

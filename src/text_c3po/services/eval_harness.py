@@ -11,6 +11,16 @@ shape, so a result without an ``error`` key is a schema-conformant dict by
 construction and counts valid; anything else counts invalid. Gate math: 95%
 of 25 is 23.75, so a model passes with >= 24 valid cells.
 
+Scope (2026-09-14): this gate is deterministic contract conformance ONLY —
+it proves the model speaks our JSON schema, which is what the UI needs to
+never crash on a response. An echo (formal == input) is contract-conformant;
+it says nothing about rendering ability and fails nothing here. The
+``--capability`` rescoring is an informational rendering survey for
+comparing models (which targets come back non-echoed), not a correctness
+verdict. Meaning-equivalence between input and output cannot be checked
+deterministically: it needs a judge model (fuzzy, model-dependent) or a
+human (TEST-PLAN §B rows). Do not read a gate PASS as "translates well".
+
 Headless-runnable: ``PYTHONPATH=src python -m text_c3po.services.eval_harness`` with
 ``--models`` and ``--research-path`` overrides. Importing this module has no
 side effects and issues no LLM calls. Stdlib plus installed
@@ -109,6 +119,11 @@ SENTENCES = [
 # (Latin, Devanagari, and CJK scripts). Order matches the gate-table columns.
 MATRIX_LANGUAGES = ["German", "French", "Spanish", "Hindi", "Chinese"]
 
+# The SENTENCES below are fixed English input, so an English-target cell is
+# an identity translation: echo there is correct output, not an unsupported
+# target, and the echo check below is skipped for it.
+SOURCE_LANGUAGE = "English"
+
 # E4-2: the full 23-language matrix, verbatim from the same constant.
 from text_c3po.languages import LANGUAGES as _LANGUAGES
 
@@ -177,6 +192,36 @@ def is_valid(result):
     return isinstance(result, dict) and "error" not in result
 
 
+def _norm_text(value) -> str:
+    """Normalize for echo comparison: collapse whitespace, casefold."""
+    try:
+        if not isinstance(value, str):
+            return ""
+        return " ".join(value.split()).casefold()
+    except Exception:
+        return ""
+
+
+def is_supported(result, sentence) -> bool:
+    """Return True when a cell counts as genuine target-language output.
+
+    Stronger than :func:`is_valid`: the result must be JSON-valid AND its
+    formal text must differ from the input sentence. An English echo
+    (lfm2.5 into Kannada/Marathi) is schema-conformant but proves the
+    model cannot render the target — it scores valid for the gate,
+    unsupported for capability. Never raises.
+    """
+    try:
+        if not is_valid(result):
+            return False
+        formal = result.get("formal")
+        if not isinstance(formal, str) or not formal.strip():
+            return False
+        return _norm_text(formal) != _norm_text(sentence)
+    except Exception:
+        return False
+
+
 def passes_gate(valid, total):
     """Return True when valid/total meets the >=95% gate (>=24 of 25)."""
     try:
@@ -199,10 +244,13 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
     that cell invalid and is recorded in the model's ``failures`` detail;
     the matrix always runs to completion.
 
-    Returns ``{model: {valid, total, per_language, failures}}`` where
-    ``per_language`` maps each language name to its valid count and
+    Returns ``{model: {valid, total, per_language, failures, echoes}}`` where
+    ``per_language`` maps each language name to its valid count,
     ``failures`` holds one ``{model, language, sentence_index}`` dict per
-    invalid cell (sentence_index is 0-based).
+    invalid cell (sentence_index is 0-based), and ``echoes`` holds the same
+    shape for JSON-valid cells whose formal text echoes the input sentence
+    (model cannot render the target — counts valid for the gate, flagged
+    for capability). Gate math is untouched: echo cells still score valid.
     """
     if models is None:
         models = list_models()
@@ -216,6 +264,7 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
     for model in models:
         per_language = {language: 0 for language in languages}
         failures = []
+        echoes = []
         valid = 0
         total = 0
         for language in languages:
@@ -228,6 +277,16 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
                 if is_valid(result):
                     valid += 1
                     per_language[language] += 1
+                    if language != SOURCE_LANGUAGE and not is_supported(
+                        result, sentence
+                    ):
+                        echoes.append(
+                            {
+                                "model": model,
+                                "language": language,
+                                "sentence_index": index,
+                            }
+                        )
                 else:
                     failures.append(
                         {
@@ -241,6 +300,7 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
             "total": total,
             "per_language": per_language,
             "failures": failures,
+            "echoes": echoes,
         }
     return results
 
@@ -288,6 +348,120 @@ def format_table(results, languages=None):
             )
         )
     return "\n".join(lines)
+
+
+def support_counts(summary, languages):
+    """Map each language to its supported (valid non-echo) cell count."""
+    try:
+        per_language = summary.get("per_language", {})
+    except Exception:
+        per_language = {}
+    try:
+        echoes = summary.get("echoes", [])
+    except Exception:
+        echoes = []
+    echo_per_language: dict = {}
+    for echo in echoes or []:
+        try:
+            language = echo.get("language")
+            echo_per_language[language] = echo_per_language.get(language, 0) + 1
+        except Exception:
+            pass
+    return {
+        language: max(
+            0, per_language.get(language, 0) - echo_per_language.get(language, 0)
+        )
+        for language in languages
+    }
+
+
+def format_support_table(results, languages=None):
+    """Return the capability table as markdown rows, models ranked best-first.
+
+    Cells are supported/total per language (valid non-echo cells); the
+    trailing column totals supported cells for the max-languages ranking.
+    Pure rescoring of gate results — no extra LLM calls.
+    """
+    if languages is None:
+        languages = MATRIX_LANGUAGES
+    else:
+        languages = list(languages)
+    header = (
+        "| Model | "
+        + " | ".join(_code_for(language) for language in languages)
+        + " | Supported |"
+    )
+    separator = "|" + "---|" * (len(languages) + 2)
+    ranked = sorted(
+        results.items(),
+        key=lambda item: (
+            sum(support_counts(item[1], languages).values()),
+            item[1].get("valid", 0) if isinstance(item[1], dict) else 0,
+        ),
+        reverse=True,
+    )
+    lines = [header, separator]
+    for model, summary in ranked:
+        supported = support_counts(summary, languages)
+        cells = [
+            "{}/{}".format(supported.get(language, 0), len(SENTENCES))
+            for language in languages
+        ]
+        lines.append(
+            "| {} | {} | {} |".format(model, " | ".join(cells), sum(supported.values()))
+        )
+    return "\n".join(lines)
+
+
+def record_support(results, path, date=None, languages=None):
+    """Append the dated capability section to the model-quality research file.
+
+    Append-only like :func:`record_results` and under its own label, so
+    gate sections keep their exact shape. Lists every echo cell (model,
+    language, sentence) — the per-language unsupported evidence.
+    Returns the path written.
+    """
+    if date is None:
+        date = datetime.date.today().isoformat()
+    if languages is None:
+        languages = MATRIX_LANGUAGES
+    else:
+        languages = list(languages)
+    lines = [
+        "",
+        "## Model capability — support matrix ({})".format(date),
+        "",
+        "Supported = JSON-valid AND formal differs from the input sentence "
+        "(echoes prove the model cannot render the target). Rescored from "
+        "the gate run above — no extra calls.",
+        "",
+        format_support_table(results, languages),
+        "",
+    ]
+    echoes = [
+        echo for summary in results.values() for echo in summary.get("echoes", [])
+    ]
+    if echoes:
+        lines.append("Echoes (valid JSON, unsupported target):")
+        lines.append("")
+        for echo in echoes:
+            lines.append(
+                "- ECHO {} | {} | sentence {}".format(
+                    echo.get("model"),
+                    echo.get("language"),
+                    echo.get("sentence_index", 0) + 1,
+                )
+            )
+        lines.append("")
+    else:
+        lines.append("No echoes — every valid cell rendered the target.")
+        lines.append("")
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent and not os.path.isdir(parent):
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+    return path
 
 
 def record_results(results, path, date=None, languages=None, label=None):
@@ -375,6 +549,16 @@ def _parse_args(argv=None):
             "E4 matrix), or comma-separated language names from the constant."
         ),
     )
+    parser.add_argument(
+        "--capability",
+        action="store_true",
+        help=(
+            "Also score target-language support (valid non-echo cells), "
+            "print the ranked support table, and append a capability "
+            "section to the research file. Model-comparison pack: combine "
+            "with --models and --languages. Never affects the gate."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -454,6 +638,14 @@ def main(argv=None, translate_fn=None):
     record_results(results, args.research_path, languages=languages, label=label)
     print("")
     print("Appended gate section to {}".format(args.research_path))
+    if getattr(args, "capability", False):
+        print("")
+        print("Support matrix (valid non-echo cells — which model renders what):")
+        print("")
+        print(format_support_table(results, languages))
+        print("")
+        record_support(results, args.research_path, languages=languages)
+        print("Appended capability section to {}".format(args.research_path))
     failed = [
         model
         for model, summary in results.items()

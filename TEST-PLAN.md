@@ -46,6 +46,46 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
   re-enable, no late result overwrites the next request.
 - **B3 — input guards.** Empty input → "Type or paste something first.";
   overlong paste scrolls the window instead of clipping.
+- **B4 — partial translation (no formal/informal distinction).**
+  Translate into a language with no T–V distinction (e.g. English) until
+  the model returns a blank informal variant. Expect: Formal shows the
+  translation, Informal shows "No separate informal version for this
+  translation — see Formal.", **no** retry toast. Retry (SnackBar + card
+  hint) appears only on technical failure: transport/parse error or blank
+  Formal output. **[R]** 2026-09-14 (toast used to fire on any blank
+  field, implying a technical error for a linguistic fact).
+- **B5 — repeat translate refreshes in place (stuck-spinner regression).**
+  Translate once, then Translate again with the previous output still
+  showing. Expect: spinner + "Translating…" → live preview words → final
+  result, all without touching the window. If the UI freezes until
+  defocus/refocus, the loop-marshaling regressed. **[R]** 2026-09-14
+  (raw-thread `page.update()` is silently dropped by flet 0.86;
+  `_ui_update` now marshals via `call_soon_threadsafe`).
+  **Verified 2026-09-14 by owner manual test — CLOSED.**
+- **B6 — long multi-paragraph translation (early-stop flake, repeatable).**
+  Paste the 10-paragraph lighthouse text (`\n\n`-separated), target
+  Spanish, Translate (lfm2.5). Known flake: ~3/5 runs collapse to the
+  exact 78-char first-sentence formal ("El viejo faro se encontraba en
+  el borde del acantilado, su l…") with `done_reason='stop'` — clean
+  stop, not a token cap. Expect either full output (~850+ chars, all
+  paragraphs) or that exact collapse; pressing Translate again
+  (retry) yields the full text. German on the same text is 4/4 full —
+  use it as the control cell. Cross-check the logs:
+  `translate_text ok: in=N out=M` M must match the displayed length.
+  Portuguese/French show the same collapse bias (single samples);
+  paragraph breaks are the trigger (same content single-paragraph
+  translates full). **[R]** 2026-09-14 (`num_predict` now `-1`;
+  cap ruled out by `done_reason` evidence). Automated recreation:
+  `pytest -m integration -k spanish_multipara` (up to 5 serial
+  attempts; green means the collapse was observed).
+- **B7 — unsupported target language (accepted limitation).** Pick
+  Kannada or Marathi, Translate "Good morning. How are you today?".
+  Expect: the English input echoed back as Formal (plus casual-English
+  Informal), valid JSON, no error, no retry — lfm2.5 cannot render
+  these scripts and the UI cannot tell. Owner-accepted for now; the
+  tripwire `pytest -m integration -k unsupported_target` MUST fail if
+  a future model genuinely translates, forcing a revisit — never
+  weaken it to match.
 
 ## C. Capture devices (E2-1)
 
@@ -142,6 +182,20 @@ Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded.
   Expect: exit 0, every model ≥95% JSON-valid, dated section appended
   to the model-quality `research.md`. Slow (25 LLM calls per model:
   5 sentences × 5 languages; use `--languages all` for the 23×5 full).
+- **G2 — model capability pack (which model renders most languages).**
+  `PYTHONPATH=src uv run python -m text_c3po.services.eval_harness
+  --models <a>,<b> --languages all --capability` (any installed
+  `/api/tags` names, comma/space-separated; serial, one call at a
+  time). Expect: the gate table as in G1 (unchanged contract) plus a
+  ranked support table — supported = JSON-valid AND formal differs
+  from the input (echoes prove the model cannot render the target).
+  Both sections appended to `research.md`. Proven 2026-09-14:
+  `--models lfm2.5:latest --languages Spanish,Kannada` → gate 100%
+  PASS but capability 9/10 with `ECHO … Kannada sentence 4`
+  ("I would like a coffee, please."). Memory hogs (gemma4:e4b-mlx)
+  stay out of the G1 gate but are authorized here for manual
+  comparison — owner-verified gemma renders Kannada/Marathi and the
+  Spanish multi-para fully where lfm2.5 echoes/collapses.
 
 ## H. Packaging (E4-3, manual session)
 
@@ -178,9 +232,16 @@ ad-hoc signature suffices for local runs.
 - **I3 — known web limits (do not assert).** CanvasKit exposes ~3
   a11y nodes, so ref-based automation is out (coordinates +
   screenshots only); SegmentedButton/Button taps did not register
-  via automation — mode switching and Translate stay manual; the
-  `FilePicker` overlay paints a red "Unknown control" panel on web
-  only (desktop unaffected).
+  via automation — mode switching and Translate stay manual.
+- **I4 — FilePicker web regression (fixed 2026-09-14).** The red
+  "Unknown control: FilePicker" panel was NOT an inherent web limit —
+  `app.py` appended the picker (a Service) to `page.overlay`, whose
+  builder has no FilePicker widget. Fixed: bare `ft.FilePicker()`
+  self-registers via ServiceRegistry, never appended. Re-verify on
+  every Flet upgrade: launch web serve, expect no red panel on start;
+  pick a file on desktop (path flow) and web (bytes → temp-file flow).
+  The `/neo-text-c3po-browser-e2e` skill's learned notes still carry
+  the old "red panel" line — refresh them on the next skill pass.
 
 ## Coverage map (what automation owns)
 

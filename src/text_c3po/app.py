@@ -36,7 +36,7 @@ from text_c3po.services.translation import (
 )
 from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
-from text_c3po.ui.text_view import SOURCE_TITLE, build_text_view
+from text_c3po.ui.text_view import NO_VARIANT_HINT, SOURCE_TITLE, build_text_view
 from text_c3po.ui.top_strip import (
     build_appbar,
     build_toolbar,
@@ -50,23 +50,45 @@ WINDOW_MIN_HEIGHT = 640
 RETRY_CARD_HINT = "Couldn't parse that one. Retry."
 EMPTY_INPUT_HINT = "Type or paste something first."
 
-# E3-9 (D3 re-decision B+, 2026-09-13): single serialized render point.
-# Every background thread (capture drain, supervise, retry, poll, file
-# worker, translate worker) funnels page.update() through _ui_update(page),
-# serialized under _UI_LOCK so concurrent renders cannot interleave. Only
+# E3-9 (D3 re-decision B+, 2026-09-13; loop marshaling 2026-09-14):
+# single serialized render point. Every background thread (capture drain,
+# supervise, retry, poll, file worker, translate worker) funnels
+# page.update() through _ui_update(page). The update itself runs on the
+# session event loop via call_soon_threadsafe — a raw-thread page.update()
+# is silently dropped by flet 0.86 (send-queue wakeup is loop-bound), which
+# is the stuck-spinner symptom: spinner shows (UI-thread update) and then
+# nothing renders until the next UI-thread event such as refocus.
+# _UI_LOCK serializes concurrent renders so they cannot interleave. Only
 # main-thread event handlers (mode/mode-switch, Start/Stop, Translate,
-# pickers, main) call page.update() directly. The literal main-thread loop
-# pump (page.run_thread) was rejected: it runs in an executor thread, not
-# the main thread (flet 0.86.5 controls/page.py) — deferred as a-lite
-# pending manual F1/F5 evidence. AD-4 records this tolerance.
+# pickers, main) call page.update() directly.
 _UI_LOCK = threading.Lock()
 
 
-def _ui_update(page) -> None:
-    """Serialized page.update(); never raises."""
+def _locked_update(page) -> None:
+    """page.update() under the render lock; never raises."""
     try:
         with _UI_LOCK:
             page.update()
+    except Exception:
+        pass
+
+
+def _ui_update(page) -> None:
+    """Serialized page.update() marshaled onto the session loop; never raises."""
+    try:
+        loop = None
+        try:
+            loop = page.session.connection.loop
+        except Exception:
+            loop = None
+        if loop is not None:
+            try:
+                if loop.is_running():
+                    loop.call_soon_threadsafe(_locked_update, page)
+                    return
+            except Exception:
+                pass
+        _locked_update(page)
     except Exception:
         pass
 
@@ -162,6 +184,17 @@ def _show_snackbar(page, message, on_retry) -> None:
             action="Retry",
             on_action=lambda e: on_retry(),
         )
+        # flet 0.86: DialogControl goes via show_dialog (Dialogs stack),
+        # not page.overlay (visual overlay builder). Fall back to overlay
+        # only for headless fakes without show_dialog.
+        try:
+            show = getattr(page, "show_dialog", None)
+            if callable(show):
+                show(snack)
+                _ui_update(page)
+                return
+        except Exception:
+            pass
         overlay = getattr(page, "overlay", None)
         if overlay is not None and hasattr(overlay, "append"):
             overlay.append(snack)
@@ -182,9 +215,12 @@ def _show_retry_snackbar(page, on_retry) -> None:
 def _render_translation_result(refs, page, result, on_retry) -> None:
     """Render a translate_text result into the Formal/Informal tabs plus origin caption.
 
-    Present fields display; only a missing/blank field's tab shows the retry
-    hint. Any failure also raises the SnackBar retry; retry re-issues the same
-    prompt without retyping.
+    Present fields display. A blank informal variant is NOT an error — many
+    languages have no formal/informal distinction — so its tab shows
+    NO_VARIANT_HINT with no toast. The SnackBar retry fires only on
+    technical failure: a transport/parse ``error`` result, or a blank
+    primary (formal) output. Retry re-issues the same prompt without
+    retyping; it is never offered for a successful translation.
     """
     try:
         refs = refs if isinstance(refs, dict) else {}
@@ -206,27 +242,39 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                     pass
             _show_retry_snackbar(page, on_retry)
             return
-        failed = False
+        # Primary output decides failure first: a blank formal means the
+        # contract itself failed (retry is valuable). A blank informal
+        # alongside a good formal is a linguistic fact — many languages
+        # have no formal/informal distinction — so it gets a named
+        # non-error placeholder, never a retry.
+        try:
+            formal_value = result.get("formal")
+            if isinstance(formal_value, list):
+                formal_value = ", ".join(str(part) for part in formal_value)
+            formal_ok = isinstance(formal_value, str) and bool(formal_value.strip())
+        except Exception:
+            formal_ok = False
         pairs = (
             ("formal_text", "formal"),
             ("informal_text", "informal"),
         )
         for ref_key, field in pairs:
             control = refs.get(ref_key)
-            if control is None:
-                failed = True
-                continue
             value = result.get(field)
             if isinstance(value, list):
                 value = ", ".join(str(part) for part in value)
             try:
                 if isinstance(value, str) and value.strip():
-                    control.value = value
+                    if control is not None:
+                        control.value = value
+                elif field == "informal" and formal_ok:
+                    if control is not None:
+                        control.value = NO_VARIANT_HINT
                 else:
-                    control.value = RETRY_CARD_HINT
-                    failed = True
+                    if control is not None:
+                        control.value = RETRY_CARD_HINT
             except Exception:
-                failed = True
+                pass
         origin_control = refs.get("origin_caption")
         origin_value = result.get("origin_language", "")
         if isinstance(origin_value, list):
@@ -238,10 +286,9 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
             else:
                 if origin_control is not None:
                     origin_control.value = SOURCE_TITLE
-                failed = True
         except Exception:
-            failed = True
-        if failed:
+            pass
+        if not formal_ok:
             _show_retry_snackbar(page, on_retry)
     except Exception:
         try:
@@ -593,7 +640,7 @@ def main(page: ft.Page) -> None:
     except Exception:
         pass
 
-    # E2-4: file mode — FilePicker overlay plus a daemon worker running the
+    # E2-4: file mode — FilePicker service plus a daemon worker running the
     # shared decode → transcribe → translate pipeline off the UI thread.
     file_busy = {"working": False}
 
@@ -656,30 +703,60 @@ def main(page: ft.Page) -> None:
 
     async def on_pick_file(e=None) -> None:
         # flet 0.86 FilePicker is awaitable-only (no on_result event):
-        # pick_files returns the picked list, [] on cancel.
+        # pick_files returns the picked list, [] on cancel. The picker is
+        # a Service: constructing it self-registers via ServiceRegistry —
+        # never append it to page.overlay (the overlay builder has no
+        # FilePicker widget and paints "Unknown control" in red on web).
         if file_busy["working"]:
             return
+        if file_picker is None:
+            return
+        is_web = bool(getattr(page, "web", False))
         try:
             files = await file_picker.pick_files(
                 allow_multiple=False,
+                file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=[ext.lstrip(".") for ext in supported_extensions()],
+                with_data=is_web,
             )
         except Exception:
             return
         try:
             picked = (files or [None])[0]
             path = getattr(picked, "path", None) if picked is not None else None
+            picked_bytes = (
+                getattr(picked, "bytes", None) if picked is not None else None
+            )
+            picked_name = getattr(picked, "name", "") if picked is not None else ""
         except Exception:
-            path = None
+            path, picked_bytes, picked_name = None, None, ""
+        if not path and is_web and picked_bytes:
+            # Web never exposes a filesystem path (FilePickerFile.path is
+            # always None): spill the bytes to a temp file so the shared
+            # decode → transcribe → translate pipeline can run unchanged.
+            try:
+                import os as _os
+                import tempfile as _tempfile
+
+                suffix = _os.path.splitext(picked_name or "")[1].lower() or ".wav"
+                with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(picked_bytes)
+                    path = tmp.name
+            except Exception:
+                path = None
         if not path or file_busy["working"]:
+            if is_web and not path and picked is not None:
+                _set_file_status(
+                    "Couldn't read that file in the browser — try the desktop app."
+                )
             return
         file_busy["working"] = True
         _set_file_status("Transcribing…", "")
         threading.Thread(target=_run_file, args=(path,), daemon=True).start()
 
     try:
+        # Service self-registers; do NOT page.overlay.append() it.
         file_picker = ft.FilePicker()
-        page.overlay.append(file_picker)
     except Exception:
         file_picker = None
     try:
