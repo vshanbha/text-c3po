@@ -3297,12 +3297,37 @@ def test_spill_dir_and_sweep(tmp_path):
     assert oct(os.stat(spill).st_mode & 0o777) == "0o700"
     foreign = os.path.join(str(tmp_path), "not-ours.wav")
     open(foreign, "wb").write(b"x")
-    path, cleanup = _spill_web_pick(b"RIFF", "clip.m4a", spill_dir=str(tmp_path))
+    path, cleanup = _spill_web_pick(b"RIFF", "clip.m4a", base=str(tmp_path))
     assert cleanup and os.path.dirname(path) == spill
-    assert _sweep_spills(spill) == 1
+    # Simulate the kill -9 orphan: tracker state lost, file remains.
+    from text_c3po.app import _SPILLED_LOCK, _SPILLED_TEMPS
+
+    with _SPILLED_LOCK:
+        _SPILLED_TEMPS.discard(path)
+    # _sweep_spills takes the shared parent base, like main() relies on.
+    assert _sweep_spills(str(tmp_path)) == 1
     assert not os.path.exists(path)
     assert os.path.isfile(foreign)  # neighbor dir untouched
-    assert _sweep_spills(os.path.join(spill, "nope")) == 0
+    assert _sweep_spills(os.path.join(str(tmp_path), "nope")) == 0
+
+
+def test_sweep_skips_live_tracked_spills(tmp_path):
+    """Same-process in-flight spills (sibling web tab) survive the sweep."""
+    import os
+
+    from text_c3po.app import _discard_spilled, _spill_dir
+    from text_c3po.app import _spill_web_pick, _sweep_spills
+
+    spill = _spill_dir(str(tmp_path))
+    live, _ = _spill_web_pick(b"live", "live.wav", base=str(tmp_path))
+    orphan = os.path.join(spill, "orphan.wav")
+    open(orphan, "wb").write(b"orphan")
+    try:
+        assert _sweep_spills(str(tmp_path)) == 1
+        assert os.path.isfile(live)
+        assert not os.path.exists(orphan)
+    finally:
+        _discard_spilled(live)
 
 
 def test_reap_spilled_clears_tracking():
@@ -3378,9 +3403,12 @@ def test_no_overlay_mount_of_file_picker_tripwire():
     restores the red Unknown-control panel on web. Tracks any local name
     bound to a FilePicker() construction (Assign and AnnAssign, not just
     `file_picker`), any overlay append/extend/insert spelling including
-    list-form args, and direct `page.overlay = ...` rebinding.
-    Receiver aliases (``ov = page.overlay``) and factory-returned
-    pickers stay out of scope — grep those by hand on Flet upgrades.
+    list-form args, direct `page.overlay = ...` rebinding, subscript
+    stores (`page.overlay[0] = ...`), and receiver aliases
+    (``ov = page.overlay`` followed by ``ov.append(...)``).
+    Factory-returned pickers stay out of scope — the runtime
+    ``_mount_overlay`` guard (TypeError on Services) covers those paths
+    instead.
     """
     import ast
     import os
@@ -3409,6 +3437,16 @@ def test_no_overlay_mount_of_file_picker_tripwire():
         elif isinstance(node, ast.AnnAssign):
             bind_picker(node.target, node.value)
     assert picker_names, "no FilePicker() construction found — tripwire blind"
+    overlay_aliases = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Attribute)
+            and node.value.attr == "overlay"
+        ):
+            overlay_aliases.add(node.targets[0].id)
 
     def arg_is_picker(arg):
         if isinstance(arg, ast.Name) and arg.id in picker_names:
@@ -3419,13 +3457,17 @@ def test_no_overlay_mount_of_file_picker_tripwire():
             return any(arg_is_picker(elt) for elt in arg.elts)
         return False
 
+    def receiver_is_overlay(func_value) -> bool:
+        if isinstance(func_value, ast.Attribute):
+            return func_value.attr == "overlay"
+        return isinstance(func_value, ast.Name) and func_value.id in overlay_aliases
+
     offenders = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             if (
                 node.func.attr in ("append", "extend", "insert")
-                and isinstance(node.func.value, ast.Attribute)
-                and node.func.value.attr == "overlay"
+                and receiver_is_overlay(node.func.value)
                 and any(arg_is_picker(arg) for arg in node.args)
             ):
                 offenders.append(ast.dump(node))
@@ -3433,6 +3475,15 @@ def test_no_overlay_mount_of_file_picker_tripwire():
             for target in node.targets:
                 if isinstance(target, ast.Attribute) and target.attr == "overlay":
                     offenders.append(ast.dump(node))
+                elif isinstance(target, ast.Subscript):
+                    value = target.value
+                    if (
+                        isinstance(value, ast.Attribute)
+                        and value.attr == "overlay"
+                        or isinstance(value, ast.Name)
+                        and value.id in overlay_aliases
+                    ):
+                        offenders.append(ast.dump(node))
     assert offenders == []
 
 
@@ -3615,15 +3666,25 @@ def test_retry_hint_single_sourced():
     assert app_module.EMPTY_INPUT_HINT is messages.EMPTY_INPUT_HINT
     assert app_module.WIRING_HINT is messages.WIRING_HINT
     assert app_module.NO_VARIANT_HINT is messages.NO_VARIANT_HINT
+    assert app_module.TRUNCATED_TALLY is messages.TRUNCATED_TALLY
+    assert app_module.DISCONNECT_SNACKBAR_HINT is messages.DISCONNECT_SNACKBAR_HINT
     assert text_view.RETRY_HINT is messages.RETRY_HINT
     assert text_view.EMPTY_HINT is messages.EMPTY_INPUT_HINT
     assert text_view.NO_VARIANT_HINT is messages.NO_VARIANT_HINT
     assert translation.RETRY_MESSAGE is messages.RETRY_HINT
     assert translation.EMPTY_INPUT_MESSAGE is messages.EMPTY_INPUT_HINT
+    assert translation.MISSING_TARGET_MESSAGE is messages.MISSING_TARGET_MESSAGE
+    assert translation.MISSING_MODEL_MESSAGE is messages.MISSING_MODEL_MESSAGE
     assert session.RETRY_MESSAGE is messages.RETRY_HINT
     assert asr.RETRY_MESSAGE is messages.RETRY_HINT
+    assert asr.NO_SPEECH_MESSAGE is messages.NO_SPEECH_MESSAGE
     assert messages.RETRY_HINT == "Couldn't parse that one. Retry."
     assert messages.EMPTY_INPUT_HINT == "Type or paste something first."
+    assert messages.NO_VARIANT_HINT == (
+        "No separate informal version for this translation — see Formal."
+    )
+    assert messages.WIRING_HINT.startswith("Something's off")
+    assert messages.TRUNCATED_TALLY.format(5).startswith("Partial · 5 chars")
 
 
 def test_translate_single_output_ceiling_stops_degenerate_stream():
@@ -3655,7 +3716,7 @@ def test_translate_single_output_ceiling_stops_degenerate_stream():
 
 
 def test_translate_single_ceiling_returns_usable_partial():
-    """Ceiling trip with a formal prefix yields truncated content, not error."""
+    """Ceiling trip with a varied formal prefix yields truncated content."""
     import text_c3po.services.translation as tr
     from langchain_core.output_parsers import JsonOutputParser
 
@@ -3669,10 +3730,13 @@ def test_translate_single_ceiling_returns_usable_partial():
             pass
 
         def stream(self, messages):
-            yield FakeChunk('{"formal": "')
-            for _ in range(12):
-                yield FakeChunk("Hallo Welt. " * 500)
-            yield FakeChunk('", "informal": "')
+            import hashlib
+
+            yield FakeChunk('{"formal": "Der alte Leuchtturm stand. ')
+            # High-entropy per chunk (hash hex is incompressible) so the
+            # loop detector stays quiet: total well past the 60000 floor.
+            for index in range(1500):
+                yield FakeChunk(hashlib.sha256(str(index).encode()).hexdigest() + " ")
 
     orig = tr.ChatOllama
     tr.ChatOllama = FakeLLM
@@ -3683,7 +3747,7 @@ def test_translate_single_ceiling_returns_usable_partial():
         tr.ChatOllama = orig
     assert out.get("truncated") is True
     assert "error" not in out
-    assert out.get("formal", "").startswith("Hallo Welt.")
+    assert out.get("formal", "").startswith("Der alte Leuchtturm")
 
 
 def test_result_tally_names_partial_state():
@@ -3701,7 +3765,7 @@ def test_result_tally_names_partial_state():
 def test_render_truncated_result_shows_partial_without_toast():
     """Truncated formal renders as content; status (not toast) tells the story."""
     from text_c3po.app import _render_translation_result
-    from text_c3po.ui.text_view import NO_VARIANT_HINT
+    from text_c3po.messages import TRUNCATED_INFORMAL_HINT
 
     refs, page = _render_fakes()
     _render_translation_result(
@@ -3716,8 +3780,76 @@ def test_render_truncated_result_shows_partial_without_toast():
         lambda: None,
     )
     assert refs["formal_text"].value == "Hallo Welt"
-    assert refs["informal_text"].value == NO_VARIANT_HINT
+    assert refs["informal_text"].value == TRUNCATED_INFORMAL_HINT
     assert page.shown == []
+
+
+def test_render_error_with_missing_refs_toasts_wiring():
+    """Wiring check runs before the error return: no model-blaming copy."""
+    from text_c3po.app import WIRING_HINT, _render_translation_result
+
+    refs, page = _render_fakes()
+    del refs["formal_text"]
+    _render_translation_result(
+        refs, page, {"error": "boom", "retryable": True}, lambda: None
+    )
+    assert len(page.shown) == 1
+    assert page.shown[0].content.value == WIRING_HINT
+    assert page.shown[0].action is None
+
+
+def test_ceiling_partial_cuts_trailing_json_debris():
+    """Closed formal plus later-field junk renders the formal only."""
+    from text_c3po.services.translation import extract_partial_formal
+
+    raw = '{"formal": "Hallo Welt", "informal": "la la la'
+    assert extract_partial_formal(raw) == "Hallo Welt"
+
+
+def test_ceiling_looped_partial_falls_back_to_error():
+    """Repetition-loop junk never ships as copyable truncated content."""
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    class FakeChunk:
+        def __init__(self, content):
+            self.content = content
+            self.response_metadata = {"done_reason": "length"}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def stream(self, messages):
+            yield FakeChunk('{"formal": "')
+            for _ in range(12):
+                yield FakeChunk("Hallo Welt. " * 500)
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        out = tr._translate_single("Hello", "German", "m", parser)
+    finally:
+        tr.ChatOllama = orig
+    assert out.get("retryable") is False
+    assert "error" in out and "truncated" not in out
+
+
+def test_looks_looped_thresholds():
+    """Loop junk trips; real prose in any script does not."""
+    from text_c3po.services.translation import _looks_looped
+
+    assert _looks_looped("Hallo Welt. " * 500) is True
+    assert _looks_looped("Short text") is False
+    german = (
+        "Der alte Leuchtturm stand am Rand der Klippe. Die Möwen kreisten "
+        "über dem kalten Wasser, und der Wärter stieg die Treppe hinauf. "
+        "Am Abend zog ein Sturm auf, und das Dorf feierte am Hafen. " * 4
+    )
+    assert _looks_looped(german) is False
+    assert _looks_looped("") is False
+    assert _looks_looped(None) is False
 
 
 def test_translate_single_ceiling_scales_with_input():
