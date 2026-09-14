@@ -25,6 +25,9 @@ not because the language lacks the distinction (see NO_VARIANT_HINT)."""
 WIRING_HINT = "Something's off with this view — restart the app."
 """View-wiring break notice: result parsed fine, controls missing."""
 
+LOOP_MESSAGE = "Translation degenerated into repetition — try rephrasing the input."
+"""Loop-detector rejection: output loops while the input does not."""
+
 TRUNCATED_TALLY = "Partial · {} chars (output limit — shorten input for the full text)."
 """Status tally for ceiling-cut partial renders (has a count slot)."""
 

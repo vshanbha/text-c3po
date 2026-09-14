@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from text_c3po.messages import (
     EMPTY_INPUT_HINT as EMPTY_INPUT_MESSAGE,
+    LOOP_MESSAGE,
     MISSING_MODEL_MESSAGE,
     MISSING_TARGET_MESSAGE,
     RETRY_HINT as RETRY_MESSAGE,
@@ -248,22 +249,49 @@ def extract_partial_formal(raw) -> str:
         return ""
 
 
-def _looks_looped(text) -> bool:
+def _compression_ratio(text) -> float:
+    """zlib size over raw size; 1.0 for junk input. Never raises."""
+    try:
+        if not isinstance(text, str) or not text:
+            return 1.0
+        import zlib
+
+        raw = text.encode("utf-8", "replace")
+        return len(zlib.compress(raw)) / max(1, len(raw))
+    except Exception:
+        return 1.0
+
+
+def _looks_looped(text, source_text="") -> bool:
     """True when text is almost surely degenerate repetition; never raises.
 
     Loop-junk compresses to nearly nothing while real prose does not, so
     a zlib ratio below 0.2 separates them deterministically across
-    scripts (no language-specific word lists). Guards the ceiling-cut
-    partial path: looped "content" must error, never render as copyable
-    translation.
+    scripts (no language-specific word lists). The comparison is
+    *relative* to the source when given: faithful repetition (lyrics,
+    chants, boilerplate) repeats because its input repeats, so it is
+    not flagged — only output that loops while its input does not, or
+    output dwarfing its input, counts. Guards the ceiling-cut partial
+    path and the full-parse path alike: looped "content" must error,
+    never render as copyable translation. Known blind spot:
+    paraphrase-drift loops (same sentence reworded each time) compress
+    poorly and evade any compression check.
     """
     try:
         if not isinstance(text, str) or len(text) < 200:
             return False
-        import zlib
-
-        raw = text.encode("utf-8", "replace")
-        return len(zlib.compress(raw)) / max(1, len(raw)) < 0.2
+        if _compression_ratio(text) >= 0.2:
+            return False
+        if not isinstance(source_text, str) or not source_text.strip():
+            return True
+        if _compression_ratio(source_text) >= 0.2:
+            # Repetitive output from non-repetitive input: the loop case.
+            return True
+        # Both repeat: faithful unless the output dwarfs the input.
+        try:
+            return len(text) > 4 * len(source_text)
+        except Exception:
+            return False
     except Exception:
         return False
 
@@ -405,7 +433,7 @@ def _translate_single(
                         if (
                             isinstance(partial, str)
                             and partial.strip()
-                            and not _looks_looped(partial)
+                            and not _looks_looped(partial, text)
                         ):
                             return {
                                 "formal": partial,
@@ -476,6 +504,22 @@ def _translate_single(
             "translate_text unexpected payload shape; raw payload: %r", raw[:2000]
         )
         return {"error": RETRY_MESSAGE, "retryable": True}
+    # Full-parse loop check (L1): a repetition loop that ends cleanly
+    # under the ceiling still parses — screen it against the input the
+    # same relative way the ceiling path does, or loop junk ships as a
+    # copyable successful translation.
+    try:
+        formal_out = normalized.get("formal", "")
+        if _looks_looped(formal_out, text):
+            logger.warning(
+                "translate_text looped output rejected: in=%d chars model=%s target=%s",
+                len(text),
+                model,
+                target_language,
+            )
+            return {"error": LOOP_MESSAGE, "retryable": False}
+    except Exception:
+        pass
     try:
         logger.debug(
             "translate_text stream end: done_reason=%r eval_count=%r raw_chars=%d",

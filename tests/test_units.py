@@ -3800,6 +3800,8 @@ def test_retry_hint_single_sourced():
     assert asr.NO_SPEECH_MESSAGE is messages.NO_SPEECH_MESSAGE
     assert messages.RETRY_HINT == "Couldn't parse that one. Retry."
     assert messages.EMPTY_INPUT_HINT == "Type or paste something first."
+    assert translation.LOOP_MESSAGE is messages.LOOP_MESSAGE
+    assert "repetition" in messages.LOOP_MESSAGE
     assert messages.NO_VARIANT_HINT == (
         "No separate informal version for this translation — see Formal."
     )
@@ -3956,12 +3958,18 @@ def test_ceiling_looped_partial_falls_back_to_error():
     assert "error" in out and "truncated" not in out
 
 
-def test_looks_looped_thresholds():
-    """Loop junk trips; real prose in any script does not."""
+def test_looks_looped_relative_to_input():
+    """Repetition is judged against the input: chants pass, loops trip."""
     from text_c3po.services.translation import _looks_looped
 
-    assert _looks_looped("Hallo Welt. " * 500) is True
-    assert _looks_looped("Short text") is False
+    looped = "Hallo Welt. " * 500
+    chant_in = "na na na " * 200
+    chant_out = "na na na " * 300
+    assert _looks_looped(looped) is True
+    assert _looks_looped(looped, "Der alte Leuchtturm stand am Rand.") is True
+    assert _looks_looped(chant_out, chant_in) is False
+    assert _looks_looped(chant_out * 10, chant_in) is True
+    assert _looks_looped("Short text", "Short text") is False
     german = (
         "Der alte Leuchtturm stand am Rand der Klippe. Die Möwen kreisten "
         "über dem kalten Wasser, und der Wärter stieg die Treppe hinauf. "
@@ -3972,8 +3980,42 @@ def test_looks_looped_thresholds():
     assert _looks_looped(None) is False
 
 
+def test_translate_single_full_parse_loop_rejected():
+    """A clean-ending loop under the ceiling still errors, non-retryably."""
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    class FakeChunk:
+        def __init__(self, content):
+            self.content = content
+            self.response_metadata = {"done_reason": "stop"}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def stream(self, messages):
+            yield FakeChunk(
+                '{"formal": "'
+                + "Hallo Welt. " * 40
+                + '", "informal": "Hi", "origin_language": "English"}'
+            )
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        out = tr._translate_single("Hello there friend", "German", "m", parser)
+    finally:
+        tr.ChatOllama = orig
+    assert out.get("retryable") is False
+    assert "repetition" in out.get("error", "")
+
+
 def test_translate_single_ceiling_scales_with_input():
     """The ceiling is proportional: long-but-legit output must survive."""
+    import hashlib
+
     import text_c3po.services.translation as tr
     from langchain_core.output_parsers import JsonOutputParser
 
@@ -3988,20 +4030,23 @@ def test_translate_single_ceiling_scales_with_input():
 
         def stream(self, messages):
             yield FakeChunk('{"formal": "')
-            for _ in range(5):
-                yield FakeChunk("x" * 5000)
+            # ~75KB of high-entropy prose under the 12x7200=86400
+            # ceiling: varied enough to pass the loop check, long enough
+            # that a flat 60000 ceiling would have killed it.
+            for index in range(1000):
+                digest = hashlib.sha256(str(index).encode()).hexdigest()
+                yield FakeChunk("Satz {} über den Wärter. ".format(digest))
             yield FakeChunk('", "informal": "y", "origin_language": "z"}')
 
     orig = tr.ChatOllama
     tr.ChatOllama = FakeLLM
     try:
         parser = JsonOutputParser(pydantic_object=tr.Translation)
-        out = tr._translate_single("Hello " * 600, "German", "m", parser)
+        out = tr._translate_single("Hallo " * 1200, "German", "m", parser)
     finally:
         tr.ChatOllama = orig
-    # 3000-char input → 36000 ceiling; ~25k output passes through.
     assert "error" not in out, out
-    assert len(out.get("formal", "")) > 20000
+    assert len(out.get("formal", "")) > 60000
 
 
 def test_translate_single_unbounded_output():
