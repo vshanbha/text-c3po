@@ -60,7 +60,11 @@ def _row_for(caption, on_retry=None):
                 str(caption.get("text", "")), color=ft.Colors.ERROR, selectable=True
             )
             items = [stamp, body]
-            if on_retry is not None:
+            try:
+                retryable = caption.get("retryable", True)
+            except Exception:
+                retryable = True
+            if on_retry is not None and retryable is not False:
                 try:
                     seq = caption.get("seq")
                 except Exception:

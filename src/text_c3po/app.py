@@ -4,11 +4,15 @@ Mounts the always-visible top strip plus the Text/Live/File mode views.
 Views are built once and toggled visible so input text survives switches.
 """
 
+import atexit
+import logging
 import os
 import threading
 import time
 
 import flet as ft
+
+logger = logging.getLogger(__name__)
 
 from text_c3po.languages import name_for_code
 from text_c3po.runtimes.ollama_client import (
@@ -36,7 +40,12 @@ from text_c3po.services.translation import (
 )
 from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
-from text_c3po.ui.text_view import NO_VARIANT_HINT, SOURCE_TITLE, build_text_view
+from text_c3po.ui.text_view import (
+    NO_VARIANT_HINT,
+    RETRY_HINT,
+    SOURCE_TITLE,
+    build_text_view,
+)
 from text_c3po.ui.top_strip import (
     build_appbar,
     build_toolbar,
@@ -47,8 +56,14 @@ from text_c3po.ui.top_strip import (
 WINDOW_MIN_WIDTH = 960
 WINDOW_MIN_HEIGHT = 640
 
-RETRY_CARD_HINT = "Couldn't parse that one. Retry."
+# Single-sourced with ui.text_view.RETRY_HINT (the copy guard compares
+# against that module's constant): one wording, two references.
+RETRY_CARD_HINT = RETRY_HINT
 EMPTY_INPUT_HINT = "Type or paste something first."
+# Wiring-break toast: the result parsed fine but a view control is
+# missing — retry re-renders into the same break, so the copy says
+# restart instead of implying a model failure.
+WIRING_HINT = "Something's off with this view — restart the app."
 
 # E3-9 (D3 re-decision B+, 2026-09-13; loop marshaling 2026-09-14):
 # single serialized render point. Every background thread (capture drain,
@@ -73,22 +88,59 @@ def _locked_update(page) -> None:
         pass
 
 
+def _session_loop(page):
+    """Return the session event loop, or None (headless fakes, torn-down pages).
+
+    The ``page.session.connection.loop`` chain is load-bearing for the F3
+    fix; a Flet upgrade renaming any link lands here, not scattered
+    call-by-call.
+    """
+    try:
+        return page.session.connection.loop
+    except Exception:
+        return None
+
+
+def _has_session(page) -> bool:
+    """True when the page carries a live session reference; never raises.
+
+    Plain hasattr() is wrong here: flet's Page.session property raises
+    RuntimeError (not AttributeError) once the session is destroyed, and
+    hasattr propagates non-AttributeError — which would skip the render
+    entirely on the shutdown race workers hit at exit.
+    """
+    try:
+        return page.session is not None
+    except Exception:
+        return False
+
+
+def _warn_loop_fallback(where: str, page) -> None:
+    """Log the degraded inline render path on real pages; never raises."""
+    try:
+        if _has_session(page):
+            # Real page, unusable loop: the marshaling regressed (e.g. a
+            # Flet upgrade renamed the chain). Loud, not silent — the
+            # fallback is the dropped-render path from F3.
+            logger.warning("%s loop fallback; renders may drop", where)
+    except Exception:
+        pass
+
+
 def _ui_update(page) -> None:
     """Serialized page.update() marshaled onto the session loop; never raises."""
     try:
-        loop = None
+        posted = False
         try:
-            loop = page.session.connection.loop
+            loop = _session_loop(page)
+            if loop is not None and loop.is_running():
+                loop.call_soon_threadsafe(_locked_update, page)
+                posted = True
         except Exception:
-            loop = None
-        if loop is not None:
-            try:
-                if loop.is_running():
-                    loop.call_soon_threadsafe(_locked_update, page)
-                    return
-            except Exception:
-                pass
-        _locked_update(page)
+            pass
+        if not posted:
+            _warn_loop_fallback("_ui_update", page)
+            _locked_update(page)
     except Exception:
         pass
 
@@ -172,29 +224,81 @@ def _set_translating(refs, page, busy: bool, status: str = "") -> None:
 DISCONNECT_SNACKBAR_HINT = "Ollama disconnected — start it with `ollama serve`."
 
 
-def _show_snackbar(page, message, on_retry) -> None:
-    """Render a SnackBar with a Retry action; never raises.
+# Live set of web-spilled temp audios awaiting consumption. Daemon
+# workers die abruptly at interpreter exit (finally never runs), so an
+# atexit reaper — registered lazily on first spill — closes the privacy
+# hole for normal quits; kill -9 remains unfixable by design.
+_SPILLED_TEMPS = set()
+_SPILLED_LOCK = threading.Lock()
+_SPILL_REAPER_ARMED = {"armed": False}
 
-    Material's transient-error pattern: the dot shows state, this carries
-    the words plus the one-tap fix.
+
+def _reap_spilled() -> None:
+    """Unlink every un-consumed spilled temp file; never raises."""
+    try:
+        with _SPILLED_LOCK:
+            paths = list(_SPILLED_TEMPS)
+            _SPILLED_TEMPS.clear()
+        for path in paths:
+            try:
+                if path:
+                    os.unlink(path)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _discard_spilled(path) -> None:
+    """Unlink one spilled temp file and untrack it; never raises."""
+    try:
+        if path:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+            with _SPILLED_LOCK:
+                _SPILLED_TEMPS.discard(path)
+    except Exception:
+        pass
+
+
+def _spill_web_pick(picked_bytes, picked_name):
+    """Write browser-picked bytes to a temp file; return (path, cleanup).
+
+    Returns (None, False) on any failure. Never raises. Module-level
+    (not a main() closure) so unit tests drive it directly.
     """
     try:
-        snack = ft.SnackBar(
-            content=ft.Text(message),
-            action="Retry",
-            on_action=lambda e: on_retry(),
-        )
-        # flet 0.86: DialogControl goes via show_dialog (Dialogs stack),
-        # not page.overlay (visual overlay builder). Fall back to overlay
-        # only for headless fakes without show_dialog.
+        if not picked_bytes:
+            return None, False
+        import tempfile as _tempfile
+
+        suffix = os.path.splitext(picked_name or "")[1].lower() or ".wav"
+        tmp = _tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        path = tmp.name
         try:
-            show = getattr(page, "show_dialog", None)
-            if callable(show):
-                show(snack)
-                _ui_update(page)
-                return
+            with tmp:
+                tmp.write(picked_bytes)
+        except Exception:
+            _discard_spilled(path)
+            return None, False
+        try:
+            with _SPILLED_LOCK:
+                _SPILLED_TEMPS.add(path)
+            if not _SPILL_REAPER_ARMED["armed"]:
+                _SPILL_REAPER_ARMED["armed"] = True
+                atexit.register(_reap_spilled)
         except Exception:
             pass
+        return path, True
+    except Exception:
+        return None, False
+
+
+def _overlay_snackbar(page, snack) -> None:
+    """Legacy mount for headless fakes without show_dialog; never raises."""
+    try:
         overlay = getattr(page, "overlay", None)
         if overlay is not None and hasattr(overlay, "append"):
             overlay.append(snack)
@@ -202,7 +306,59 @@ def _show_snackbar(page, message, on_retry) -> None:
                 snack.open = True
             except Exception:
                 pass
-        _ui_update(page)
+    except Exception:
+        pass
+
+
+def _show_snackbar(page, message, on_retry) -> None:
+    """Render a SnackBar with a Retry action; never raises.
+
+    Material's transient-error pattern: the dot shows state, this carries
+    the words plus the one-tap fix. flet 0.86 routes DialogControl via
+    show_dialog (Dialogs stack), not page.overlay. The presentation runs
+    through the same loop marshaling as _ui_update: retry toasts fire
+    from worker threads, and show_dialog's internal _dialogs.update()
+    would drop off-loop exactly like the F3 spinner did.
+    """
+    try:
+        snack = ft.SnackBar(
+            content=ft.Text(message),
+            action="Retry",
+            on_action=lambda e: on_retry(),
+        )
+
+        def _present() -> None:
+            try:
+                show = getattr(page, "show_dialog", None)
+                if callable(show):
+                    try:
+                        show(snack)
+                    except Exception as exc:
+                        # Possibly already stacked; the update below renders it.
+                        # Never overlay-fallback here: that double-presents.
+                        # Loud, like the loop fallback: a vanishing toast
+                        # (e.g. the ollama-serve nudge) has no other signal.
+                        try:
+                            logger.warning("snackbar present failed: %r", exc)
+                        except Exception:
+                            pass
+                else:
+                    _overlay_snackbar(page, snack)
+            except Exception:
+                pass
+            _locked_update(page)
+
+        posted = False
+        try:
+            loop = _session_loop(page)
+            if loop is not None and loop.is_running():
+                loop.call_soon_threadsafe(_present)
+                posted = True
+        except Exception:
+            pass
+        if not posted:
+            _warn_loop_fallback("_show_snackbar", page)
+            _present()
     except Exception:
         pass
 
@@ -217,21 +373,33 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
 
     Present fields display. A blank informal variant is NOT an error — many
     languages have no formal/informal distinction — so its tab shows
-    NO_VARIANT_HINT with no toast. The SnackBar retry fires only on
-    technical failure: a transport/parse ``error`` result, or a blank
-    primary (formal) output. Retry re-issues the same prompt without
-    retyping; it is never offered for a successful translation.
+    NO_VARIANT_HINT with no toast. The SnackBar retry fires only when
+    retry is actionable: a retryable ``error`` result, or a blank primary
+    (formal) output. A non-retryable error (output ceiling) shows its own
+    message with no retry affordance. Missing controls are wiring breaks:
+    toast rather than render nothing silently.
     """
     try:
         refs = refs if isinstance(refs, dict) else {}
         if not isinstance(result, dict):
             result = {"error": RETRY_CARD_HINT, "retryable": True}
         if result.get("error"):
+            try:
+                retryable = result.get("retryable", True)
+            except Exception:
+                retryable = True
+            try:
+                message = result.get("error")
+                shown = (
+                    message if isinstance(message, str) and message.strip() else None
+                )
+            except Exception:
+                shown = None
             for key in ("formal_text", "informal_text"):
                 control = refs.get(key)
                 if control is not None:
                     try:
-                        control.value = RETRY_CARD_HINT
+                        control.value = shown or RETRY_CARD_HINT
                     except Exception:
                         pass
             origin = refs.get("origin_caption")
@@ -240,7 +408,13 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                     origin.value = SOURCE_TITLE
                 except Exception:
                     pass
-            _show_retry_snackbar(page, on_retry)
+            if retryable is not False:
+                _show_retry_snackbar(page, on_retry)
+            else:
+                try:
+                    _ui_update(page)
+                except Exception:
+                    pass
             return
         # Primary output decides failure first: a blank formal means the
         # contract itself failed (retry is valuable). A blank informal
@@ -251,9 +425,17 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
             formal_value = result.get("formal")
             if isinstance(formal_value, list):
                 formal_value = ", ".join(str(part) for part in formal_value)
-            formal_ok = isinstance(formal_value, str) and bool(formal_value.strip())
+            formal_value_ok = isinstance(formal_value, str) and bool(
+                formal_value.strip()
+            )
         except Exception:
-            formal_ok = False
+            formal_value_ok = False
+        # A missing control is a wiring break, not a model failure: the
+        # toast below says so explicitly instead of blaming the parse.
+        wiring_broken = (
+            refs.get("formal_text") is None or refs.get("informal_text") is None
+        )
+        formal_ok = formal_value_ok and not wiring_broken
         pairs = (
             ("formal_text", "formal"),
             ("informal_text", "informal"),
@@ -267,12 +449,15 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                 if isinstance(value, str) and value.strip():
                     if control is not None:
                         control.value = value
-                elif field == "informal" and formal_ok:
+                        control.data = {"copyable": True}
+                elif field == "informal" and formal_value_ok:
                     if control is not None:
                         control.value = NO_VARIANT_HINT
+                        control.data = {"copyable": False}
                 else:
                     if control is not None:
                         control.value = RETRY_CARD_HINT
+                        control.data = {"copyable": False}
             except Exception:
                 pass
         origin_control = refs.get("origin_caption")
@@ -288,7 +473,13 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                     origin_control.value = SOURCE_TITLE
         except Exception:
             pass
-        if not formal_ok:
+        if wiring_broken and formal_value_ok:
+            try:
+                logger.warning("translation rendered with missing refs")
+            except Exception:
+                pass
+            _show_snackbar(page, WIRING_HINT, on_retry)
+        elif not formal_ok:
             _show_retry_snackbar(page, on_retry)
     except Exception:
         try:
@@ -579,13 +770,20 @@ def main(page: ft.Page) -> None:
                     return
                 # Completeness cue: char count of what actually rendered, so
                 # a short result is visible as a number, not a feeling.
+                # Errors carry no tally — "Translated · 0 chars" next to an
+                # error card is a lie told by len("").
                 try:
-                    shown = result.get("formal", "") if isinstance(result, dict) else ""
-                    tally = (
-                        "Translated · {} chars".format(len(shown))
-                        if isinstance(shown, str)
-                        else ""
-                    )
+                    if isinstance(result, dict) and result.get("error"):
+                        tally = ""
+                    else:
+                        shown = (
+                            result.get("formal", "") if isinstance(result, dict) else ""
+                        )
+                        tally = (
+                            "Translated · {} chars".format(len(shown))
+                            if isinstance(shown, str)
+                            else ""
+                        )
                 except Exception:
                     tally = ""
                 try:
@@ -660,7 +858,13 @@ def main(page: ft.Page) -> None:
         except Exception:
             pass
 
-    def _run_file(path: str) -> None:
+    # Browser picks are size-gated, not memory-capped: with_data=True
+    # already holds the whole file in memory when pick_files returns, so
+    # this cap guards the temp spill plus the decode pipeline and disk —
+    # not RAM. A streaming-upload flow would be needed to cap memory.
+    WEB_PICK_BYTES_CAP = 100 * 1024 * 1024
+
+    def _run_file(path: str, cleanup: bool = False) -> None:
         try:
             refs = file_view.data if isinstance(file_view.data, dict) else {}
             target_dropdown = refs.get("target_dropdown")
@@ -692,6 +896,10 @@ def main(page: ft.Page) -> None:
             pass
         finally:
             file_busy["working"] = False
+            if cleanup:
+                # Web-spilled temp audio must not outlive the session:
+                # recordings in /tmp are a storage leak and a privacy hole.
+                _discard_spilled(path)
             try:
                 refs = file_view.data if isinstance(file_view.data, dict) else {}
                 button = refs.get("pick_button")
@@ -710,6 +918,7 @@ def main(page: ft.Page) -> None:
         if file_busy["working"]:
             return
         if file_picker is None:
+            _set_file_status("Audio picking is unavailable — restart the app.")
             return
         is_web = bool(getattr(page, "web", False))
         try:
@@ -718,6 +927,9 @@ def main(page: ft.Page) -> None:
                 file_type=ft.FilePickerFileType.CUSTOM,
                 allowed_extensions=[ext.lstrip(".") for ext in supported_extensions()],
                 with_data=is_web,
+                # Web-only: a browser blur (alt-tab to check the file) must
+                # not void an in-flight pick as a silent cancel.
+                cancel_upload_on_window_blur=False,
             )
         except Exception:
             return
@@ -728,23 +940,36 @@ def main(page: ft.Page) -> None:
                 getattr(picked, "bytes", None) if picked is not None else None
             )
             picked_name = getattr(picked, "name", "") if picked is not None else ""
+            picked_size = getattr(picked, "size", 0) if picked is not None else 0
         except Exception:
-            path, picked_bytes, picked_name = None, None, ""
-        if not path and is_web and picked_bytes:
+            path, picked_bytes, picked_name, picked_size = None, None, "", 0
+        cleanup = False
+        if is_web and picked_bytes and not path:
+            try:
+                size = picked_size if isinstance(picked_size, int) else 0
+                if size <= 0:
+                    size = len(picked_bytes)
+            except Exception:
+                size = 0
+            if size > WEB_PICK_BYTES_CAP:
+                try:
+                    cap_mb = WEB_PICK_BYTES_CAP // (1024 * 1024)
+                except Exception:
+                    cap_mb = 100
+                _set_file_status(
+                    "That file is too large for browser pick "
+                    "({} MB cap) — try the desktop app.".format(cap_mb)
+                )
+                return
             # Web never exposes a filesystem path (FilePickerFile.path is
             # always None): spill the bytes to a temp file so the shared
             # decode → transcribe → translate pipeline can run unchanged.
-            try:
-                import os as _os
-                import tempfile as _tempfile
-
-                suffix = _os.path.splitext(picked_name or "")[1].lower() or ".wav"
-                with _tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                    tmp.write(picked_bytes)
-                    path = tmp.name
-            except Exception:
-                path = None
+            # _run_file discards it when done (cleanup=True); every early
+            # return below discards it too — orphans are recordings.
+            path, cleanup = _spill_web_pick(picked_bytes, picked_name)
         if not path or file_busy["working"]:
+            if cleanup and path:
+                _discard_spilled(path)
             if is_web and not path and picked is not None:
                 _set_file_status(
                     "Couldn't read that file in the browser — try the desktop app."
@@ -752,7 +977,19 @@ def main(page: ft.Page) -> None:
             return
         file_busy["working"] = True
         _set_file_status("Transcribing…", "")
-        threading.Thread(target=_run_file, args=(path,), daemon=True).start()
+        try:
+            threading.Thread(
+                target=_run_file, args=(path, cleanup), daemon=True
+            ).start()
+        except Exception:
+            # Thread exhaustion after the spill: reset the latch and drop
+            # the temp, or picks wedge silent (busy stuck True) and the
+            # recording leaks — the two failure modes of an unguarded start.
+            file_busy["working"] = False
+            if cleanup:
+                _discard_spilled(path)
+            _set_file_status("Couldn't start transcription — retry.")
+            _ui_update(page)
 
     try:
         # Service self-registers; do NOT page.overlay.append() it.
@@ -1211,10 +1448,29 @@ def main(page: ft.Page) -> None:
     threading.Thread(target=_poll_ollama, daemon=True).start()
 
 
+def _configure_logging() -> None:
+    """Console logging so service diagnostics are operator-visible.
+
+    Without this the root logger drops everything below WARNING, which
+    makes TEST-PLAN's log cross-checks (translate_text ok-lines,
+    done_reason evidence) unexecutable. Console entry points only —
+    library import stays side-effect free.
+    """
+    try:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+        )
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    _configure_logging()
     ft.run(main)
 
 
 def run() -> None:
     """Console-script entry point (``text-c3po``): launch the Flet window."""
+    _configure_logging()
     ft.run(main)

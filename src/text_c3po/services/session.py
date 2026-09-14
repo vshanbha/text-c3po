@@ -322,6 +322,10 @@ class SessionController:
             except Exception:
                 result = {"error": "Couldn't parse that one. Retry.", "retryable": True}
             if isinstance(result, dict) and result.get("error"):
+                try:
+                    retryable = result.get("retryable", True)
+                except Exception:
+                    retryable = True
                 return {
                     "kind": "error",
                     "text": str(
@@ -331,6 +335,9 @@ class SessionController:
                     "source": text.strip(),
                     "source_lang": str(source),
                     "at": self._now_iso(),
+                    # Non-retryable errors (output ceiling) carry no Retry
+                    # button downstream (see ui.captions._row_for).
+                    "retryable": retryable,
                 }
             if not isinstance(result, dict):
                 return {

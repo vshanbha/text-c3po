@@ -39,6 +39,14 @@ def _make_copy_handler(body):
             clipboard = getattr(page, "clipboard", None)
             if page is None or clipboard is None:
                 return
+            try:
+                data = getattr(target, "data", None)
+                if isinstance(data, dict) and data.get("copyable") is False:
+                    # Error prose and NA placeholders are diagnosis, not
+                    # translation (set by app._render_translation_result).
+                    return
+            except Exception:
+                pass
             text = target.value or ""
             if (
                 not text.strip()

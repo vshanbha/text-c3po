@@ -202,6 +202,11 @@ def _norm_text(value) -> str:
         return ""
 
 
+# Public alias: integration tripwires import the normalizer; the leading
+# underscore keeps the primary name private by convention.
+normalize_text = _norm_text
+
+
 def is_supported(result, sentence) -> bool:
     """Return True when a cell counts as genuine target-language output.
 
@@ -248,9 +253,10 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
     ``per_language`` maps each language name to its valid count,
     ``failures`` holds one ``{model, language, sentence_index}`` dict per
     invalid cell (sentence_index is 0-based), and ``echoes`` holds the same
-    shape for JSON-valid cells whose formal text echoes the input sentence
-    (model cannot render the target — counts valid for the gate, flagged
-    for capability). Gate math is untouched: echo cells still score valid.
+    shape plus ``kind`` (``"echo"`` = rendered the input back, ``"blank"``
+    = valid JSON with no usable formal) for JSON-valid cells that do not
+    render the target. Both kinds count valid for the gate; both are
+    unsupported for capability. Gate math is untouched.
     """
     if models is None:
         models = list_models()
@@ -277,7 +283,23 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
                 if is_valid(result):
                     valid += 1
                     per_language[language] += 1
-                    if language != SOURCE_LANGUAGE and not is_supported(
+                    try:
+                        formal = result.get("formal")
+                        blank = not (isinstance(formal, str) and formal.strip())
+                    except Exception:
+                        blank = True
+                    if blank:
+                        # Valid JSON with no usable formal: unsupported in
+                        # every language, identity pair included.
+                        echoes.append(
+                            {
+                                "model": model,
+                                "language": language,
+                                "sentence_index": index,
+                                "kind": "blank",
+                            }
+                        )
+                    elif language != SOURCE_LANGUAGE and not is_supported(
                         result, sentence
                     ):
                         echoes.append(
@@ -285,6 +307,7 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
                                 "model": model,
                                 "language": language,
                                 "sentence_index": index,
+                                "kind": "echo",
                             }
                         )
                 else:
@@ -413,13 +436,15 @@ def format_support_table(results, languages=None):
     return "\n".join(lines)
 
 
-def record_support(results, path, date=None, languages=None):
+def record_support(results, path, date=None, languages=None, label=None):
     """Append the dated capability section to the model-quality research file.
 
     Append-only like :func:`record_results` and under its own label, so
-    gate sections keep their exact shape. Lists every echo cell (model,
-    language, sentence) — the per-language unsupported evidence.
-    Returns the path written.
+    gate sections keep their exact shape. Lists every unsupported cell
+    (model, language, sentence, kind) — the per-language evidence. Pass
+    ``label`` to discriminate same-day re-runs (e.g. corrected reruns);
+    without it same-day sections share a heading, so prefer distinct
+    labels when re-running. Returns the path written.
     """
     if date is None:
         date = datetime.date.today().isoformat()
@@ -427,13 +452,15 @@ def record_support(results, path, date=None, languages=None):
         languages = MATRIX_LANGUAGES
     else:
         languages = list(languages)
+    if label is None:
+        label = "Model capability — support matrix"
     lines = [
         "",
-        "## Model capability — support matrix ({})".format(date),
+        "## {} ({})".format(label, date),
         "",
-        "Supported = JSON-valid AND formal differs from the input sentence "
-        "(echoes prove the model cannot render the target). Rescored from "
-        "the gate run above — no extra calls.",
+        "Supported = JSON-valid with a usable formal that differs from the "
+        "input sentence (echo/blank cells prove the model did not render "
+        "the target). Rescored from the gate run above — no extra calls.",
         "",
         format_support_table(results, languages),
         "",
@@ -442,11 +469,16 @@ def record_support(results, path, date=None, languages=None):
         echo for summary in results.values() for echo in summary.get("echoes", [])
     ]
     if echoes:
-        lines.append("Echoes (valid JSON, unsupported target):")
+        lines.append("Unsupported cells (valid JSON, target not rendered):")
         lines.append("")
         for echo in echoes:
+            try:
+                kind = echo.get("kind", "echo")
+            except Exception:
+                kind = "echo"
             lines.append(
-                "- ECHO {} | {} | sentence {}".format(
+                "- {} {} | {} | sentence {}".format(
+                    str(kind).upper(),
                     echo.get("model"),
                     echo.get("language"),
                     echo.get("sentence_index", 0) + 1,
@@ -510,7 +542,7 @@ def record_results(results, path, date=None, languages=None, label=None):
             )
         lines.append("")
     else:
-        lines.append("No invalid cells — every model cell JSON-valid.")
+        lines.append("No invalid cells — every cell JSON-valid.")
         lines.append("")
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.isdir(parent):
@@ -559,6 +591,16 @@ def _parse_args(argv=None):
             "with --models and --languages. Never affects the gate."
         ),
     )
+    parser.add_argument(
+        "--label",
+        default=None,
+        help=(
+            "Custom section label for the appended research.md sections "
+            "(gate and capability alike). Without it same-day re-runs "
+            "share a heading and cannot be told apart — always pass one "
+            "when re-running."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -586,12 +628,24 @@ def main(argv=None, translate_fn=None):
             "No scores written.".format(getattr(args, "languages", None))
         )
         return EXIT_ABORT
-    if languages == MATRIX_LANGUAGES:
-        label = "E1 gate — 5x5 smoke"
-    elif len(languages) == len(ALL_LANGUAGES):
-        label = "E4 gate — {}x{} full matrix".format(len(languages), len(SENTENCES))
+    if getattr(args, "label", None):
+        label = args.label
+        cap_label = "{} — capability".format(args.label)
     else:
-        label = "E4 gate — {}x{} matrix".format(len(languages), len(SENTENCES))
+        # Default runs stamp the wall-clock time into the label so
+        # same-day re-runs never share a heading in the append-only file.
+        try:
+            stamp = datetime.datetime.now().strftime("%H:%M")
+        except Exception:
+            stamp = "rerun"
+        if languages == MATRIX_LANGUAGES:
+            label = "E1 gate — 5x5 smoke"
+        elif len(languages) == len(ALL_LANGUAGES):
+            label = "E4 gate — {}x{} full matrix".format(len(languages), len(SENTENCES))
+        else:
+            label = "E4 gate — {}x{} matrix".format(len(languages), len(SENTENCES))
+        label = "{} {}".format(label, stamp)
+        cap_label = "{} — capability".format(label)
 
     connected, _ = check_ollama()
     if not connected:
@@ -644,7 +698,9 @@ def main(argv=None, translate_fn=None):
         print("")
         print(format_support_table(results, languages))
         print("")
-        record_support(results, args.research_path, languages=languages)
+        record_support(
+            results, args.research_path, languages=languages, label=cap_label
+        )
         print("Appended capability section to {}".format(args.research_path))
     failed = [
         model

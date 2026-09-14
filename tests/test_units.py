@@ -161,9 +161,23 @@ def test_identity_target_skips_echo_check():
     )
     summary = results["m"]
     assert summary["valid"] == 10  # gate untouched
-    assert summary["echoes"] == [] or {e["language"] for e in summary["echoes"]} == {
-        "Kannada"
-    }
+    assert len(summary["echoes"]) == 5
+    assert {e["language"] for e in summary["echoes"]} == {"Kannada"}
+    assert all(e["kind"] == "echo" for e in summary["echoes"])
+
+
+def test_blank_formal_records_blank_kind_not_echo():
+    """A valid-but-blank formal is unsupported, but must not say ECHO."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    results = run_matrix(
+        models=["m"],
+        translate_fn=lambda text, target, model: {"formal": ""},
+        languages=["German"],
+    )
+    summary = results["m"]
+    assert summary["valid"] == 5
+    assert [e["kind"] for e in summary["echoes"]] == ["blank"] * 5
 
 
 def test_format_support_table_ranks_best_first():
@@ -3011,6 +3025,507 @@ def test_ui_update_falls_back_without_loop():
     page = FakePage()
     _ui_update(page)
     assert page.updated == 1
+
+
+def test_session_loop_chain_pinned_to_installed_flet():
+    """The F3 fix reads page.session.connection.loop: pin the first link.
+
+    If a Flet upgrade renames the chain, _session_loop returns None and
+    _ui_update warns (next test) instead of silently dropping renders.
+    """
+    import flet as ft
+
+    assert hasattr(ft.Page, "session")
+
+
+def test_ui_update_warns_on_loop_fallback_with_session(caplog):
+    """A real-looking page without a usable loop warns instead of silently dropping."""
+    import logging
+
+    from text_c3po.app import _ui_update
+
+    class FakePage:
+        def __init__(self):
+            self.session = object()  # present but no connection.loop
+            self.updated = 0
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    with caplog.at_level(logging.WARNING, logger="text_c3po.app"):
+        _ui_update(page)
+    assert page.updated == 1
+    assert any("loop fallback" in r.message for r in caplog.records)
+
+
+def test_snackbar_prefers_show_dialog_branch():
+    """Production branch: show_dialog receives the SnackBar, overlay untouched."""
+    from text_c3po.app import _show_snackbar
+
+    class FakeOverlay(list):
+        pass
+
+    class FakePage:
+        def __init__(self):
+            self.overlay = FakeOverlay()
+            self.shown = []
+            self.updated = 0
+
+        def show_dialog(self, dialog):
+            self.shown.append(dialog)
+
+        def update(self):
+            self.updated += 1
+
+    seen = []
+    page = FakePage()
+    _show_snackbar(page, "Retry me.", lambda: seen.append(True))
+    assert len(page.shown) == 1
+    assert len(page.overlay) == 0
+    assert page.updated >= 1
+    page.shown[0].on_action(None)
+    assert seen == [True]
+
+
+def test_snackbar_marshals_to_session_loop():
+    """Retry toasts from worker threads present via the loop, like _ui_update."""
+    from text_c3po.app import _show_snackbar
+
+    posted = []
+
+    class FakeLoop:
+        def is_running(self):
+            return True
+
+        def call_soon_threadsafe(self, cb, *args):
+            posted.append((cb, args))
+
+    class FakePage:
+        def __init__(self):
+            self.session = type(
+                "S", (), {"connection": type("C", (), {"loop": FakeLoop()})()}
+            )()
+            self.shown = []
+            self.updated = 0
+
+        def show_dialog(self, dialog):
+            self.shown.append(dialog)
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    _show_snackbar(page, "Retry me.", lambda: None)
+    assert page.shown == [] and page.updated == 0
+    assert len(posted) == 1
+    posted[0][0](*posted[0][1])
+    assert len(page.shown) == 1 and page.updated == 1
+
+
+def _render_fakes():
+    class Fake:
+        def __init__(self):
+            self.value = ""
+
+    class FakePage:
+        def __init__(self):
+            self.shown = []
+            self.updated = 0
+
+        def show_dialog(self, dialog):
+            self.shown.append(dialog)
+
+        def update(self):
+            self.updated += 1
+
+    refs = {
+        "formal_text": Fake(),
+        "informal_text": Fake(),
+        "origin_caption": Fake(),
+    }
+    return refs, FakePage()
+
+
+def test_render_blank_informal_shows_hint_without_snackbar():
+    """F2 ruling: blank informal + good formal renders NA hint, never toasts."""
+    from text_c3po.app import _render_translation_result
+    from text_c3po.ui.text_view import NO_VARIANT_HINT
+
+    refs, page = _render_fakes()
+    _render_translation_result(
+        refs,
+        page,
+        {"formal": "Hallo", "informal": "", "origin_language": "English"},
+        lambda: None,
+    )
+    assert refs["formal_text"].value == "Hallo"
+    assert refs["informal_text"].value == NO_VARIANT_HINT
+    assert refs["origin_caption"].value == "Detected: English"
+    assert page.shown == []
+
+
+def test_render_blank_formal_triggers_retry_snackbar():
+    """Blank primary output is a technical failure: hint plus toast."""
+    from text_c3po.app import RETRY_CARD_HINT, _render_translation_result
+
+    refs, page = _render_fakes()
+    _render_translation_result(
+        refs,
+        page,
+        {"formal": "", "informal": "Hi", "origin_language": "English"},
+        lambda: None,
+    )
+    assert refs["formal_text"].value == RETRY_CARD_HINT
+    assert refs["informal_text"].value == "Hi"
+    assert len(page.shown) == 1
+
+
+def test_render_error_result_toasts():
+    """Retryable error: error text shows, caption resets, toast fires."""
+    from text_c3po.app import RETRY_CARD_HINT, _render_translation_result
+    from text_c3po.ui.text_view import SOURCE_TITLE
+
+    refs, page = _render_fakes()
+    _render_translation_result(
+        refs, page, {"error": "x", "retryable": True}, lambda: None
+    )
+    assert refs["formal_text"].value == "x"
+    assert refs["informal_text"].value == "x"
+    assert refs["origin_caption"].value == SOURCE_TITLE
+    assert len(page.shown) == 1
+
+
+def test_render_nonretryable_error_shows_message_without_toast():
+    """Output-ceiling style error: message renders, no retry offered."""
+    from text_c3po.app import _render_translation_result
+
+    refs, page = _render_fakes()
+    _render_translation_result(
+        refs,
+        page,
+        {"error": "Translation ran too long.", "retryable": False},
+        lambda: None,
+    )
+    assert refs["formal_text"].value == "Translation ran too long."
+    assert page.shown == []
+
+
+def test_render_missing_formal_ref_toasts():
+    """A missing primary control is a wiring break: never render nothing silently."""
+    from text_c3po.app import WIRING_HINT, _render_translation_result
+
+    refs, page = _render_fakes()
+    del refs["formal_text"]
+    _render_translation_result(
+        refs,
+        page,
+        {"formal": "Hallo", "informal": "Hi", "origin_language": "English"},
+        lambda: None,
+    )
+    assert len(page.shown) == 1
+    assert page.shown[0].content.value == WIRING_HINT
+
+
+def test_spill_and_discard_web_pick_roundtrip(tmp_path):
+    """Spilled browser audio lands on disk tracked, then unlinks cleanly."""
+    import os
+
+    from text_c3po.app import _SPILLED_TEMPS, _discard_spilled, _spill_web_pick
+
+    path, cleanup = _spill_web_pick(b"RIFF-bytes", "clip.m4a")
+    assert cleanup is True
+    assert path and os.path.isfile(path) and path in _SPILLED_TEMPS
+    assert path.endswith(".m4a")
+    _discard_spilled(path)
+    assert not os.path.exists(path) and path not in _SPILLED_TEMPS
+    assert _spill_web_pick(b"", "x.wav") == (None, False)
+    assert _spill_web_pick(None, "x.wav") == (None, False)
+    _discard_spilled(None)  # never raises
+
+
+def test_reap_spilled_clears_tracking():
+    """Exit-time reaper drains the tracked set without raising."""
+    import os
+
+    from text_c3po.app import _SPILLED_TEMPS, _reap_spilled, _spill_web_pick
+
+    path, _ = _spill_web_pick(b"data", "a.wav")
+    assert path in _SPILLED_TEMPS
+    _reap_spilled()
+    assert not os.path.exists(path) and len(_SPILLED_TEMPS) == 0
+
+
+def test_snackbar_fallback_warns_on_real_page(caplog):
+    """Degraded toast path is loud: warning names the fallback."""
+    import logging
+
+    from text_c3po.app import _show_snackbar
+
+    class FakePage:
+        def __init__(self):
+            self.session = object()
+            self.shown = []
+            self.updated = 0
+
+        def show_dialog(self, dialog):
+            self.shown.append(dialog)
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    with caplog.at_level(logging.WARNING, logger="text_c3po.app"):
+        _show_snackbar(page, "Retry me.", lambda: None)
+    assert len(page.shown) == 1 and page.updated == 1
+    assert any("snackbar" in r.message.lower() for r in caplog.records)
+
+
+def test_render_missing_informal_ref_toasts_wiring_hint():
+    """Informal wiring break with good values: wiring toast, not retry copy."""
+    from text_c3po.app import WIRING_HINT, _render_translation_result
+
+    refs, page = _render_fakes()
+    del refs["informal_text"]
+    _render_translation_result(
+        refs,
+        page,
+        {"formal": "Hallo", "informal": "", "origin_language": "English"},
+        lambda: None,
+    )
+    assert len(page.shown) == 1
+    assert page.shown[0].content.value == WIRING_HINT
+
+
+def test_identity_blank_formal_records_blank():
+    """Blank formal on the identity pair is still unsupported (blank kind)."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    results = run_matrix(
+        models=["m"],
+        translate_fn=lambda text, target, model: {"formal": "  "},
+        languages=["English"],
+    )
+    summary = results["m"]
+    assert [e["kind"] for e in summary["echoes"]] == ["blank"] * 5
+
+
+def test_no_overlay_mount_of_file_picker_tripwire():
+    """F1 guard: FilePicker is a Service — never mount it on page.overlay.
+
+    AST-scans app.py like the E3-9 render tripwire: re-adding the mount
+    restores the red Unknown-control panel on web. Tracks any local name
+    bound to a FilePicker() construction (not just `file_picker`) and any
+    overlay append/extend spelling. Receiver aliases (``ov = page.overlay``)
+    stay out of scope — grep those by hand on Flet upgrades.
+    """
+    import ast
+    import os
+
+    from text_c3po.paths import find_project_root
+
+    path = os.path.join(find_project_root(), "src", "text_c3po", "app.py")
+    tree = ast.parse(open(path).read())
+    picker_names = set()
+
+    def is_picker_call(node):
+        if not isinstance(node, ast.Call):
+            return False
+        func = node.func
+        name = getattr(func, "id", None) or getattr(func, "attr", None)
+        return name == "FilePicker"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and is_picker_call(node.value):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    picker_names.add(target.id)
+    assert picker_names, "no FilePicker() construction found — tripwire blind"
+    offenders = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in ("append", "extend")
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "overlay"
+        ):
+            for arg in node.args:
+                if (
+                    isinstance(arg, ast.Name)
+                    and arg.id in picker_names
+                    or is_picker_call(arg)
+                ):
+                    offenders.append(ast.dump(node))
+    assert offenders == []
+
+
+def test_copy_handler_skips_placeholders():
+    """Copy on a hint/NA placeholder must not touch the clipboard."""
+    import asyncio
+
+    from text_c3po.ui.text_view import NO_VARIANT_HINT, RETRY_HINT, _make_copy_handler
+
+    written = []
+
+    class FakeClipboard:
+        def set(self, text):
+            written.append(text)
+
+    class FakePage:
+        clipboard = FakeClipboard()
+
+    class FakeControl:
+        page = FakePage()
+
+    class FakeEvent:
+        control = FakeControl()
+
+    class FakeBody:
+        def __init__(self, value):
+            self.value = value
+
+    for placeholder in ("", "   ", RETRY_HINT, NO_VARIANT_HINT):
+        written.clear()
+        asyncio.run(_make_copy_handler(FakeBody(placeholder))(FakeEvent()))
+        assert written == []
+    asyncio.run(_make_copy_handler(FakeBody("Hallo"))(FakeEvent()))
+    assert written == ["Hallo"]
+
+
+def test_capability_cli_writes_support_section(monkeypatch, tmp_path):
+    """--capability pins the support table plus echo/blank detail to file."""
+    import text_c3po.services.eval_harness as harness
+
+    monkeypatch.setattr(harness, "check_ollama", lambda: (True, ["m"]))
+    monkeypatch.setattr(harness, "list_models", lambda: ["m"])
+
+    def stub(text, target, model):
+        if target == "German":
+            return {"formal": "echt: " + text}
+        if target == "French":
+            return {"formal": ""}
+        return {"formal": text}
+
+    research = tmp_path / "cap.md"
+    code = harness.main(
+        [
+            "--models",
+            "m",
+            "--languages",
+            "German,French,Kannada",
+            "--capability",
+            "--research-path",
+            str(research),
+        ],
+        translate_fn=stub,
+    )
+    assert code == harness.EXIT_PASS  # echoes still gate-valid
+    body = research.read_text()
+    # Default runs stamp the wall-clock time so same-day re-runs never
+    # share a heading; the capability section trails the gate section.
+    assert "capability" in body
+    assert body.index("## E4 gate") < body.index("capability")
+    assert "ECHO" in body and "BLANK" in body
+
+
+def test_capability_cli_label_tags_sections(monkeypatch, tmp_path):
+    """--label discriminates same-day re-runs in research.md."""
+    import text_c3po.services.eval_harness as harness
+
+    monkeypatch.setattr(harness, "check_ollama", lambda: (True, ["m"]))
+    monkeypatch.setattr(harness, "list_models", lambda: ["m"])
+
+    def stub(text, target, model):
+        return {"formal": "echt: " + text}
+
+    research = tmp_path / "lab.md"
+    code = harness.main(
+        [
+            "--models",
+            "m",
+            "--languages",
+            "German",
+            "--capability",
+            "--label",
+            "Rerun demo",
+            "--research-path",
+            str(research),
+        ],
+        translate_fn=stub,
+    )
+    assert code == harness.EXIT_PASS
+    body = research.read_text()
+    assert "## Rerun demo (" in body
+    assert "## Rerun demo — capability (" in body
+
+
+def test_retry_hint_single_sourced():
+    """app renders and text_view copy-skips the same hint object."""
+    from text_c3po import app as app_module
+    from text_c3po.ui import text_view
+
+    assert app_module.RETRY_CARD_HINT is text_view.RETRY_HINT
+
+
+def test_translate_single_output_ceiling_stops_degenerate_stream():
+    """A runaway repetition loop ends in a non-retryable error, not a hang."""
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    class FakeChunk:
+        content = "x" * 5000
+        response_metadata = {"done_reason": "length", "eval_count": 99999}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def stream(self, messages):
+            for _ in range(20):
+                yield FakeChunk()
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        out = tr._translate_single("Hello", "German", "m", parser)
+    finally:
+        tr.ChatOllama = orig
+    assert out.get("retryable") is False
+    assert "shorter input" in out.get("error", "")
+
+
+def test_translate_single_ceiling_scales_with_input():
+    """The ceiling is proportional: long-but-legit output must survive."""
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    class FakeChunk:
+        def __init__(self, content):
+            self.content = content
+            self.response_metadata = {"done_reason": "stop"}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def stream(self, messages):
+            yield FakeChunk('{"formal": "')
+            for _ in range(5):
+                yield FakeChunk("x" * 5000)
+            yield FakeChunk('", "informal": "y", "origin_language": "z"}')
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        out = tr._translate_single("Hello " * 600, "German", "m", parser)
+    finally:
+        tr.ChatOllama = orig
+    # 3000-char input → 36000 ceiling; ~25k output passes through.
+    assert "error" not in out, out
+    assert len(out.get("formal", "")) > 20000
 
 
 def test_translate_single_unbounded_output():
