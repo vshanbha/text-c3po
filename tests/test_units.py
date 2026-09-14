@@ -1107,6 +1107,26 @@ def test_retry_caption_flips_and_fails():
     assert retried["kind"] == "error"
     assert "Retry" in retried["text"]
 
+    states_cut = {"fail": True}
+
+    def cut(text, target, model):
+        if states_cut["fail"]:
+            return {"error": "down", "retryable": True}
+        return {"formal": "prefix…", "truncated": True}
+
+    ctl3b = SessionController(
+        target_language="English", model="m", translate_fn=cut, clock=clock
+    )
+    ctl3b.start_session()
+    ctl3b.post_utterance("s")
+    assert ctl3b.drain()[0]["kind"] == "error"
+    states_cut["fail"] = False
+    # A retry landing on the ceiling keeps the partial marker: the row
+    # must not pass the cut-off prefix off as a complete caption.
+    recut = ctl3b.retry_caption(1)
+    assert recut["kind"] == "caption"
+    assert recut["truncated"] is True
+
     def weird(text, target, model):
         return ["not", "a", "dict"]
 
@@ -3479,14 +3499,14 @@ def test_no_overlay_mount_of_file_picker_tripwire():
 
     AST-scans app.py like the E3-9 render tripwire: re-adding the mount
     restores the red Unknown-control panel on web. Tracks any local name
-    bound to a FilePicker() construction (Assign and AnnAssign, not just
-    `file_picker`), any overlay append/extend/insert spelling including
-    list-form args, direct `page.overlay = ...` rebinding, subscript
-    stores (`page.overlay[0] = ...`), and receiver aliases
-    (``ov = page.overlay`` followed by ``ov.append(...)``).
-    Factory-returned pickers stay out of scope — the runtime
-    ``_mount_overlay`` guard (TypeError on Services) covers those paths
-    instead.
+    bound to a FilePicker() construction (Assign incl. multi-target and
+    AnnAssign, not just `file_picker`), any overlay append/extend/insert
+    spelling including list-form args, direct `page.overlay = ...`
+    rebinding, subscript stores (`page.overlay[0] = ...`, `+=`),
+    and receiver aliases transitively (``ov = page.overlay``,
+    ``ov2 = ov``). Factory-returned pickers stay out of scope — the
+    runtime ``_mount_overlay`` guard (TypeError on Services) covers
+    those paths instead.
     """
     import ast
     import os
@@ -3516,15 +3536,30 @@ def test_no_overlay_mount_of_file_picker_tripwire():
             bind_picker(node.target, node.value)
     assert picker_names, "no FilePicker() construction found — tripwire blind"
     overlay_aliases = set()
-    for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and isinstance(node.value, ast.Attribute)
-            and node.value.attr == "overlay"
-        ):
-            overlay_aliases.add(node.targets[0].id)
+    # Fixpoint: ov2 = ov must resolve regardless of visit order.
+    changed = True
+    while changed:
+        changed = False
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if isinstance(node.value, ast.Attribute) and node.value.attr == "overlay":
+                for target in node.targets:
+                    if (
+                        isinstance(target, ast.Name)
+                        and target.id not in overlay_aliases
+                    ):
+                        overlay_aliases.add(target.id)
+                        changed = True
+            elif isinstance(node.value, ast.Name) and node.value.id in overlay_aliases:
+                # Transitive alias: ov2 = ov.
+                for target in node.targets:
+                    if (
+                        isinstance(target, ast.Name)
+                        and target.id not in overlay_aliases
+                    ):
+                        overlay_aliases.add(target.id)
+                        changed = True
 
     def arg_is_picker(arg):
         if isinstance(arg, ast.Name) and arg.id in picker_names:
@@ -3548,6 +3583,13 @@ def test_no_overlay_mount_of_file_picker_tripwire():
                 and receiver_is_overlay(node.func.value)
                 and any(arg_is_picker(arg) for arg in node.args)
             ):
+                offenders.append(ast.dump(node))
+        elif isinstance(node, ast.AugAssign):
+            # page.overlay += [picker]: rebinding-with-append in one step.
+            target = node.target
+            if isinstance(target, ast.Attribute) and target.attr == "overlay":
+                offenders.append(ast.dump(node))
+            elif isinstance(target, ast.Name) and target.id in overlay_aliases:
                 offenders.append(ast.dump(node))
         elif isinstance(node, ast.Assign):
             for target in node.targets:
@@ -3862,9 +3904,9 @@ def test_render_truncated_result_shows_partial_without_toast():
     assert page.shown == []
 
 
-def test_render_error_with_missing_refs_toasts_wiring():
-    """Wiring check runs before the error return: no model-blaming copy."""
-    from text_c3po.app import WIRING_HINT, _render_translation_result
+def test_render_error_with_missing_refs_leads_with_error():
+    """Wiring break plus service error: actionable error copy wins."""
+    from text_c3po.app import _render_translation_result
 
     refs, page = _render_fakes()
     del refs["formal_text"]
@@ -3872,8 +3914,8 @@ def test_render_error_with_missing_refs_toasts_wiring():
         refs, page, {"error": "boom", "retryable": True}, lambda: None
     )
     assert len(page.shown) == 1
-    assert page.shown[0].content.value == WIRING_HINT
-    assert page.shown[0].action is None
+    assert page.shown[0].content.value == "boom"
+    assert page.shown[0].action == "Retry"
 
 
 def test_ceiling_partial_cuts_trailing_json_debris():
