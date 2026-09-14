@@ -370,17 +370,18 @@ def _spill_web_pick(picked_bytes, picked_name, base=None):
         import tempfile as _tempfile
 
         suffix = os.path.splitext(picked_name or "")[1].lower() or ".wav"
-        tmp = _tempfile.NamedTemporaryFile(
-            suffix=suffix, delete=False, dir=_spill_dir(base)
-        )
-        path = tmp.name
-        # Track before writing: a write failure — or interpreter exit
-        # mid-write — must still be reaped, and only tracked paths are.
+        # Create and track atomically under one lock hold: otherwise a
+        # sibling tab's sweep can listdir between creation and tracking
+        # and unlink an in-flight spill mid-write.
         try:
             with _SPILLED_LOCK:
+                tmp = _tempfile.NamedTemporaryFile(
+                    suffix=suffix, delete=False, dir=_spill_dir(base)
+                )
+                path = tmp.name
                 _SPILLED_TEMPS.add(path)
         except Exception:
-            pass
+            return None, False
         try:
             with tmp:
                 tmp.write(picked_bytes)
@@ -511,8 +512,10 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
     actionable: a retryable ``error`` result, or a blank primary
     (formal) output. A non-retryable error (output ceiling) shows its
     own message with no retry affordance. Missing controls are wiring
-    breaks: the wiring notice toasts on every path, including error
-    results, so a broken view is never misattributed to the model.
+    breaks: surviving cards are blanked and the toast names the
+    actionable copy — the wiring notice alone, or the service error
+    (honoring retryable) when one is present — so a broken view is
+    never silently fresh nor misattributed to the model.
     """
     try:
         refs = refs if isinstance(refs, dict) else {}
@@ -529,6 +532,16 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                 logger.warning("translation rendered with missing refs")
             except Exception:
                 pass
+            # Whatever survives still shows the previous result as if
+            # fresh: blank it on every wiring path, error or not.
+            for key in ("formal_text", "informal_text"):
+                control = refs.get(key)
+                if control is not None:
+                    try:
+                        control.value = ""
+                        control.data = {"copyable": False}
+                    except Exception:
+                        pass
             if result.get("error"):
                 # Both broken: the service error is actionable (ollama
                 # down, input too long) while restart fixes only the

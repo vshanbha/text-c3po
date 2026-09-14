@@ -3920,6 +3920,23 @@ def test_render_error_with_missing_refs_leads_with_error():
     assert page.shown[0].action == "Retry"
 
 
+def test_render_wiring_break_blanks_stale_cards():
+    """Surviving cards are blanked on wiring breaks, error or not."""
+    from text_c3po.app import _render_translation_result
+
+    for result in (
+        {"formal": "Hallo", "informal": "Hi", "origin_language": "English"},
+        {"error": "boom", "retryable": True},
+    ):
+        refs, page = _render_fakes()
+        refs["informal_text"].value = "STALE"
+        refs["informal_text"].data = {"copyable": True}
+        del refs["formal_text"]
+        _render_translation_result(refs, page, result, lambda: None)
+        assert refs["informal_text"].value == ""
+        assert refs["informal_text"].data == {"copyable": False}
+
+
 def test_ceiling_partial_cuts_trailing_json_debris():
     """Closed formal plus later-field junk renders the formal only."""
     from text_c3po.services.translation import extract_partial_formal
