@@ -112,3 +112,30 @@ Supported = JSON-valid AND formal differs from the input sentence (echoes prove 
 | gemma4:e4b-mlx | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
 
 No echoes — every valid cell rendered the target.
+
+## E4 gate — 23x5 full matrix (2026-09-14)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm2.5:latest | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115/115 | 100% | PASS |
+
+No invalid cells — every model cell JSON-valid.
+
+## Model capability — support matrix (2026-09-14)
+
+Supported = JSON-valid AND formal differs from the input sentence (echoes prove the model cannot render the target). Rescored from the gate run above — no extra calls.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Supported |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm2.5:latest | 5/5 | 5/5 | 4/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 4/5 | 5/5 | 5/5 | 4/5 | 5/5 | 4/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 3/5 | 5/5 | 109 |
+
+Echoes (valid JSON, unsupported target):
+
+- ECHO lfm2.5:latest | Bangla | sentence 4
+- ECHO lfm2.5:latest | Greek | sentence 4
+- ECHO lfm2.5:latest | Kannada | sentence 4
+- ECHO lfm2.5:latest | Persian | sentence 4
+- ECHO lfm2.5:latest | Urdu | sentence 4
+- ECHO lfm2.5:latest | Urdu | sentence 5

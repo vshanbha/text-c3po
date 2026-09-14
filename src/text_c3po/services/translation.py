@@ -249,10 +249,11 @@ def _translate_single(
             # No thinking phase: translation is a direct rewrite, and the
             # reasoning trace costs ~10s per call with zero quality gain.
             reasoning=False,
-            # Unbounded output: the server default (128 tokens per the
-            # installed langchain_ollama docstring) truncates multi-paragraph
-            # translations mid-JSON, which then surfaces as a parse error or
-            # a cut-off formal text. -1 = infinite generation.
+            # Prophylactic, not a cutoff fix: the server default caps
+            # output at 128 tokens (per the installed langchain_ollama
+            # docstring), so request infinite generation. Live F4 evidence
+            # showed the Spanish cutoff stopping clean (done_reason='stop',
+            # cap never engaged) — retry remains the affordance there.
             num_predict=-1,
             sync_client_kwargs={"timeout": TRANSLATION_TIMEOUT_S},
         )
@@ -277,7 +278,16 @@ def _translate_single(
                 _ACTIVE_STREAMS.add(stream)
         except Exception:
             pass
+        # Backstop only, set far above legitimate output: duplication
+        # across formal/informal plus JSON escapes inflates raw chars well
+        # beyond the input length, so a tight ceiling would kill valid
+        # near-threshold translations with no recourse (non-retryable).
+        try:
+            output_ceiling = max(60000, 12 * len(text))
+        except Exception:
+            output_ceiling = 60000
         pieces = []
+        raw_len = 0
         last_meta: dict = {}
         try:
             for chunk in stream:
@@ -294,7 +304,8 @@ def _translate_single(
                     piece = ""
                 # Keep the latest response metadata: done_reason="length"
                 # tells a length-limit stop apart from a clean "stop" when
-                # diagnosing cut-off translations (see ok-log below).
+                # diagnosing cut-off translations (see the end-of-stream
+                # logs below, including the parse-failure branch).
                 try:
                     meta = getattr(chunk, "response_metadata", None)
                     if isinstance(meta, dict) and meta:
@@ -303,6 +314,26 @@ def _translate_single(
                     pass
                 if piece:
                     pieces.append(piece)
+                    raw_len += len(piece)
+                    if raw_len > output_ceiling:
+                        # Degenerate repetition loop: each chunk beats the
+                        # per-read timeout forever. Stop with an actionable,
+                        # non-retryable error instead of hanging "Translating…".
+                        logger.warning(
+                            "translate_text output ceiling hit: raw_chars=%d "
+                            "done_reason=%r model=%s target=%s",
+                            raw_len,
+                            last_meta.get("done_reason"),
+                            model,
+                            target_language,
+                        )
+                        _close_stream(stream)
+                        return {
+                            "error": (
+                                "Translation ran too long — try a shorter input."
+                            ),
+                            "retryable": False,
+                        }
                     if callable(on_token):
                         try:
                             on_token(piece, sum(len(p) for p in pieces))
@@ -342,8 +373,16 @@ def _translate_single(
     try:
         parsed = parser.parse(raw)
     except Exception as exc:
+        # A length-truncated mid-JSON payload dies here, before the
+        # end-of-stream debug log below — so emit the stream metadata
+        # with the failure or the cutoff case stays undiagnosable.
         logger.error(
-            "translate_text parse failure: %r; raw payload: %r", exc, raw[:2000]
+            "translate_text parse failure: %r; done_reason=%r eval_count=%r; "
+            "raw payload: %r",
+            exc,
+            last_meta.get("done_reason"),
+            last_meta.get("eval_count"),
+            raw[:2000],
         )
         return {"error": RETRY_MESSAGE, "retryable": True}
     normalized = _normalize(parsed)

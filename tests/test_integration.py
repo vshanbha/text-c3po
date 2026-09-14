@@ -230,7 +230,11 @@ def test_unsupported_target_echoes_input_live():
     for target in ("Kannada", "Marathi"):
         out = translate_text(text, target, MODEL)
         assert isinstance(out, dict) and not out.get("error"), out
-        assert out.get("formal", "").strip() == text, out
+        from text_c3po.services.eval_harness import normalize_text
+
+        formal = (out.get("formal") or "").strip()
+        assert formal, out
+        assert normalize_text(formal) == normalize_text(text), out
 
 
 def test_spanish_multipara_collapse_recreates_live():
@@ -250,13 +254,15 @@ def test_spanish_multipara_collapse_recreates_live():
 
     text = "\n\n".join(_LIGHTHOUSE_PARAS)
     assert len(text) > 700
+    # Documented B6 signature: the byte-identical 78-char first sentence.
+    # Length alone could misread a legitimate short-but-complete render.
     seen_collapse = False
     for _attempt in range(5):
         out = translate_text(text, "Spanish", MODEL)
         assert isinstance(out, dict) and not out.get("error"), out
         formal = (out.get("formal") or "").strip()
         assert formal, out
-        if len(formal) < 150:
+        if formal.startswith("El viejo faro se encontraba") and len(formal) < 150:
             seen_collapse = True
             break
     assert seen_collapse, (

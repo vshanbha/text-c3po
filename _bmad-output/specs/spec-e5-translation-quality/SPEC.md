@@ -12,13 +12,13 @@ sources:
 
 ## Why
 
-The eval harness gates JSON contract conformance only: lfm2.5 scored 100% while echoing Kannada in English, and a one-sentence collapse of a ten-paragraph Spanish translation passes as valid. Contract proof keeps the UI crash-free but says nothing about meaning, so model choice (lfm2.5 vs gemma4:e4b-mlx, 23/23 on the capability survey) currently rests on eyeball spot-checks. E5 adds meaning-level measurement with public open-source benches so the max-languages answer is scored, not felt.
+The eval harness gates JSON contract conformance only: lfm2.5 scored 100% while echoing Kannada in English, and a one-sentence collapse of a ten-paragraph Spanish translation passes as valid. Contract proof keeps the UI crash-free but says nothing about meaning, so model choice (lfm2.5 vs gemma4:e4b-mlx — the latter 23/23 on the capability survey) currently rests on eyeball spot-checks. E5 adds meaning-level measurement with public open-source benches so the max-languages answer is scored, not felt.
 
 ## Capabilities
 
 - **CAP-1**
-  - **intent:** Operator can score any installed model on FLORES-200 devtest references with sacrebleu chrF++ per language.
-  - **success:** One command runs EN→{es,pt,de,fr,hi,kn,mr} (subset-flagged for more) and appends a per-language chrF++ table to research.md; reruns are comparable sentence-for-sentence.
+  - **intent:** Operator can score any installed model's formal output on FLORES-200 devtest references with sacrebleu chrF++ per language.
+  - **success:** One command runs EN→{es,pt,de,fr,hi,kn,mr} (default subset; a flag extends to more languages) and appends a per-language chrF++ table to research.md; reruns are comparable sentence-for-sentence.
 - **CAP-2**
   - **intent:** Operator can score arbitrary source-hypothesis pairs with a local reference-free QE model (COMETKIWI family).
   - **success:** A source sentence plus a model hypothesis yields a quality score with no reference text and no network beyond the first weights download.
@@ -27,7 +27,7 @@ The eval harness gates JSON contract conformance only: lfm2.5 scored 100% while 
 
 - Local-first holds: datasets and metric weights download once, then loopback-only; no cloud judge APIs ever (AD-11).
 - Serial single-request LLM discipline and manual-only execution (never CI) extend to every E5 run; gate math and gate table shape stay untouched (AD-6).
-- lfm2.5-first evidence; memory hogs (gemma4:e4b-mlx) manual-only by owner override (2026-09-14).
+- Gate evidence stays lfm2.5-first; memory hogs (gemma4:e4b-mlx) manual-only by owner override (2026-09-14).
 - All product code inside `src/text_c3po/`; E5 reuses `services.translate_text` as the only LLM entry point.
 
 ## Non-goals
@@ -38,11 +38,11 @@ The eval harness gates JSON contract conformance only: lfm2.5 scored 100% while 
 
 ## Success signal
 
-An operator picks two installed models, runs the E5 commands, and reads which renders more languages better from research.md — deterministically for bench sentences (CAP-1), scored for arbitrary text (CAP-2) — with zero outbound traffic after setup.
+An operator picks two installed models, runs the E5 commands, and reads from research.md which model covers more languages and translates them better — with zero outbound traffic after setup.
 
 ## Assumptions
 
-- FLORES-200 covers kn/mr/es/pt/hi/de under CC-BY-SA and sacrebleu plus COMETKIWI weights are pip/HF-installable — verify at build.
+- FLORES-200 covers kn/mr/es/pt/hi/de under CC-BY-SA, and sacrebleu plus COMETKIWI weights are pip/HF-installable — verify at build.
 
 ## Open Questions
 
