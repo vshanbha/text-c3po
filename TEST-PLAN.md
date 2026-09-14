@@ -48,16 +48,19 @@ comparisons, one model at a time.
   re-enable, no late result overwrites the next request.
 - **B3 — input guards.** Empty input → "Type or paste something first.";
   overlong paste scrolls the window instead of clipping.
-- **B4 — partial translation (no formal/informal distinction).**
-  Translate into a language with no T–V distinction (e.g. English)
-  and observe whether the model returns a blank informal variant.
-  Expect: Formal
-  shows the translation, Informal shows "No separate informal version
-  for this translation — see Formal.", **no** retry toast. Retry
-  (SnackBar + card hint) appears only on technical failure:
-  transport/parse error or blank Formal output. **[R]** 2026-09-14
-  (toast used to fire on any blank field, implying a technical error
-  where the cause was a linguistic fact).
+- **B4 — partial-translation handling (deterministic, no model).**
+  Whether a blank formal/informal ever arrives depends on the model,
+  so this is asserted by unit tests, not live translation: `uv run
+  pytest -q -k "render_blank or render_error or render_missing"`.
+  Contract under test — Formal shows the translation; blank Informal
+  shows "No separate informal version for this translation — see
+  Formal." with **no** retry toast; blank Formal or transport/parse
+  error shows the retry hint **with** toast; non-retryable errors
+  show their message with no toast; missing controls toast the
+  wiring notice. Live eyeball rule: whenever real use surfaces a
+  blank field, the UI must match this contract — never a bare error
+  toast on a good translation. **[R]** 2026-09-14 (toast used to
+  fire on any blank field).
 - **B5 — repeat translate refreshes in place (stuck-spinner regression).**
   Translate once, then Translate again with the previous output still
   showing. Expect: spinner + "Translating…" → live preview words → final
@@ -67,28 +70,27 @@ comparisons, one model at a time.
   `_ui_update` now marshals via `call_soon_threadsafe`). Standing
   regression guard — verified 2026-09-14 by owner manual test.
 - **B6 — long multi-paragraph translation (early-stop flake, repeatable).**
-  Paste the 10-paragraph lighthouse text (`\n\n`-separated; copy from
-  `_LIGHTHOUSE_PARAS` in `tests/test_integration.py`), target Spanish,
-  Translate (lfm2.5). Known flake: ~3/5 runs collapse to the exact
-  78-char first-sentence formal ("El viejo faro se encontraba en el
-  borde del acantilado, su l…") with `done_reason='stop'` — clean
+  Paste the 10-paragraph lighthouse text (`\n\n`-separated), target
+  Spanish, Translate (lfm2.5). Known flake: ~3/5 runs collapse to the
+  exact 78-char first-sentence formal ("El viejo faro se encontraba en
+  el borde del acantilado, su l…") with `done_reason='stop'` — clean
   stop, not a token cap. Expect either full output (~850+ chars, all
   paragraphs) or that exact collapse; pressing Translate again
   (retry) yields the full text. German on the same text is 4/4 full —
   use it as the control cell. Cross-check the logs
   (`translate_text ok: in=N out=M`): M must match the displayed
-  length. Automated recreation: `pytest -m integration
-  -k spanish_multipara` (up to 5 serial attempts; green means the
-  collapse was observed). **[R]** 2026-09-14 (`num_predict` now
-  `-1`; cap ruled out by `done_reason` evidence).
+  length. Model-side probe (reports, never asserts):
+  `PYTHONPATH=src uv run python tests/benchmark/probe_collapse.py
+  [model]` (up to 5 serial attempts). **[R]** 2026-09-14
+  (`num_predict` now `-1`; cap ruled out by `done_reason` evidence).
 - **B7 — unsupported target language (accepted limitation).** Pick
   Kannada or Marathi, Translate "Good morning. How are you today?".
   Expect: the English input echoed back as Formal (plus casual-English
   Informal), valid JSON, no error, no retry — lfm2.5 cannot render
-  these scripts and the UI cannot tell. Owner-accepted for now; the
-  tripwire `pytest -m integration -k unsupported_target` MUST fail if
-  a future model genuinely translates, forcing a revisit — never
-  weaken it to match.
+  these scripts and the UI cannot tell. Owner-accepted for now; if a
+  future model genuinely translates, revisit the acceptance. Model-side
+  probe (reports, never asserts): `PYTHONPATH=src uv run python
+  tests/benchmark/probe_echo.py [model]`.
 
 ## C. Capture devices (E2-1)
 
@@ -240,16 +242,17 @@ ad-hoc signature suffices for local runs.
 
 ## Coverage map (what automation owns)
 
-- `pytest` (176 unit + 1 web smoke, all headless/deterministic —
+- `pytest` (182 unit + 1 web smoke, all headless/deterministic —
   recount with `pytest --collect-only -q` after any test-adding diff):
   VAD chunking rules, device/VAD/decode/transcribe pure logic, manager
   lifecycle with fake processes, session ordering/gaps/retry under
   lock, captions sync incl. in-place retry updates, pipeline
   short-circuits, UI construction, render/toast/snackbar contracts,
   loop-marshaling, echo scoring, capability CLI shape.
-- `pytest -m integration` (manual, serial, loopback-only, 8 tests):
-  live Ollama/whisper/ffmpeg checks plus the lfm2.5 echo and
-  Spanish-collapse tripwires — see `tests/test_integration.py`.
+- `pytest -m integration` (manual, serial, loopback-only, 6 tests):
+  live Ollama/whisper/ffmpeg checks — see `tests/test_integration.py`.
+  Model-behavior probes (echo, collapse) are NOT tests: reporting-only
+  scripts under `tests/benchmark/` (never collected, exit 0 always).
 - This note: everything above a unit cannot reach (windows,
   dialogs, snackbars, hardware, subprocess timing, real speech).
 

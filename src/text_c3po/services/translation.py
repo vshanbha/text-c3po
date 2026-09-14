@@ -23,12 +23,14 @@ from langchain_core.prompts import (
 from langchain_ollama import ChatOllama
 from pydantic import BaseModel, Field
 
+from text_c3po.messages import (
+    EMPTY_INPUT_HINT as EMPTY_INPUT_MESSAGE,
+    RETRY_HINT as RETRY_MESSAGE,
+)
 from text_c3po.runtimes.ollama_client import OLLAMA_BASE_URL
 
 logger = logging.getLogger(__name__)
 
-RETRY_MESSAGE = "Couldn't parse that one. Retry."
-EMPTY_INPUT_MESSAGE = "Type or paste something first."
 MISSING_TARGET_MESSAGE = "Pick a target language first."
 MISSING_MODEL_MESSAGE = "Pick a model first."
 
@@ -317,8 +319,12 @@ def _translate_single(
                     raw_len += len(piece)
                     if raw_len > output_ceiling:
                         # Degenerate repetition loop: each chunk beats the
-                        # per-read timeout forever. Stop with an actionable,
-                        # non-retryable error instead of hanging "Translating…".
+                        # per-read timeout forever. Stop, but keep what did
+                        # arrive: the streamed raw JSON usually holds a
+                        # usable formal prefix (same extractor as the live
+                        # preview), returned with truncated=True so renderers
+                        # mark it partial instead of retrying a doomed call.
+                        # Only when nothing usable arrived is it an error.
                         logger.warning(
                             "translate_text output ceiling hit: raw_chars=%d "
                             "done_reason=%r model=%s target=%s",
@@ -328,6 +334,17 @@ def _translate_single(
                             target_language,
                         )
                         _close_stream(stream)
+                        try:
+                            partial = extract_partial_formal("".join(pieces))
+                        except Exception:
+                            partial = ""
+                        if isinstance(partial, str) and partial.strip():
+                            return {
+                                "formal": partial,
+                                "informal": "",
+                                "origin_language": "",
+                                "truncated": True,
+                            }
                         return {
                             "error": (
                                 "Translation ran too long — try a shorter input."
@@ -415,7 +432,10 @@ def translate_text(text, target_language, model, on_token=None, stop_event=None)
 
     Returns a parsed ``{formal, informal, origin_language}`` dict on
     success, ``{error, retryable}`` on any transport/parse failure, or
-    ``{cancelled: True}`` when ``stop_event`` fires mid-stream. Never raises
+    ``{cancelled: True}`` when ``stop_event`` fires mid-stream. A
+    degenerate stream stopped by the output ceiling returns its usable
+    formal prefix as ``{formal, truncated: True}`` (no error key) so
+    renderers show partial content instead of failing. Never raises
     and never returns raw model payloads.
     """
     try:

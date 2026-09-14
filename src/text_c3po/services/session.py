@@ -16,7 +16,8 @@ import datetime
 import queue
 import threading
 
-from text_c3po.services.translation import RETRY_MESSAGE, translate_text
+from text_c3po.messages import RETRY_HINT as RETRY_MESSAGE
+from text_c3po.services.translation import translate_text
 
 UTTERANCE_CONTRACT_KEYS = ("text", "source_lang")
 
@@ -243,9 +244,7 @@ class SessionController:
             try:
                 with self._lock:
                     if isinstance(result, dict) and result.get("error"):
-                        target["text"] = str(
-                            result.get("error") or RETRY_MESSAGE
-                        )
+                        target["text"] = str(result.get("error") or RETRY_MESSAGE)
                         # Refresh the flag from the new result: a retry that
                         # lands on a non-retryable error (output ceiling)
                         # must drop the row's Retry button with it.
@@ -335,9 +334,7 @@ class SessionController:
                     retryable = True
                 return {
                     "kind": "error",
-                    "text": str(
-                        result.get("error") or RETRY_MESSAGE
-                    ),
+                    "text": str(result.get("error") or RETRY_MESSAGE),
                     "translation": "",
                     "source": text.strip(),
                     "source_lang": str(source),

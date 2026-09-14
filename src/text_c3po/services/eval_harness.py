@@ -253,10 +253,11 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
     ``per_language`` maps each language name to its valid count,
     ``failures`` holds one ``{model, language, sentence_index}`` dict per
     invalid cell (sentence_index is 0-based), and ``echoes`` holds the same
-    shape plus ``kind`` (``"echo"`` = rendered the input back, ``"blank"``
-    = valid JSON with no usable formal) for JSON-valid cells that do not
-    render the target. Both kinds count valid for the gate; both are
-    unsupported for capability. Gate math is untouched.
+    shape plus ``kind`` for JSON-valid cells that do not render the
+    target: ``"echo"`` (rendered the input back), ``"blank"`` (empty
+    formal string), or ``"malformed"`` (missing/non-string formal).
+    All kinds count valid for the gate; all are unsupported for
+    capability. Gate math is untouched.
     """
     if models is None:
         models = list_models()
@@ -285,29 +286,29 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
                     per_language[language] += 1
                     try:
                         formal = result.get("formal")
-                        blank = not (isinstance(formal, str) and formal.strip())
                     except Exception:
-                        blank = True
-                    if blank:
-                        # Valid JSON with no usable formal: unsupported in
-                        # every language, identity pair included.
-                        echoes.append(
-                            {
-                                "model": model,
-                                "language": language,
-                                "sentence_index": index,
-                                "kind": "blank",
-                            }
-                        )
+                        formal = None
+                    if not isinstance(formal, str):
+                        # Valid JSON with a missing/non-string formal: not
+                        # blank and not an echo — its own malformed kind.
+                        # Unreachable live (the pipeline normalizes to str);
+                        # reachable via stubs and future service shapes.
+                        kind = "malformed"
+                    elif not formal.strip():
+                        kind = "blank"
                     elif language != SOURCE_LANGUAGE and not is_supported(
                         result, sentence
                     ):
+                        kind = "echo"
+                    else:
+                        kind = ""
+                    if kind:
                         echoes.append(
                             {
                                 "model": model,
                                 "language": language,
                                 "sentence_index": index,
-                                "kind": "echo",
+                                "kind": kind,
                             }
                         )
                 else:
