@@ -357,12 +357,19 @@ class SessionController:
                 formal = result.get("formal", "")
             except Exception:
                 formal = ""
+            try:
+                truncated = bool(result.get("truncated", False))
+            except Exception:
+                truncated = False
             return {
                 "kind": "caption",
                 "text": text.strip(),
                 "translation": formal if isinstance(formal, str) else "",
                 "source_lang": str(source),
                 "at": self._now_iso(),
+                # Ceiling-cut utterances render partial: the row marks
+                # them instead of passing them off as complete.
+                "truncated": truncated,
             }
         except Exception:
             return None

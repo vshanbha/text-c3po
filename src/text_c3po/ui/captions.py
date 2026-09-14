@@ -34,7 +34,13 @@ def _announce(caption) -> str:
         if kind == "error":
             return "Translation failed, {}. {}".format(caption.get("text", ""), at)
         spoken = caption.get("translation") or caption.get("text", "")
-        announcement = "{}, {}".format(spoken, at).strip(" ,")
+        try:
+            partial = bool(caption.get("truncated", False))
+        except Exception:
+            partial = False
+        announcement = "{}{}, {}".format(
+            spoken, ", partial translation" if partial else "", at
+        ).strip(" ,")
         return announcement
     except Exception:
         return ""
@@ -85,6 +91,12 @@ def _row_for(caption, on_retry=None):
             row = ft.Column(items, spacing=0)
         else:
             text = caption.get("translation") or caption.get("text", "")
+            try:
+                partial = bool(caption.get("truncated", False))
+            except Exception:
+                partial = False
+            if partial:
+                text = "{} (partial)".format(text)
             body = ft.Text(str(text), selectable=True)
             row = ft.Column([stamp, body], spacing=0)
         try:
