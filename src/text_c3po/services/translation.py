@@ -249,6 +249,11 @@ def _translate_single(
             # No thinking phase: translation is a direct rewrite, and the
             # reasoning trace costs ~10s per call with zero quality gain.
             reasoning=False,
+            # Unbounded output: the server default (128 tokens per the
+            # installed langchain_ollama docstring) truncates multi-paragraph
+            # translations mid-JSON, which then surfaces as a parse error or
+            # a cut-off formal text. -1 = infinite generation.
+            num_predict=-1,
             sync_client_kwargs={"timeout": TRANSLATION_TIMEOUT_S},
         )
         messages = _build_request(text, target_language, parser)
@@ -273,6 +278,7 @@ def _translate_single(
         except Exception:
             pass
         pieces = []
+        last_meta: dict = {}
         try:
             for chunk in stream:
                 try:
@@ -286,6 +292,15 @@ def _translate_single(
                     piece = _chunk_text(chunk)
                 except Exception:
                     piece = ""
+                # Keep the latest response metadata: done_reason="length"
+                # tells a length-limit stop apart from a clean "stop" when
+                # diagnosing cut-off translations (see ok-log below).
+                try:
+                    meta = getattr(chunk, "response_metadata", None)
+                    if isinstance(meta, dict) and meta:
+                        last_meta = meta
+                except Exception:
+                    pass
                 if piece:
                     pieces.append(piece)
                     if callable(on_token):
@@ -337,6 +352,15 @@ def _translate_single(
             "translate_text unexpected payload shape; raw payload: %r", raw[:2000]
         )
         return {"error": RETRY_MESSAGE, "retryable": True}
+    try:
+        logger.debug(
+            "translate_text stream end: done_reason=%r eval_count=%r raw_chars=%d",
+            last_meta.get("done_reason"),
+            last_meta.get("eval_count"),
+            len(raw),
+        )
+    except Exception:
+        pass
     return normalized
 
 

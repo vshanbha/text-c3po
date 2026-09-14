@@ -1,8 +1,9 @@
 """File mode surface: audio-file picker plus transcription status (E2-4).
 
-Pick button, status line, and result text; the FilePicker overlay itself
-is owned by app.py (it must mount on the page). Refs live in ``view.data``
-so the file worker can update them in place.
+Pick button, status line, and result text; the FilePicker service itself
+is owned by app.py (a bare ``ft.FilePicker()`` — it self-registers via
+ServiceRegistry and must NOT be appended to page.overlay). Refs live in
+``view.data`` so the file worker can update them in place.
 """
 
 import flet as ft
