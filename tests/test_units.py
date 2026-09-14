@@ -3315,9 +3315,11 @@ def test_no_overlay_mount_of_file_picker_tripwire():
 
     AST-scans app.py like the E3-9 render tripwire: re-adding the mount
     restores the red Unknown-control panel on web. Tracks any local name
-    bound to a FilePicker() construction (not just `file_picker`) and any
-    overlay append/extend spelling. Receiver aliases (``ov = page.overlay``)
-    stay out of scope — grep those by hand on Flet upgrades.
+    bound to a FilePicker() construction (Assign and AnnAssign, not just
+    `file_picker`), any overlay append/extend/insert spelling including
+    list-form args, and direct `page.overlay = ...` rebinding.
+    Receiver aliases (``ov = page.overlay``) and factory-returned
+    pickers stay out of scope — grep those by hand on Flet upgrades.
     """
     import ast
     import os
@@ -3335,29 +3337,110 @@ def test_no_overlay_mount_of_file_picker_tripwire():
         name = getattr(func, "id", None) or getattr(func, "attr", None)
         return name == "FilePicker"
 
+    def bind_picker(target, value):
+        if is_picker_call(value) and isinstance(target, ast.Name):
+            picker_names.add(target.id)
+
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and is_picker_call(node.value):
+        if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name):
-                    picker_names.add(target.id)
+                bind_picker(target, node.value)
+        elif isinstance(node, ast.AnnAssign):
+            bind_picker(node.target, node.value)
     assert picker_names, "no FilePicker() construction found — tripwire blind"
+
+    def arg_is_picker(arg):
+        if isinstance(arg, ast.Name) and arg.id in picker_names:
+            return True
+        if is_picker_call(arg):
+            return True
+        if isinstance(arg, (ast.List, ast.Tuple)):
+            return any(arg_is_picker(elt) for elt in arg.elts)
+        return False
+
     offenders = []
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in ("append", "extend")
-            and isinstance(node.func.value, ast.Attribute)
-            and node.func.value.attr == "overlay"
-        ):
-            for arg in node.args:
-                if (
-                    isinstance(arg, ast.Name)
-                    and arg.id in picker_names
-                    or is_picker_call(arg)
-                ):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if (
+                node.func.attr in ("append", "extend", "insert")
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "overlay"
+                and any(arg_is_picker(arg) for arg in node.args)
+            ):
+                offenders.append(ast.dump(node))
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and target.attr == "overlay":
                     offenders.append(ast.dump(node))
     assert offenders == []
+
+
+def test_copy_handler_skips_error_prose_via_flag():
+    """Error text blocked by the render-set copyable flag, not just sentinels."""
+    import asyncio
+
+    from text_c3po.ui.text_view import _make_copy_handler
+
+    written = []
+
+    class FakeClipboard:
+        def set(self, text):
+            written.append(text)
+
+    class FakePage:
+        clipboard = FakeClipboard()
+
+    class FakeControl:
+        page = FakePage()
+
+    class FakeEvent:
+        control = FakeControl()
+
+    class FakeBody:
+        def __init__(self, value, data=None):
+            self.value = value
+            self.data = data
+
+    body = FakeBody(
+        "Translation ran too long — try a shorter input.",
+        {"copyable": False},
+    )
+    asyncio.run(_make_copy_handler(body)(FakeEvent()))
+    assert written == []
+    body_ok = FakeBody("Hallo", {"copyable": True})
+    asyncio.run(_make_copy_handler(body_ok)(FakeEvent()))
+    assert written == ["Hallo"]
+
+
+def test_snackbar_present_failure_warns(caplog):
+    """A raising show_dialog warns instead of vanishing the toast."""
+    import logging
+
+    from text_c3po.app import _show_snackbar
+
+    class FakePage:
+        def __init__(self):
+            self.updated = 0
+
+        def show_dialog(self, dialog):
+            raise RuntimeError("dialog system changed")
+
+        def update(self):
+            self.updated += 1
+
+    page = FakePage()
+    with caplog.at_level(logging.WARNING, logger="text_c3po.app"):
+        _show_snackbar(page, "Retry me.", lambda: None)
+    assert page.updated == 1
+    assert any("present failed" in r.message for r in caplog.records)
+
+
+def test_normalize_text_public_alias():
+    """Integration tripwires import normalize_text; pin the alias."""
+    from text_c3po.services.eval_harness import _norm_text, normalize_text
+
+    assert normalize_text is _norm_text
+    assert normalize_text("  Good MORNING ") == "good morning"
 
 
 def test_copy_handler_skips_placeholders():

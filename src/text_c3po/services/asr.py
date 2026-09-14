@@ -10,7 +10,7 @@ raises.
 
 from text_c3po.runtimes.audio_file import decode_to_wav
 from text_c3po.runtimes.whisper_client import transcribe_wav
-from text_c3po.services.translation import translate_text
+from text_c3po.services.translation import RETRY_MESSAGE, translate_text
 
 NO_SPEECH_MESSAGE = "No speech found in that file."
 BLANK_MARKERS = ("[BLANK_AUDIO]",)
@@ -68,6 +68,6 @@ def transcribe_file(
         try:
             return translate(result["text"], target_language, model)
         except Exception:
-            return {"error": "Couldn't parse that one. Retry.", "retryable": True}
+            return {"error": RETRY_MESSAGE, "retryable": True}
     except Exception:
-        return {"error": "Couldn't parse that one. Retry.", "retryable": True}
+        return {"error": RETRY_MESSAGE, "retryable": True}
