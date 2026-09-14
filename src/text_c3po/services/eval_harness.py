@@ -460,8 +460,9 @@ def record_support(results, path, date=None, languages=None, label=None):
         "## {} ({})".format(label, date),
         "",
         "Supported = JSON-valid with a usable formal that differs from the "
-        "input sentence (echo/blank cells prove the model did not render "
-        "the target). Rescored from the gate run above — no extra calls.",
+        "input sentence (echo/blank/malformed cells prove the model did "
+        "not render the target). Rescored from the gate run above — no "
+        "extra calls.",
         "",
         format_support_table(results, languages),
         "",

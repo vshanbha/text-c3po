@@ -71,7 +71,8 @@ comparisons, one model at a time.
   `_ui_update` now marshals via `call_soon_threadsafe`). Standing
   regression guard — verified 2026-09-14 by owner manual test.
 - **B6 — long multi-paragraph translation (early-stop flake, repeatable).**
-  Paste the 10-paragraph lighthouse text (`\n\n`-separated), target
+  Paste the 10-paragraph lighthouse text (`\n\n`-separated; source:
+  `LIGHTHOUSE_PARAS` in `tests/benchmark/probe_collapse.py`), target
   Spanish, Translate (lfm2.5). Known flake: ~3/5 runs collapse to the
   first-sentence collapse (stable "El viejo faro se encontraba" prefix,
   ~78–110 chars) with `done_reason='stop'` — clean stop, not a token
@@ -243,7 +244,7 @@ ad-hoc signature suffices for local runs.
 
 ## Coverage map (what automation owns)
 
-- `pytest` (190 unit + 1 web smoke, all headless/deterministic —
+- `pytest` (191 unit + 1 web smoke, all headless/deterministic —
   recount with `pytest --collect-only -q` after any test-adding diff):
   VAD chunking rules, device/VAD/decode/transcribe pure logic, manager
   lifecycle with fake processes, session ordering/gaps/retry under
