@@ -41,9 +41,12 @@ from text_c3po.services.translation import (
 from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
 from text_c3po.messages import (
+    DISCONNECT_SNACKBAR_HINT,
     EMPTY_INPUT_HINT,
     NO_VARIANT_HINT,
     RETRY_HINT,
+    TRUNCATED_INFORMAL_HINT,
+    TRUNCATED_TALLY,
     WIRING_HINT,
 )
 from text_c3po.ui.text_view import SOURCE_TITLE, build_text_view
@@ -60,7 +63,6 @@ WINDOW_MIN_HEIGHT = 640
 # Backward-compatible aliases: render code and tests reference these
 # app-level names; every wording lives once in text_c3po.messages.
 RETRY_CARD_HINT = RETRY_HINT
-TRUNCATED_TALLY = "Partial · {} chars (output limit — shorten input for the full text)."
 
 
 def _result_tally(result) -> str:
@@ -75,6 +77,11 @@ def _result_tally(result) -> str:
         if not isinstance(result, dict) or result.get("error"):
             return ""
         shown = result.get("formal", "")
+        # Mirror the renderer's list coercion (run_matrix proves list
+        # formals occur via future service shapes): tally what the card
+        # actually shows, or nothing when it shows nothing.
+        if isinstance(shown, list):
+            shown = ", ".join(str(part) for part in shown)
         if not (isinstance(shown, str) and shown.strip()):
             return ""
         if result.get("truncated"):
@@ -240,9 +247,6 @@ def _set_translating(refs, page, busy: bool, status: str = "") -> None:
         pass
 
 
-DISCONNECT_SNACKBAR_HINT = "Ollama disconnected — start it with `ollama serve`."
-
-
 # Live set of web-spilled temp audios awaiting consumption. Daemon
 # workers die abruptly at interpreter exit (finally never runs), so an
 # atexit reaper — registered lazily on first spill — closes the privacy
@@ -305,16 +309,24 @@ def _spill_dir(base=None) -> str:
     return path
 
 
-def _sweep_spills(spill_dir=None) -> int:
+def _sweep_spills(base=None) -> int:
     """Delete stale spills left by a violently-killed previous run.
 
-    Called once at startup, when nothing can be in flight yet, so every
-    regular file in our own spill dir is definitionally orphaned. Returns
-    the removed count. Never raises.
+    Called once at startup. Paths tracked live in ``_SPILLED_TEMPS``
+    are skipped: in web-server mode all sessions share this process,
+    so a sibling tab may be mid-decode on them. Cross-process
+    in-flight spills (a second app instance) remain a residual race —
+    ``base`` is the shared parent dir, a test seam defaulting to the
+    platform temp dir. Returns the removed count. Never raises.
     """
     removed = 0
     try:
-        target = spill_dir or _spill_dir()
+        try:
+            with _SPILLED_LOCK:
+                live = set(_SPILLED_TEMPS)
+        except Exception:
+            live = set()
+        target = _spill_dir(base)
         try:
             names = os.listdir(target)
         except Exception:
@@ -322,6 +334,8 @@ def _sweep_spills(spill_dir=None) -> int:
         for name in names:
             full = os.path.join(target, name)
             try:
+                if full in live:
+                    continue
                 if os.path.isfile(full) and not os.path.islink(full):
                     os.unlink(full)
                     removed += 1
@@ -332,11 +346,13 @@ def _sweep_spills(spill_dir=None) -> int:
     return removed
 
 
-def _spill_web_pick(picked_bytes, picked_name, spill_dir=None):
+def _spill_web_pick(picked_bytes, picked_name, base=None):
     """Write browser-picked bytes to a temp file; return (path, cleanup).
 
     Returns (None, False) on any failure. Never raises. Module-level
-    (not a main() closure) so unit tests drive it directly.
+    (not a main() closure) so unit tests drive it directly. ``base``
+    overrides the shared parent dir (test seam); the spill always
+    lands in the owned ``text-c3po-spills`` child.
     """
     try:
         if not picked_bytes:
@@ -345,7 +361,7 @@ def _spill_web_pick(picked_bytes, picked_name, spill_dir=None):
 
         suffix = os.path.splitext(picked_name or "")[1].lower() or ".wav"
         tmp = _tempfile.NamedTemporaryFile(
-            suffix=suffix, delete=False, dir=_spill_dir(spill_dir)
+            suffix=suffix, delete=False, dir=_spill_dir(base)
         )
         path = tmp.name
         # Track before writing: a write failure — or interpreter exit
@@ -433,10 +449,13 @@ def _show_snackbar(page, message, on_retry, with_retry=True) -> None:
                     try:
                         show(snack)
                     except Exception as exc:
-                        # Possibly already stacked; the update below renders it.
-                        # Never overlay-fallback here: that double-presents.
-                        # Loud, like the loop fallback: a vanishing toast
-                        # (e.g. the ollama-serve nudge) has no other signal.
+                        # show_dialog appends to the dialog stack BEFORE its
+                        # internal update, so a raise here (e.g. the update
+                        # dropping off-loop, the F3 disease) leaves a fresh
+                        # snack stacked-but-unrendered — never
+                        # overlay-fallback, that double-presents. The update
+                        # below is the recovery attempt; the warning is the
+                        # diagnostic when it too drops.
                         try:
                             logger.warning("snackbar present failed: %r", exc)
                         except Exception:
@@ -472,16 +491,31 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
 
     Present fields display. A blank informal variant is NOT an error — many
     languages have no formal/informal distinction — so its tab shows
-    NO_VARIANT_HINT with no toast. The SnackBar retry fires only when
-    retry is actionable: a retryable ``error`` result, or a blank primary
-    (formal) output. A non-retryable error (output ceiling) shows its own
-    message with no retry affordance. Missing controls are wiring breaks:
-    toast rather than render nothing silently.
+    NO_VARIANT_HINT with no toast (TRUNCATED_INFORMAL_HINT when the
+    stream was cut). The SnackBar retry fires only when retry is
+    actionable: a retryable ``error`` result, or a blank primary
+    (formal) output. A non-retryable error (output ceiling) shows its
+    own message with no retry affordance. Missing controls are wiring
+    breaks: the wiring notice toasts on every path, including error
+    results, so a broken view is never misattributed to the model.
     """
     try:
         refs = refs if isinstance(refs, dict) else {}
         if not isinstance(result, dict):
             result = {"error": RETRY_CARD_HINT, "retryable": True}
+        try:
+            wiring_broken = (
+                refs.get("formal_text") is None or refs.get("informal_text") is None
+            )
+        except Exception:
+            wiring_broken = False
+        if wiring_broken:
+            try:
+                logger.warning("translation rendered with missing refs")
+            except Exception:
+                pass
+            _show_snackbar(page, WIRING_HINT, on_retry, with_retry=False)
+            return
         if result.get("error"):
             try:
                 retryable = result.get("retryable", True)
@@ -532,12 +566,7 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
             )
         except Exception:
             formal_value_ok = False
-        # A missing control is a wiring break, not a model failure: the
-        # toast below says so explicitly instead of blaming the parse.
-        wiring_broken = (
-            refs.get("formal_text") is None or refs.get("informal_text") is None
-        )
-        formal_ok = formal_value_ok and not wiring_broken
+        formal_ok = formal_value_ok
         pairs = (
             ("formal_text", "formal"),
             ("informal_text", "informal"),
@@ -554,7 +583,13 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                         control.data = {"copyable": True}
                 elif field == "informal" and formal_value_ok:
                     if control is not None:
-                        control.value = NO_VARIANT_HINT
+                        try:
+                            truncated = bool(result.get("truncated"))
+                        except Exception:
+                            truncated = False
+                        control.value = (
+                            TRUNCATED_INFORMAL_HINT if truncated else NO_VARIANT_HINT
+                        )
                         control.data = {"copyable": False}
                 else:
                     if control is not None:
@@ -575,16 +610,7 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                     origin_control.value = SOURCE_TITLE
         except Exception:
             pass
-        if wiring_broken:
-            # Regardless of result quality: nothing on screen can be
-            # trusted, and retry re-renders into the same break — so no
-            # Retry affordance, and no model-blaming copy on any path.
-            try:
-                logger.warning("translation rendered with missing refs")
-            except Exception:
-                pass
-            _show_snackbar(page, WIRING_HINT, on_retry, with_retry=False)
-        elif not formal_ok:
+        if not formal_ok:
             _show_retry_snackbar(page, on_retry)
     except Exception:
         try:
@@ -858,6 +884,10 @@ def main(page: ft.Page) -> None:
                             formal_control = refs.get("formal_text")
                             if formal_control is not None:
                                 formal_control.value = preview + "…"
+                                # Mid-stream text is unfinished (and carries
+                                # a literal ellipsis): not copyable until
+                                # the terminal render sets the final flag.
+                                formal_control.data = {"copyable": False}
                         except Exception:
                             pass
                     _ui_update(page)

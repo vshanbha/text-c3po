@@ -25,14 +25,14 @@ from pydantic import BaseModel, Field
 
 from text_c3po.messages import (
     EMPTY_INPUT_HINT as EMPTY_INPUT_MESSAGE,
+    MISSING_MODEL_MESSAGE,
+    MISSING_TARGET_MESSAGE,
     RETRY_HINT as RETRY_MESSAGE,
 )
 from text_c3po.runtimes.ollama_client import OLLAMA_BASE_URL
 
 logger = logging.getLogger(__name__)
 
-MISSING_TARGET_MESSAGE = "Pick a target language first."
-MISSING_MODEL_MESSAGE = "Pick a model first."
 
 TRANSLATION_TEMPERATURE = 0.2
 
@@ -167,13 +167,60 @@ def _normalize(parsed):
     }
 
 
+def _decode_json_prefix(body) -> str:
+    """Decode a possibly-cut JSON string body; never raises.
+
+    Prefers real JSON unescaping (so ``\\"`` and ``\\uXXXX`` resolve
+    instead of leaking debris), then flattens newlines to spaces to
+    preserve the long-standing preview contract (single-line preview
+    and partial text).
+    """
+    try:
+        import json as _json
+
+        decoded = _json.loads('"' + body + '"')
+    except Exception:
+        try:
+            decoded = body.replace('\\"', '"').replace("\\n", " ")
+        except Exception:
+            decoded = body
+    try:
+        return decoded.replace("\n", " ")
+    except Exception:
+        return decoded
+
+
+def _cut_at_closing_quote(body) -> tuple:
+    """Split a JSON string body at its first unescaped quote.
+
+    Returns (before, complete): ``complete`` is True when a closing
+    quote was found (the field closed — anything after is trailing
+    junk from later fields), False when the stream simply cut
+    mid-value. Escape-aware so ``\\"`` never ends the scan early.
+    """
+    try:
+        escaped = False
+        for index, char in enumerate(body):
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                return body[:index], True
+        return body, False
+    except Exception:
+        return body, False
+
+
 def extract_partial_formal(raw) -> str:
-    """Best-effort live preview: the ``formal`` value prefix in partial JSON.
+    """Best-effort ``formal`` value prefix from partial JSON.
 
     Streaming tokens accumulate as raw JSON which won't parse until complete,
     so the UI shows this instead of a char count — real words as they arrive.
-    Returns "" when no usable prefix exists yet. Preview only; the final
-    cards always render from the fully parsed contract.
+    Returns "" when no usable prefix exists yet. Serves the live preview
+    AND the ceiling-cut final serializer (D8): a closed formal followed by
+    later-field junk is cut at the closing quote so trailing JSON debris
+    never renders as translation.
     """
     try:
         if not isinstance(raw, str) or not raw:
@@ -191,17 +238,34 @@ def extract_partial_formal(raw) -> str:
             rest = rest[1:]
         else:
             return ""
+        body, _complete = _cut_at_closing_quote(rest)
         # Drop a trailing dangling escape (chunk cut mid-\\u / \\") so the
-        # preview never shows a stray backslash.
-        if rest.endswith("\\"):
-            rest = rest[:-1]
-        try:
-            rest = rest.replace('\\"', '"').replace("\\n", " ")
-        except Exception:
-            pass
-        return rest.strip()
+        # output never shows a stray backslash.
+        if body.endswith("\\"):
+            body = body[:-1]
+        return _decode_json_prefix(body).strip()
     except Exception:
         return ""
+
+
+def _looks_looped(text) -> bool:
+    """True when text is almost surely degenerate repetition; never raises.
+
+    Loop-junk compresses to nearly nothing while real prose does not, so
+    a zlib ratio below 0.2 separates them deterministically across
+    scripts (no language-specific word lists). Guards the ceiling-cut
+    partial path: looped "content" must error, never render as copyable
+    translation.
+    """
+    try:
+        if not isinstance(text, str) or len(text) < 200:
+            return False
+        import zlib
+
+        raw = text.encode("utf-8", "replace")
+        return len(zlib.compress(raw)) / max(1, len(raw)) < 0.2
+    except Exception:
+        return False
 
 
 def _chunk_text(chunk) -> str:
@@ -338,7 +402,11 @@ def _translate_single(
                             partial = extract_partial_formal("".join(pieces))
                         except Exception:
                             partial = ""
-                        if isinstance(partial, str) and partial.strip():
+                        if (
+                            isinstance(partial, str)
+                            and partial.strip()
+                            and not _looks_looped(partial)
+                        ):
                             return {
                                 "formal": partial,
                                 "informal": "",

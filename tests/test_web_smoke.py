@@ -69,6 +69,9 @@ def test_web_serve_smoke(tmp_path):
     env["FLET_SERVER_PORT"] = str(port)
     env["PYTHONPATH"] = os.path.join(root, "src")
     env["TEXT_C3PO_NO_WHISPER"] = "1"
+    # Isolate temp state: the booted app runs main() → _sweep_spills(),
+    # which must never wipe a concurrently running desktop instance.
+    env["TMPDIR"] = str(tmp_path)
     log_path = os.path.join(str(tmp_path), "web-smoke.log")
     log_handle = open(log_path, "wb")
     proc = subprocess.Popen(

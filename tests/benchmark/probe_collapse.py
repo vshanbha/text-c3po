@@ -43,6 +43,12 @@ def main(model="lfm2.5:latest", attempts=5):
         if not isinstance(result, dict) or result.get("error"):
             print("attempt {}: error {}".format(attempt, result))
             continue
+        if result.get("truncated"):
+            # App-side ceiling cut, not model behavior: report separately
+            # so output-cap stops never read as model collapses.
+            formal = (result.get("formal") or "").strip()
+            print("attempt {}: out_chars={} CEILING-CUT".format(attempt, len(formal)))
+            continue
         formal = (result.get("formal") or "").strip()
         collapsed = formal.startswith(COLLAPSE_PREFIX) and len(formal) < 150
         print(

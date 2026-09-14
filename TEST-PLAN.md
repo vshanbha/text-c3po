@@ -51,7 +51,8 @@ comparisons, one model at a time.
 - **B4 — partial-translation handling (deterministic, no model).**
   Whether a blank formal/informal ever arrives depends on the model,
   so this is asserted by unit tests, not live translation: `uv run
-  pytest -q -k "render_blank or render_error or render_missing"`.
+  pytest -q -k "render_blank or render_error or render_missing or
+  render_nonretryable or render_truncated"`.
   Contract under test — Formal shows the translation; blank Informal
   shows "No separate informal version for this translation — see
   Formal." with **no** retry toast; blank Formal or transport/parse
@@ -72,10 +73,10 @@ comparisons, one model at a time.
 - **B6 — long multi-paragraph translation (early-stop flake, repeatable).**
   Paste the 10-paragraph lighthouse text (`\n\n`-separated), target
   Spanish, Translate (lfm2.5). Known flake: ~3/5 runs collapse to the
-  exact 78-char first-sentence formal ("El viejo faro se encontraba en
-  el borde del acantilado, su l…") with `done_reason='stop'` — clean
-  stop, not a token cap. Expect either full output (~850+ chars, all
-  paragraphs) or that exact collapse; pressing Translate again
+  first-sentence collapse (stable "El viejo faro se encontraba" prefix,
+  ~78–110 chars) with `done_reason='stop'` — clean stop, not a token
+  cap. Expect either full output (~850+ chars, all paragraphs) or
+  that collapse; pressing Translate again
   (retry) yields the full text. German on the same text is 4/4 full —
   use it as the control cell. Cross-check the logs
   (`translate_text ok: in=N out=M`): M must match the displayed
@@ -242,7 +243,7 @@ ad-hoc signature suffices for local runs.
 
 ## Coverage map (what automation owns)
 
-- `pytest` (182 unit + 1 web smoke, all headless/deterministic —
+- `pytest` (187 unit + 1 web smoke, all headless/deterministic —
   recount with `pytest --collect-only -q` after any test-adding diff):
   VAD chunking rules, device/VAD/decode/transcribe pure logic, manager
   lifecycle with fake processes, session ordering/gaps/retry under
