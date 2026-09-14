@@ -262,6 +262,14 @@ class SessionController:
                             )
                         except Exception:
                             formal = ""
+                        # A retry landing on the output ceiling yields a
+                        # truncated partial: propagate the flag so the row
+                        # keeps its "(partial)" marker instead of passing
+                        # the cut-off prefix off as a complete caption.
+                        try:
+                            truncated = bool(result.get("truncated", False))
+                        except Exception:
+                            truncated = False
                         if not isinstance(result, dict):
                             target["text"] = RETRY_MESSAGE
                         else:
@@ -270,6 +278,7 @@ class SessionController:
                             target["translation"] = (
                                 formal if isinstance(formal, str) else ""
                             )
+                            target["truncated"] = truncated
                     try:
                         target["at"] = self._now_iso()
                     except Exception:

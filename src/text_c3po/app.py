@@ -334,6 +334,16 @@ def _sweep_spills(base=None) -> int:
         for name in names:
             full = os.path.join(target, name)
             try:
+                # Re-check under the lock just before unlinking: a
+                # sibling tab may have spilled (and tracked) this path
+                # after the snapshot above. Cross-process in-flight
+                # spills remain a residual race (see docstring).
+                try:
+                    with _SPILLED_LOCK:
+                        if full in _SPILLED_TEMPS:
+                            continue
+                except Exception:
+                    pass
                 if full in live:
                     continue
                 if os.path.isfile(full) and not os.path.islink(full):
@@ -420,8 +430,13 @@ def _overlay_snackbar(page, snack) -> None:
             snack.open = True
         except Exception:
             pass
-    except Exception:
-        pass
+    except Exception as exc:
+        # A swallowed TypeError here is a silenced F1 regression, so
+        # the fallback path stays loud like the loop fallback.
+        try:
+            logger.warning("overlay snackbar mount failed: %r", exc)
+        except Exception:
+            pass
 
 
 def _show_snackbar(page, message, on_retry, with_retry=True) -> None:
@@ -514,7 +529,41 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
                 logger.warning("translation rendered with missing refs")
             except Exception:
                 pass
-            _show_snackbar(page, WIRING_HINT, on_retry, with_retry=False)
+            if result.get("error"):
+                # Both broken: the service error is actionable (ollama
+                # down, input too long) while restart fixes only the
+                # view — lead with the error copy, honoring retryable,
+                # and keep the wiring fact in the log above.
+                try:
+                    retryable = result.get("retryable", True)
+                except Exception:
+                    retryable = True
+                try:
+                    message = result.get("error")
+                    shown = (
+                        message
+                        if isinstance(message, str) and message.strip()
+                        else RETRY_CARD_HINT
+                    )
+                except Exception:
+                    shown = RETRY_CARD_HINT
+                if retryable is not False:
+                    _show_snackbar(page, shown, on_retry)
+                else:
+                    _show_snackbar(page, shown, on_retry, with_retry=False)
+            else:
+                # Surviving cards still show the previous translation as
+                # if it were fresh: blank them rather than pass stale
+                # text off as the new result.
+                for key in ("formal_text", "informal_text"):
+                    control = refs.get(key)
+                    if control is not None:
+                        try:
+                            control.value = ""
+                            control.data = {"copyable": False}
+                        except Exception:
+                            pass
+                _show_snackbar(page, WIRING_HINT, on_retry, with_retry=False)
             return
         if result.get("error"):
             try:
@@ -1008,6 +1057,10 @@ def main(page: ft.Page) -> None:
                 return
             try:
                 shown = result.get("formal", "") if isinstance(result, dict) else ""
+                # Mirror the tally's list coercion: a blank card next to
+                # a char count is the same lie in file mode.
+                if isinstance(shown, list):
+                    shown = ", ".join(str(part) for part in shown)
             except Exception:
                 tally, shown = "", ""
             else:
