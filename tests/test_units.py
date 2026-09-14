@@ -974,6 +974,84 @@ def test_session_restart_clears_and_bumps_id():
     assert [c["seq"] for c in ctl.drain()] == [1]
 
 
+def test_session_truncated_result_marks_caption_partial():
+    """Ceiling-cut live utterances carry the flag; plain rows do not."""
+    import datetime
+
+    from text_c3po.services.session import SessionController
+
+    def translate(text, target, model):
+        if text == "long":
+            return {"formal": "prefix…", "truncated": True}
+        return {"formal": "[{}] {}".format(target, text)}
+
+    ctl = SessionController(
+        target_language="English",
+        model="m",
+        translate_fn=translate,
+        clock=lambda: datetime.datetime(2026, 9, 14, tzinfo=datetime.timezone.utc),
+    )
+    ctl.start_session()
+    ctl.post_utterance("long")
+    ctl.post_utterance("short")
+    added = ctl.drain()
+    assert added[0]["kind"] == "caption"
+    assert added[0]["truncated"] is True
+    assert added[1].get("truncated") is False
+
+
+def test_caption_row_and_announce_mark_partial():
+    """Partial rows and their VoiceOver text say so; normal rows don't."""
+    from text_c3po.ui.captions import _announce, _row_for
+
+    row = _row_for(
+        {
+            "kind": "caption",
+            "text": "s",
+            "translation": "p",
+            "at": "t",
+            "truncated": True,
+        }
+    )
+    bodies = []
+
+    def walk(control):
+        try:
+            if control.value is not None:
+                bodies.append(control.value)
+        except Exception:
+            pass
+        try:
+            for child in control.content.controls:
+                walk(child)
+        except Exception:
+            pass
+
+    walk(row)
+    assert any("(partial)" in body for body in bodies)
+    assert "partial translation" in _announce(
+        {"kind": "caption", "translation": "p", "at": "t", "truncated": True}
+    )
+    plain = _row_for({"kind": "caption", "text": "s", "translation": "p", "at": "t"})
+    plain_bodies = []
+
+    def walk2(control):
+        try:
+            if control.value is not None:
+                plain_bodies.append(control.value)
+        except Exception:
+            pass
+        try:
+            for child in control.content.controls:
+                walk2(child)
+        except Exception:
+            pass
+
+    walk2(plain)
+    assert not any("(partial)" in body for body in plain_bodies)
+    assert "partial" not in _announce({"kind": "caption", "translation": "p"})
+
+
 def test_session_captions_are_copies():
     ctl = _session_controller()
     ctl.start_session()
