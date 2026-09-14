@@ -70,7 +70,7 @@ Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languag
 
 No invalid cells — every model cell JSON-valid.
 
-## E4 gate — 23x5 full matrix (2026-09-14)
+## E4 gate — 23x5 full matrix, gemma4:e4b-mlx (2026-09-14, superseded by corrected rerun below)
 
 Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
 
@@ -80,7 +80,7 @@ Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languag
 
 No invalid cells — every model cell JSON-valid.
 
-## Model capability — support matrix (2026-09-14)
+## Model capability — support matrix, gemma4:e4b-mlx (2026-09-14, superseded — identity echoes)
 
 Supported = JSON-valid AND formal differs from the input sentence (echoes prove the model cannot render the target). Rescored from the gate run above — no extra calls.
 
@@ -93,7 +93,7 @@ Echoes (valid JSON, unsupported target):
 - ECHO gemma4:e4b-mlx | English | sentence 4
 - ECHO gemma4:e4b-mlx | English | sentence 5
 
-## E4 gate — 23x5 full matrix (2026-09-14)
+## E4 gate — 23x5 full matrix, gemma4:e4b-mlx (2026-09-14, authoritative)
 
 Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
 
@@ -103,7 +103,7 @@ Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languag
 
 No invalid cells — every model cell JSON-valid.
 
-## Model capability — support matrix (2026-09-14)
+## Model capability — support matrix, gemma4:e4b-mlx (2026-09-14, authoritative — 115/115)
 
 Supported = JSON-valid AND formal differs from the input sentence (echoes prove the model cannot render the target). Rescored from the gate run above — no extra calls.
 
@@ -113,7 +113,7 @@ Supported = JSON-valid AND formal differs from the input sentence (echoes prove 
 
 No echoes — every valid cell rendered the target.
 
-## E4 gate — 23x5 full matrix (2026-09-14)
+## E4 gate — 23x5 full matrix, lfm2.5:latest (2026-09-14)
 
 Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
 
@@ -123,7 +123,7 @@ Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languag
 
 No invalid cells — every model cell JSON-valid.
 
-## Model capability — support matrix (2026-09-14)
+## Model capability — support matrix, lfm2.5:latest (2026-09-14 — 109/115)
 
 Supported = JSON-valid AND formal differs from the input sentence (echoes prove the model cannot render the target). Rescored from the gate run above — no extra calls.
 

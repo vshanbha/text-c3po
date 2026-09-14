@@ -8,6 +8,8 @@ stub, never the network). Live-model coverage stays manual-only under
 
 import threading
 
+import pytest
+
 from text_c3po.languages import LANGUAGES, LANGUAGE_CODES, name_for_code
 from text_c3po.runtimes.ollama_client import (
     _verbatim_names,
@@ -178,6 +180,24 @@ def test_blank_formal_records_blank_kind_not_echo():
     summary = results["m"]
     assert summary["valid"] == 5
     assert [e["kind"] for e in summary["echoes"]] == ["blank"] * 5
+
+
+def test_malformed_formal_records_malformed_kind():
+    """Missing/non-string formal is neither echo nor blank."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    results = run_matrix(
+        models=["m"],
+        translate_fn=lambda text, target, model: {"formal": ["a"]},
+        languages=["German"],
+    )
+    assert [e["kind"] for e in results["m"]["echoes"]] == ["malformed"] * 5
+    results = run_matrix(
+        models=["m"],
+        translate_fn=lambda text, target, model: {"other": 1},
+        languages=["German"],
+    )
+    assert [e["kind"] for e in results["m"]["echoes"]] == ["malformed"] * 5
 
 
 def test_format_support_table_ranks_best_first():
@@ -3227,6 +3247,28 @@ def test_render_missing_formal_ref_toasts():
     assert page.shown[0].content.value == WIRING_HINT
 
 
+def test_mount_overlay_rejects_services():
+    """D7 runtime guard: a Service on the overlay fails fast, not at render."""
+    import flet as ft
+
+    from text_c3po.app import _mount_overlay
+
+    class FakeOverlay(list):
+        pass
+
+    class FakePage:
+        def __init__(self):
+            self.overlay = FakeOverlay()
+
+    page = FakePage()
+    with pytest.raises(TypeError):
+        _mount_overlay(page, ft.FilePicker())
+    assert len(page.overlay) == 0
+    label = ft.Text("hello")
+    _mount_overlay(page, label)
+    assert page.overlay == [label]
+
+
 def test_spill_and_discard_web_pick_roundtrip(tmp_path):
     """Spilled browser audio lands on disk tracked, then unlinks cleanly."""
     import os
@@ -3242,6 +3284,25 @@ def test_spill_and_discard_web_pick_roundtrip(tmp_path):
     assert _spill_web_pick(b"", "x.wav") == (None, False)
     assert _spill_web_pick(None, "x.wav") == (None, False)
     _discard_spilled(None)  # never raises
+
+
+def test_spill_dir_and_sweep(tmp_path):
+    """Spills land in the owned dir; startup sweep reaps only ours."""
+    import os
+
+    from text_c3po.app import _spill_dir, _spill_web_pick, _sweep_spills
+
+    spill = _spill_dir(str(tmp_path))
+    assert spill.endswith("text-c3po-spills")
+    assert oct(os.stat(spill).st_mode & 0o777) == "0o700"
+    foreign = os.path.join(str(tmp_path), "not-ours.wav")
+    open(foreign, "wb").write(b"x")
+    path, cleanup = _spill_web_pick(b"RIFF", "clip.m4a", spill_dir=str(tmp_path))
+    assert cleanup and os.path.dirname(path) == spill
+    assert _sweep_spills(spill) == 1
+    assert not os.path.exists(path)
+    assert os.path.isfile(foreign)  # neighbor dir untouched
+    assert _sweep_spills(os.path.join(spill, "nope")) == 0
 
 
 def test_reap_spilled_clears_tracking():
@@ -3544,11 +3605,25 @@ def test_capability_cli_label_tags_sections(monkeypatch, tmp_path):
 
 
 def test_retry_hint_single_sourced():
-    """app renders and text_view copy-skips the same hint object."""
+    """Every user-facing message string lives once in text_c3po.messages."""
     from text_c3po import app as app_module
+    from text_c3po import messages
+    from text_c3po.services import asr, session, translation
     from text_c3po.ui import text_view
 
-    assert app_module.RETRY_CARD_HINT is text_view.RETRY_HINT
+    assert app_module.RETRY_CARD_HINT is messages.RETRY_HINT
+    assert app_module.EMPTY_INPUT_HINT is messages.EMPTY_INPUT_HINT
+    assert app_module.WIRING_HINT is messages.WIRING_HINT
+    assert app_module.NO_VARIANT_HINT is messages.NO_VARIANT_HINT
+    assert text_view.RETRY_HINT is messages.RETRY_HINT
+    assert text_view.EMPTY_HINT is messages.EMPTY_INPUT_HINT
+    assert text_view.NO_VARIANT_HINT is messages.NO_VARIANT_HINT
+    assert translation.RETRY_MESSAGE is messages.RETRY_HINT
+    assert translation.EMPTY_INPUT_MESSAGE is messages.EMPTY_INPUT_HINT
+    assert session.RETRY_MESSAGE is messages.RETRY_HINT
+    assert asr.RETRY_MESSAGE is messages.RETRY_HINT
+    assert messages.RETRY_HINT == "Couldn't parse that one. Retry."
+    assert messages.EMPTY_INPUT_HINT == "Type or paste something first."
 
 
 def test_translate_single_output_ceiling_stops_degenerate_stream():
@@ -3577,6 +3652,72 @@ def test_translate_single_output_ceiling_stops_degenerate_stream():
         tr.ChatOllama = orig
     assert out.get("retryable") is False
     assert "shorter input" in out.get("error", "")
+
+
+def test_translate_single_ceiling_returns_usable_partial():
+    """Ceiling trip with a formal prefix yields truncated content, not error."""
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    class FakeChunk:
+        def __init__(self, content):
+            self.content = content
+            self.response_metadata = {"done_reason": "length"}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def stream(self, messages):
+            yield FakeChunk('{"formal": "')
+            for _ in range(12):
+                yield FakeChunk("Hallo Welt. " * 500)
+            yield FakeChunk('", "informal": "')
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        out = tr._translate_single("Hello", "German", "m", parser)
+    finally:
+        tr.ChatOllama = orig
+    assert out.get("truncated") is True
+    assert "error" not in out
+    assert out.get("formal", "").startswith("Hallo Welt.")
+
+
+def test_result_tally_names_partial_state():
+    """Status tally: full count, partial notice, or silence on error/blank."""
+    from text_c3po.app import _result_tally
+
+    assert _result_tally({"formal": "Hallo"}) == "Translated · 5 chars"
+    partial = _result_tally({"formal": "Hallo", "truncated": True})
+    assert partial.startswith("Partial · 5 chars") and "shorten" in partial
+    assert _result_tally({"error": "x", "retryable": True}) == ""
+    assert _result_tally({"formal": "  "}) == ""
+    assert _result_tally(None) == ""
+
+
+def test_render_truncated_result_shows_partial_without_toast():
+    """Truncated formal renders as content; status (not toast) tells the story."""
+    from text_c3po.app import _render_translation_result
+    from text_c3po.ui.text_view import NO_VARIANT_HINT
+
+    refs, page = _render_fakes()
+    _render_translation_result(
+        refs,
+        page,
+        {
+            "formal": "Hallo Welt",
+            "informal": "",
+            "origin_language": "",
+            "truncated": True,
+        },
+        lambda: None,
+    )
+    assert refs["formal_text"].value == "Hallo Welt"
+    assert refs["informal_text"].value == NO_VARIANT_HINT
+    assert page.shown == []
 
 
 def test_translate_single_ceiling_scales_with_input():

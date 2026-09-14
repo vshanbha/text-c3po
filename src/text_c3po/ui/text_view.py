@@ -10,14 +10,13 @@ the language pickers plus Flet; never the lower Ollama/audio layers.
 
 import flet as ft
 
+from text_c3po.messages import (
+    EMPTY_INPUT_HINT as EMPTY_HINT,
+    NO_VARIANT_HINT,
+    RETRY_HINT,
+)
 from .language_pickers import build_target_dropdown
 
-EMPTY_HINT = "Type or paste something first."
-RETRY_HINT = "Couldn't parse that one. Retry."
-# Non-error placeholder: the model returned a good formal translation but no
-# separate informal variant (many languages have no formal/informal
-# distinction). Not a technical failure, so never paired with a retry toast.
-NO_VARIANT_HINT = "No separate informal version for this translation — see Formal."
 INPUT_PLACEHOLDER = "Type or paste text to translate"
 INPUT_SOFT_LIMIT = 5000
 

@@ -40,12 +40,13 @@ from text_c3po.services.translation import (
 )
 from text_c3po.ui.file_view import build_file_view
 from text_c3po.ui.live_view import build_live_view
-from text_c3po.ui.text_view import (
+from text_c3po.messages import (
+    EMPTY_INPUT_HINT,
     NO_VARIANT_HINT,
     RETRY_HINT,
-    SOURCE_TITLE,
-    build_text_view,
+    WIRING_HINT,
 )
+from text_c3po.ui.text_view import SOURCE_TITLE, build_text_view
 from text_c3po.ui.top_strip import (
     build_appbar,
     build_toolbar,
@@ -56,14 +57,32 @@ from text_c3po.ui.top_strip import (
 WINDOW_MIN_WIDTH = 960
 WINDOW_MIN_HEIGHT = 640
 
-# Single-sourced with ui.text_view.RETRY_HINT (the copy guard compares
-# against that module's constant): one wording, two references.
+# Backward-compatible aliases: render code and tests reference these
+# app-level names; every wording lives once in text_c3po.messages.
 RETRY_CARD_HINT = RETRY_HINT
-EMPTY_INPUT_HINT = "Type or paste something first."
-# Wiring-break toast: the result parsed fine but a view control is
-# missing — retry re-renders into the same break, so the copy says
-# restart instead of implying a model failure.
-WIRING_HINT = "Something's off with this view — restart the app."
+TRUNCATED_TALLY = "Partial · {} chars (output limit — shorten input for the full text)."
+
+
+def _result_tally(result) -> str:
+    """Status-line tally for a translate result; never raises.
+
+    Full renders get the Translated count, truncated results name their
+    partial state, and errors plus blank primaries get no tally at all
+    ("Translated · 0 chars" next to an error card is a lie told by
+    len("")). Shared by the text and file workers so both agree.
+    """
+    try:
+        if not isinstance(result, dict) or result.get("error"):
+            return ""
+        shown = result.get("formal", "")
+        if not (isinstance(shown, str) and shown.strip()):
+            return ""
+        if result.get("truncated"):
+            return TRUNCATED_TALLY.format(len(shown))
+        return "Translated · {} chars".format(len(shown))
+    except Exception:
+        return ""
+
 
 # E3-9 (D3 re-decision B+, 2026-09-13; loop marshaling 2026-09-14):
 # single serialized render point. Every background thread (capture drain,
@@ -263,7 +282,57 @@ def _discard_spilled(path) -> None:
         pass
 
 
-def _spill_web_pick(picked_bytes, picked_name):
+def _spill_dir(base=None) -> str:
+    """App-owned spill directory (0700); created on demand; never raises.
+
+    Spills never land bare in the shared temp dir: everything we create
+    lives under one directory we own, so the startup sweep can wipe it
+    without risking other processes' files. ``base`` is a test seam
+    (defaults to the platform temp dir).
+    """
+    import tempfile as _tempfile
+
+    parent = base or _tempfile.gettempdir()
+    path = os.path.join(parent, "text-c3po-spills")
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(path, 0o700)
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return path
+
+
+def _sweep_spills(spill_dir=None) -> int:
+    """Delete stale spills left by a violently-killed previous run.
+
+    Called once at startup, when nothing can be in flight yet, so every
+    regular file in our own spill dir is definitionally orphaned. Returns
+    the removed count. Never raises.
+    """
+    removed = 0
+    try:
+        target = spill_dir or _spill_dir()
+        try:
+            names = os.listdir(target)
+        except Exception:
+            return 0
+        for name in names:
+            full = os.path.join(target, name)
+            try:
+                if os.path.isfile(full) and not os.path.islink(full):
+                    os.unlink(full)
+                    removed += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return removed
+
+
+def _spill_web_pick(picked_bytes, picked_name, spill_dir=None):
     """Write browser-picked bytes to a temp file; return (path, cleanup).
 
     Returns (None, False) on any failure. Never raises. Module-level
@@ -275,7 +344,9 @@ def _spill_web_pick(picked_bytes, picked_name):
         import tempfile as _tempfile
 
         suffix = os.path.splitext(picked_name or "")[1].lower() or ".wav"
-        tmp = _tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp = _tempfile.NamedTemporaryFile(
+            suffix=suffix, delete=False, dir=_spill_dir(spill_dir)
+        )
         path = tmp.name
         # Track before writing: a write failure — or interpreter exit
         # mid-write — must still be reaped, and only tracked paths are.
@@ -301,16 +372,38 @@ def _spill_web_pick(picked_bytes, picked_name):
         return None, False
 
 
+def _mount_overlay(page, control):
+    """Append a visual control to page.overlay; Services raise TypeError.
+
+    Runtime guard for the F1 bug class (D7): Service controls such as
+    FilePicker have no visual widget — mounting one paints a red
+    Unknown-control panel at client render time, on web only, long
+    after the offending line ran. Fail fast here instead, in every
+    environment including desktop and headless. Intentionally raising:
+    a Service on the overlay is always a programming error, never a
+    runtime condition to tolerate.
+    """
+    from flet.controls.services.service import Service
+
+    if isinstance(control, Service):
+        raise TypeError(
+            "Service {} cannot mount on page.overlay — services "
+            "self-register and have no visual widget".format(type(control).__name__)
+        )
+    overlay = getattr(page, "overlay", None)
+    if overlay is None or not hasattr(overlay, "append"):
+        raise TypeError("page has no usable overlay list")
+    overlay.append(control)
+
+
 def _overlay_snackbar(page, snack) -> None:
     """Legacy mount for headless fakes without show_dialog; never raises."""
     try:
-        overlay = getattr(page, "overlay", None)
-        if overlay is not None and hasattr(overlay, "append"):
-            overlay.append(snack)
-            try:
-                snack.open = True
-            except Exception:
-                pass
+        _mount_overlay(page, snack)
+        try:
+            snack.open = True
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -501,6 +594,10 @@ def _render_translation_result(refs, page, result, on_retry) -> None:
 
 
 def main(page: ft.Page) -> None:
+    # Reap violently-killed previous runs first: nothing is in flight yet,
+    # so every file in our own spill dir is definitionally orphaned.
+    # Bounds the kill -9 privacy window to "until next launch".
+    _sweep_spills()
     page.title = "text-c3po"
     page.window.min_width = WINDOW_MIN_WIDTH
     page.window.min_height = WINDOW_MIN_HEIGHT
@@ -782,18 +879,7 @@ def main(page: ft.Page) -> None:
                     return
                 # Completeness cue: char count of what actually rendered, so
                 # a short result is visible as a number, not a feeling.
-                # Errors and blank primaries carry no tally — "Translated ·
-                # 0 chars" next to an error card is a lie told by len("").
-                try:
-                    shown = result.get("formal", "") if isinstance(result, dict) else ""
-                    if isinstance(result, dict) and result.get("error"):
-                        tally = ""
-                    elif not (isinstance(shown, str) and shown.strip()):
-                        tally = ""
-                    else:
-                        tally = "Translated · {} chars".format(len(shown))
-                except Exception:
-                    tally = ""
+                tally = _result_tally(result)
                 try:
                     _render_translation_result(refs, page, result, on_translate_retry)
                 finally:
@@ -892,13 +978,10 @@ def main(page: ft.Page) -> None:
                 return
             try:
                 shown = result.get("formal", "") if isinstance(result, dict) else ""
-                tally = (
-                    "Translated · {} chars".format(len(shown))
-                    if isinstance(shown, str)
-                    else ""
-                )
             except Exception:
                 tally, shown = "", ""
+            else:
+                tally = _result_tally(result)
             _set_file_status(tally, shown if isinstance(shown, str) else "")
         except Exception:
             pass

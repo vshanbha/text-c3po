@@ -10,7 +10,8 @@ raises.
 
 from text_c3po.runtimes.audio_file import decode_to_wav
 from text_c3po.runtimes.whisper_client import transcribe_wav
-from text_c3po.services.translation import RETRY_MESSAGE, translate_text
+from text_c3po.messages import RETRY_HINT as RETRY_MESSAGE
+from text_c3po.services.translation import translate_text
 
 NO_SPEECH_MESSAGE = "No speech found in that file."
 BLANK_MARKERS = ("[BLANK_AUDIO]",)

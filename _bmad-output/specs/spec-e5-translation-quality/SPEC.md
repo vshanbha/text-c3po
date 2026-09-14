@@ -38,7 +38,7 @@ The eval harness gates JSON contract conformance only: lfm2.5 scored 100% while 
 
 ## Success signal
 
-An operator picks two installed models, runs the E5 commands, and reads from research.md which model covers more languages and translates them better — with zero outbound traffic after setup.
+An operator picks two installed models, runs the E5 commands, and reads from research.md which model covers more languages (capability survey) and translates them better (chrF++ table) — with zero outbound traffic after setup.
 
 ## Assumptions
 
