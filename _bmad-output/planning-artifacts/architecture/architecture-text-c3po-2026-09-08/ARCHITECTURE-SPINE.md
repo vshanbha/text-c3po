@@ -129,7 +129,7 @@ flowchart LR
 
 - **Binds:** FR-6, FR-13, FR-15, NFR-5
 - **Prevents:** TCC mic denial and clean-machine setup drift.
-- **Rule:** `setup.sh` owns environment (Ollama install, model pull, ffmpeg check, BlackHole guidance — PortAudio/sounddevice retired); the macOS bundle carries `NSMicrophoneUsageDescription`.
+- **Rule:** `setup.sh` owns environment (Ollama install, model pull, ffmpeg check, BlackHole guidance — PortAudio/sounddevice retired); the macOS bundle carries `NSMicrophoneUsageDescription` (bundle deferred to E5 per D9).
 
 ## Consistency Conventions
 

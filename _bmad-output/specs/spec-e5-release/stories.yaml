@@ -1,0 +1,14 @@
+- id: "1"
+  title: Package macOS bundle with mic permission
+  description: >-
+    Ship the installable macOS bundle (flet build macos tool of record
+    per D5-A) carrying NSMicrophoneUsageDescription so first Live start
+    prompts and TCC grants mic access per E5 CAP-1. Moved from E4 story
+    4.3 per D9 (2026-09-16): packaging waits for the general-release
+    decision.
+  invoke_dev_with: >-
+    Ad-hoc local bundle only, no sign/notarize unless D5 is revisited;
+    document Gatekeeper copy path for another Mac. Bundle runs loopback-only
+    to 127.0.0.1:11434 and 127.0.0.1:9001 after download; verify with the
+    loopback-only check. Manual session per TEST-PLAN section H.
+  done_checkpoint: true
