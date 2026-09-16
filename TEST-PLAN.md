@@ -110,10 +110,11 @@ sounddevice/PortAudio retired.
   and back. Expect: selection preserved **[R]** `0906a98`.
 - **C4 — no capture hardware path.** (No ffmpeg / no avfoundation input
   devices: `list_devices` yields `[]`, app starts, file mode works.)
-- **C5 — Start failure reasons surface (D7-A).** With no model file
-  (rename `models/` away), press Start. Expect: readable refusal naming
-  the missing model, buttons re-armed — never a silent flip to Idle.
-  Restore `models/` after.
+- **C5 — Start failure reasons surface (D7-A).** In a terminal:
+  `mv models models-away`, press Start in Live view. Expect: readable
+  refusal naming the missing model, buttons re-armed — never a silent
+  flip to Idle. Restore with `mv models-away models` (no relaunch
+  needed).
 
 ## D. whisper-server lifecycle (E2-3)
 
@@ -167,8 +168,13 @@ sounddevice/PortAudio retired.
   (1000+ rows) stay usable.
 - **F6 — screen reader.** VoiceOver on, one utterance. Expect: the
   new row announced once (translation + timestamp).
-- **F7 — BlackHole loopback.** Pick BlackHole 2ch, play a German
-  video, Start. Expect: system audio captioned without a mic.
+- **F7 — BlackHole loopback.** Route audio into BlackHole first, then
+  test: for a call, set the call app's speaker to BlackHole 2ch (or set
+  system output to a Multi-Output Device of speakers + BlackHole in Audio
+  MIDI Setup so you still hear it); for a video, same routing, then play
+  it. Pick BlackHole 2ch in the app, Start. Expect: system audio
+  captioned without a mic. Voice-to-caption lag of several seconds is
+  expected (utterance flush + whisper + LLM), not a bug.
   Verified 2026-09-16 by owner manual test (YouTube talk audio):
   captions flowed, meaning mostly preserved, word-level fidelity
   imperfect; voice-to-caption lag is several seconds (utterance flush
@@ -191,8 +197,11 @@ sounddevice/PortAudio retired.
 - **F13 — stop timing.** Start, speak, press Stop mid-sentence.
   Expect: capture halts within ~2 s; trailing speech may still land
   one final caption; list retained.
-- **F14 — device unplug mid-session.** Start, then unplug the USB mic
-  (or disable the device). Expect: session ends gracefully — buttons
+- **F14 — device unplug mid-session.** Start on a USB mic/headset, then
+  unplug it. No USB hardware? Start on any device, then run
+  `sudo killall coreaudiod` in a terminal (audio blips while the daemon
+  restarts; the capture stream dies exactly like an unplug — don't do it
+  mid-meeting). Expect: session ends gracefully — buttons
   reset to Idle, list retained, no hang, no stuck red "Live".
 - **F15 — no-audio auto-stop (D7-A).** Pick BlackHole 2ch with nothing
   routed into it, Start, wait ~60 s. Expect: session ends itself with
@@ -312,7 +321,9 @@ executes the code stories first; **this section is deliberately last.**
   `kill -9` mid-session gap rows; no orphans after quit.
 - [ ] **E6 — long file (~5 min).** Completes, UI responsive after, no runaway
   memory (NFR-4 soak companion).
-- [ ] **Log file (story 4-9).** After any live or file session:
+- [ ] **Log file (story 4-9).** After any live or file session, check
+  `~/Library/Logs/text-c3po/text-c3po.log` (same lines as the launch
+  terminal; live-tail with `tail -f` during a session):
   `~/Library/Logs/text-c3po/text-c3po.log` exists (override via
   `TEXT_C3PO_LOG`); a Start refusal (C5/F11), whisper kill (D3/F4), or
   no-audio trip (F15) each leaves a line naming the reason;

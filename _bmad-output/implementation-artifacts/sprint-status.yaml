@@ -51,6 +51,7 @@ development_status:
   2-3-whisper-process-manager-with-health-and-restart: done
   2-4-file-decode-path-into-the-shared-asr-entry-point: done
   2-5-replace-sounddevice-capture-with-ffmpeg-avfoundation-pipeline-d7-a: review
+  2-6-dual-capture-mic-plus-loopback-for-meetings: backlog
   epic-2-retrospective: done
 
   epic-3: done
@@ -64,6 +65,8 @@ development_status:
   3-8-relabel-source-picker-to-auto-detect-d2-a: done
   3-9-serialize-background-ui-updates-through-one-render-point: done
   3-10-document-and-test-global-stop-scope-d4-a: done
+  3-11-label-capture-devices-by-kind-mic-vs-loopback: backlog
+  3-12-pin-live-controls-outside-the-scrolling-captions-pane: backlog
   epic-3-retrospective: done
 
   epic-4: in-progress
