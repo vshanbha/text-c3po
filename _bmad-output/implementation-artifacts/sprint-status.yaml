@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 18:30
-last_updated: 09-13-2026 14:30
+last_updated: 09-16-2026 12:00
 project: text-c3po
 project_key: NOKEY
 tracking_system: file-system
@@ -45,11 +45,12 @@ development_status:
   1-7-e1-gate-5-language-by-5-sentence-smoke-harness: done
   epic-1-retrospective: done
 
-  epic-2: done
+  epic-2: in-progress
   2-1-sounddevice-device-enumeration-and-picker-source: done
   2-2-port-vad-chunker-with-unit-tests: done
   2-3-whisper-process-manager-with-health-and-restart: done
   2-4-file-decode-path-into-the-shared-asr-entry-point: done
+  2-5-replace-sounddevice-capture-with-ffmpeg-avfoundation-pipeline-d7-a: review
   epic-2-retrospective: done
 
   epic-3: done
@@ -74,4 +75,5 @@ development_status:
   4-6-publish-updated-docs-to-github-pages: done
   4-7-fix-unit-ci-and-repair-sprint-tracking: done
   4-8-refresh-stale-v1-docs-and-infra: done
+  4-9-file-logging-with-rotation-and-per-module-diagnostics: ready-for-dev
   epic-4-retrospective: optional

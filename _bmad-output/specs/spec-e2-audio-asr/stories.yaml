@@ -34,3 +34,18 @@
     Assume mp3/wav/m4a/mp4 floor unless E2 answers PRD Q2 otherwise;
     translation reuses the E1 service with lightweight {text, source_lang}
     utterance payloads.
+- id: "5"
+  title: Replace sounddevice capture with ffmpeg avfoundation pipeline (D7-A)
+  description: >-
+    Rewrite runtimes/audio_devices to enumerate via ffmpeg -f avfoundation
+    -list_devices, and services/live_runner.open_input_stream to spawn
+    ffmpeg -f avfoundation -i ":DEVICE" -ac 1 -ar 16000 -f s16le - piped to
+    the VAD; remove sounddevice from pyproject/requirements/lock and
+    PortAudio from setup.sh; amend AD-9/AD-13/tech-lock; rewrite affected
+    unit tests; verify TEST-PLAN F7 (BlackHole loopback) and F14 (unplug).
+  invoke_dev_with: >-
+    Follow the pattern in runtimes/audio_file.py (subprocess, injectable
+    runner, readable ffmpeg-missing errors) and live-translate/live-translate
+    lines 10-12 plus 29-31; keep list_devices list[str] contract and
+    stream_factory injection so VAD/ASR/UI stay untouched.
+  done_checkpoint: true

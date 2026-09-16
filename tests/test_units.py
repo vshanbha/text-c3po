@@ -1301,19 +1301,32 @@ def test_ollama_client_malformed_body(monkeypatch):
     assert check_ollama() == (False, [])
 
 
-def test_sounddevice_absent_yields_empty(monkeypatch):
-    import sys
-
+def test_ffmpeg_absent_yields_empty():
     from text_c3po.runtimes.audio_devices import list_devices
 
-    monkeypatch.setitem(sys.modules, "sounddevice", None)
-    assert list_devices() == []
+    def missing(argv):
+        raise FileNotFoundError("no ffmpeg")
+
+    assert list_devices(run_fn=missing) == []
 
 
 def test_audio_devices_rejects_non_list():
     from text_c3po.runtimes.audio_devices import list_devices
 
-    assert list_devices(query_fn=lambda: 42) == []
+    class BadCompleted:
+        stderr = 42
+
+    assert list_devices(run_fn=lambda argv: BadCompleted()) == []
+
+
+def test_audio_devices_non_utf8_stderr_yields_empty():
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    class BinaryCompleted:
+        stderr = b"\xff\xfe\x00not-text"
+        stdout = b"\xff\xfe"
+
+    assert list_devices(run_fn=lambda argv: BinaryCompleted()) == []
 
 
 def test_paths_helpers(tmp_path, monkeypatch):
@@ -1544,40 +1557,127 @@ def test_probe_serving_bad_args():
     assert probe_serving(None, None) is False
 
 
-def _stub_devices():
-    return [
+_FFMPEG_LISTING = """\
+[AVFoundation indev @ 0x1] AVFoundation video devices:
+[AVFoundation indev @ 0x1] [0] FaceTime HD Camera
+[AVFoundation indev @ 0x1] AVFoundation audio devices:
+[AVFoundation indev @ 0x1] [0] MacBook Air Microphone
+[AVFoundation indev @ 0x1] [1] BlackHole 2ch
+[AVFoundation indev @ 0x1] [2] MacBook Air Speakers
+"""
+
+_PROFILER_DOC = {
+    "SPAudioDataType": [
         {
-            "name": "MacBook Air Microphone",
-            "max_input_channels": 1,
-            "max_output_channels": 0,
-        },
-        {"name": "BlackHole 2ch", "max_input_channels": 2, "max_output_channels": 2},
-        {
-            "name": "MacBook Air Speakers",
-            "max_input_channels": 0,
-            "max_output_channels": 2,
-        },
+            "_name": "audio-group",
+            "_items": [
+                {"_name": "MacBook Air Microphone", "coreaudio_device_input": 1},
+                {
+                    "_name": "BlackHole 2ch",
+                    "coreaudio_device_input": 2,
+                    "coreaudio_device_output": 2,
+                },
+                {
+                    "_name": "MacBook Air Speakers",
+                    "coreaudio_device_output": 2,
+                },
+            ],
+        }
     ]
+}
+
+
+def _stub_avfoundation(argv):
+    import json
+
+    class Completed:
+        pass
+
+    done = Completed()
+    if "-list_devices" in argv:
+        done.stderr = _FFMPEG_LISTING
+        done.stdout = b""
+    else:
+        done.stdout = json.dumps(_PROFILER_DOC).encode("utf-8")
+        done.stderr = b""
+    done.returncode = 0
+    return done
 
 
 def test_list_devices_lists_inputs_verbatim():
     from text_c3po.runtimes.audio_devices import list_devices
 
-    assert list_devices(query_fn=_stub_devices) == [
+    assert list_devices(run_fn=_stub_avfoundation) == [
         "MacBook Air Microphone",
         "BlackHole 2ch",
     ]
 
 
+def test_device_index_resolves_audio_index():
+    from text_c3po.runtimes.audio_devices import device_index
+
+    assert device_index("BlackHole 2ch", run_fn=_stub_avfoundation) == 1
+    assert device_index("MacBook Air Microphone", run_fn=_stub_avfoundation) == 0
+    # Output-only devices never resolve (excluded from the picker).
+    assert device_index("MacBook Air Speakers", run_fn=_stub_avfoundation) is None
+    assert device_index("No Such Mic", run_fn=_stub_avfoundation) is None
+    assert device_index(None, run_fn=_stub_avfoundation) is None
+
+
+def test_list_devices_keeps_profiler_unseen_names():
+    # Naming skew (ffmpeg and profiler disagree on a name) must never
+    # hide a mic: unmatched names are kept, only positively
+    # output-only devices drop out.
+    import json
+
+    from text_c3po.runtimes.audio_devices import list_devices
+
+    listing = """\
+[AVFoundation indev @ 0x1] AVFoundation audio devices:
+[AVFoundation indev @ 0x1] [0] Oddly Named Mic
+[AVFoundation indev @ 0x1] [1] MacBook Air Speakers
+"""
+    doc = {
+        "SPAudioDataType": [
+            {
+                "_name": "g",
+                "_items": [
+                    {"_name": "Something Else Entirely", "coreaudio_device_input": 1},
+                    {"_name": "MacBook Air Speakers", "coreaudio_device_output": 2},
+                ],
+            }
+        ]
+    }
+
+    class Completed:
+        returncode = 0
+
+    def fake(argv):
+        done = Completed()
+        if "-list_devices" in argv:
+            done.stderr = listing
+            done.stdout = b""
+        else:
+            done.stdout = json.dumps(doc).encode("utf-8")
+            done.stderr = b""
+        return done
+
+    assert list_devices(run_fn=fake) == ["Oddly Named Mic"]
+
+
 def test_list_devices_never_raises():
     from text_c3po.runtimes.audio_devices import list_devices
 
-    def boom():
-        raise OSError("no PortAudio")
+    def boom(argv):
+        raise OSError("no ffmpeg")
 
-    assert list_devices(query_fn=boom) == []
-    assert list_devices(query_fn=lambda: None) == []
-    assert list_devices(query_fn=lambda: [{"name": "", "max_input_channels": 1}]) == []
+    class NoStderr:
+        stderr = None
+        stdout = None
+
+    assert list_devices(run_fn=boom) == []
+    assert list_devices(run_fn=lambda argv: None) == []
+    assert list_devices(run_fn=lambda argv: NoStderr()) == []
 
 
 def test_has_blackhole_case_insensitive():
@@ -1593,14 +1693,29 @@ def test_has_blackhole_case_insensitive():
 def test_list_devices_skips_bad_entries():
     from text_c3po.runtimes.audio_devices import list_devices
 
-    mixed = [
-        {"name": "Mic", "max_input_channels": 1},
-        {"name": "", "max_input_channels": 1},
-        {"name": "Ghost"},
-        "not-a-device",
-        {"name": "Speakers", "max_input_channels": 0},
-    ]
-    assert list_devices(query_fn=lambda: mixed) == ["Mic"]
+    listing = """\
+[AVFoundation indev @ 0x1] AVFoundation audio devices:
+[AVFoundation indev @ 0x1] [0] Mic
+[AVFoundation indev @ 0x1] not a device line
+[AVFoundation indev @ 0x1] [abc] Ghost
+"""
+    import json
+
+    class Completed:
+        returncode = 0
+
+    def fake(argv):
+        done = Completed()
+        if argv[0] == "ffmpeg":
+            done.stderr = listing
+            done.stdout = b""
+        else:
+            # Profiler unusable: fall back to the unfiltered ffmpeg list.
+            done.stdout = b"not json"
+            done.stderr = b""
+        return done
+
+    assert list_devices(run_fn=fake) == ["Mic"]
 
 
 def test_pick_default_device_prefers_mic():
@@ -2003,6 +2118,16 @@ def test_wait_ready_times_out():
     assert probes["calls"] >= 1
 
 
+def test_wait_ready_fast_fails_on_dead_child():
+    # D7-A review: a crashed child must not burn the 30 s cold-load
+    # budget — one probe, no sleeps, immediate False.
+    mgr, _, probes, slept = _manager(process=_FakeProcess(alive=False), probe=[])
+    assert mgr.start() is False  # dead on arrival, but owned
+    assert mgr.wait_ready(timeout_s=30.0) is False
+    assert probes["calls"] == 1
+    assert slept == []
+
+
 def test_wait_ready_bad_timeout_forms():
     mgr, _, _, _ = _manager(process=_FakeProcess(), probe=True)
     assert mgr.wait_ready(timeout_s=None) is True
@@ -2329,7 +2454,6 @@ class _FakeStream:
         self._frames = list(frames)
         self.started = False
         self.closed = False
-        self.aborted = False
 
     def start(self):
         self.started = True
@@ -2338,12 +2462,6 @@ class _FakeStream:
         if not self._frames:
             raise RuntimeError("stream ended")
         return self._frames.pop(0), False
-
-    def abort(self):
-        self.aborted = True
-
-    def stop(self):
-        pass
 
     def close(self):
         self.closed = True
@@ -2406,22 +2524,52 @@ def test_runner_gap_on_transcribe_failure():
     assert "whisper" in gaps[0]["text"].lower()
 
 
-def test_runner_no_stream_returns_zero(monkeypatch):
-    import sys
+def test_runner_no_audio_trip_on_digital_silence():
+    from text_c3po.services.live_runner import REASON_NO_AUDIO, LiveRunner
 
+    ctl = _runner_controller()
+    ctl.start_session()
+
+    def never_called(wav):
+        raise AssertionError("no utterance should flush from pure zeros")
+
+    stream = _FakeStream([_vad_frame(0)] * 120)
+    runner = LiveRunner(
+        ctl, transcribe_fn=never_called, stream_factory=lambda d: stream
+    )
+    assert runner.run() == 0
+    assert runner.end_reason == REASON_NO_AUDIO
+    assert runner.was_stopped() is False
+
+
+def test_runner_speech_resets_no_audio_counter():
+    from text_c3po.services.live_runner import LiveRunner
+
+    ctl = _runner_controller()
+    ctl.start_session()
+    frames = [_vad_frame(0)] * 119 + _speech_frames() + [_vad_frame(0)] * 119
+    runner = LiveRunner(
+        ctl,
+        transcribe_fn=lambda wav: {"text": "x"},
+        stream_factory=lambda d: _FakeStream(frames),
+    )
+    runner.run()
+    assert runner.end_reason is None
+
+
+def test_runner_no_stream_returns_zero():
     from text_c3po.services.live_runner import LiveRunner
 
     ctl = _runner_controller()
     ctl.start_session()
 
     def no_factory(device):
-        raise OSError("no PortAudio")
+        raise OSError("no ffmpeg")
 
     assert LiveRunner(ctl, stream_factory=no_factory).run() == 0
     assert LiveRunner(ctl, stream_factory=lambda device: None).run() == 0
-    # Default factory without sounddevice/PortAudio (monkeypatched away so
-    # the test never touches real hardware): clean zero, no raise.
-    monkeypatch.setitem(sys.modules, "sounddevice", None)
+    # Default factory with no device resolves nothing and never touches
+    # hardware: clean zero, no raise.
     assert LiveRunner(ctl, transcribe_fn=lambda w: {"text": "x"}).run() == 0
 
 
@@ -2439,13 +2587,6 @@ class _BlockingStream(_FakeStream):
         self.entered.set()
         assert self.release.wait(timeout=10), "worker never released"
         raise RuntimeError("stream ended")
-
-    def abort(self):
-        self.calls.append("abort")
-        self.aborted = True
-
-    def stop(self):
-        self.calls.append("stop")
 
     def close(self):
         self.calls.append("close")
@@ -2478,10 +2619,11 @@ def test_runner_stop_is_prompt():
     assert not worker.is_alive()
     assert done == [0]
     assert runner.is_running() is False
-    # Abort-first ordering: the blocked reader releases via abort,
-    # and everything is closed exactly once per owner.
+    # Close ordering: the blocked reader is released by close; both
+    # owners (request_stop and the loop finally) close exactly once.
     assert stream.calls[0] == "read"
-    assert stream.calls.index("abort") < stream.calls.index("close")
+    assert stream.calls.count("close") == 2
+    assert stream.closed is True
 
 
 def test_runner_was_stopped_distinguishes_stop_from_stream_end():
@@ -2547,7 +2689,9 @@ def test_runner_reports_open_status():
         on_status=lambda opened, reason="": statuses2.append((opened, reason)),
     )
     assert runner2.run() == 0
-    assert statuses2 == [(False, "open-failed")]
+    # D7-A: the failure reason carries the underlying detail so the UI
+    # can surface it instead of a bare "couldn't open".
+    assert statuses2 == [(False, "open-failed: nope")]
 
     ctl3 = _runner_controller()
     ctl3.start_session()
@@ -2578,34 +2722,101 @@ def test_runner_flushes_tail_on_stream_end():
     assert ctl.drain()[0]["translation"] == "Hallo"
 
 
-def test_open_input_stream_closes_on_start_failure(monkeypatch):
-    import sys
-    import types
+def test_open_input_stream_spawn_failure():
+    from text_c3po.services.live_runner import open_input_stream
+
+    def missing(argv):
+        raise FileNotFoundError("no ffmpeg")
+
+    try:
+        open_input_stream(device="Mic", popen_factory=missing)
+        raised = False
+    except OSError as exc:
+        raised = "ffmpeg" in str(exc).lower()
+    assert raised is True
+
+
+def test_open_input_stream_reaps_instant_death(monkeypatch):
+    # Child already exited (stale index): raises readably and reaps it.
+    import text_c3po.services.live_runner as lr
 
     from text_c3po.services.live_runner import open_input_stream
 
+    monkeypatch.setattr(lr, "_resolve_av_index", lambda device: 99)
+
+    class DeadProc:
+        def __init__(self):
+            self.waited = False
+
+        def poll(self):
+            return 1
+
+        def wait(self, timeout=None):
+            self.waited = True
+            return 1
+
     made = []
 
-    class FailingStream:
-        def __init__(self, *args, **kwargs):
-            made.append(self)
-            self.closed = False
+    def factory(argv):
+        assert argv[argv.index("-i") + 1] == ":99"
+        proc = DeadProc()
+        made.append(proc)
+        return proc
 
-        def start(self):
-            raise OSError("denied")
-
-        def close(self):
-            self.closed = True
-
-    fake_sd = types.SimpleNamespace(InputStream=FailingStream)
-    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
     try:
-        open_input_stream(device="Mic")
+        open_input_stream(device="Mic", popen_factory=factory)
         raised = False
     except OSError:
         raised = True
     assert raised is True
-    assert made and made[0].closed is True
+    assert made and made[0].waited is True
+
+
+def test_ffmpeg_pipe_stream_exact_read_and_eof():
+    import io
+
+    from text_c3po.services.live_runner import FfmpegPipeStream
+
+    class ShortReader(io.BytesIO):
+        def read(self, n=-1):  # at most 1 byte: forces accumulation
+            if n == 0:
+                return b""
+            return super().read(1)
+
+    class Proc:
+        def __init__(self, buf):
+            self.stdout = ShortReader(buf)
+            self.terminated = False
+            self.waited = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            pass
+
+        def wait(self, timeout=None):
+            self.waited = True
+            return 0
+
+    proc = Proc(b"\x01\x02\x03\x04\x05\x06")
+    stream = FfmpegPipeStream(proc)
+    data, overflow = stream.read(2)  # 4 bytes from 1-byte reads
+    assert data == b"\x01\x02\x03\x04" and overflow is False
+    data, _ = stream.read(1)
+    assert data == b"\x05\x06"
+    # EOF raises so the capture loop breaks instead of spinning.
+    try:
+        stream.read(1)
+        eof = False
+    except IOError:
+        eof = True
+    assert eof is True
+    stream.close()
+    assert proc.terminated is True and proc.waited is True
 
 
 def test_concurrent_drains_keep_unique_seqs():
@@ -2965,7 +3176,7 @@ def test_e3_8_source_picker_is_auto_detect():
 
 
 def test_e3_6_overflow_marks_gap_and_callback_async():
-    """E3-6: PortAudio overflow becomes a gap row; callback off read path."""
+    """E3-6: capture overflow becomes a gap row; callback off read path."""
     from text_c3po.services.live_runner import LiveRunner
     from text_c3po.services.session import SessionController
 
@@ -2990,9 +3201,6 @@ def test_e3_6_overflow_marks_gap_and_callback_async():
             if self.calls == 1:
                 return struct.pack("<8000h", *([0] * 8000)), True
             raise RuntimeError("stream ended")
-
-        def stop(self):
-            pass
 
         def close(self):
             self.closed = True
