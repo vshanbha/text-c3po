@@ -7,10 +7,13 @@ yield ``{"error", "retryable"}`` and never raise.
 """
 
 import json
+import logging
 import urllib.request
 import uuid
 
 from .process_manager import WHISPER_HOST, WHISPER_INFERENCE_PATH, WHISPER_PORT
+
+logger = logging.getLogger(__name__)
 
 WHISPER_INFERENCE_URL = "http://{}:{}{}".format(
     WHISPER_HOST, WHISPER_PORT, WHISPER_INFERENCE_PATH
@@ -62,16 +65,23 @@ def transcribe_wav(wav_bytes, inference_url=None, urlopen_fn=None) -> dict:
                         close()
                 except Exception:
                     pass
-        except Exception:
+        except Exception as exc:
+            logger.warning("whisper transport failed: %r", exc)
             return {"error": TRANSPORT_MESSAGE, "retryable": True}
         try:
             payload = json.loads(raw)
         except Exception:
+            logger.warning(
+                "whisper malformed body: %d bytes",
+                len(raw) if isinstance(raw, (bytes, str)) else -1,
+            )
             return {"error": TRANSPORT_MESSAGE, "retryable": True}
         if not isinstance(payload, dict):
+            logger.warning("whisper non-dict body")
             return {"error": TRANSPORT_MESSAGE, "retryable": True}
         text = payload.get("text")
         if not isinstance(text, str):
+            logger.warning("whisper body without text")
             return {"error": TRANSPORT_MESSAGE, "retryable": True}
         return {"text": text.strip()}
     except Exception:

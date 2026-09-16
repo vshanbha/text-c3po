@@ -4355,3 +4355,117 @@ def test_e3_9_ui_update_serializes_concurrent_calls():
     assert errors == []
     assert violations == []
     assert state["count"] == 8 * 50
+
+
+# Story 4-9 (D8): file logging with rotation and per-module diagnostics.
+
+
+def test_default_log_path_override(monkeypatch, tmp_path):
+    from text_c3po.app import _default_log_path
+
+    monkeypatch.setenv("TEXT_C3PO_LOG", str(tmp_path / "custom.log"))
+    assert _default_log_path() == str(tmp_path / "custom.log")
+    monkeypatch.delenv("TEXT_C3PO_LOG", raising=False)
+    assert _default_log_path().endswith("Library/Logs/text-c3po/text-c3po.log")
+
+
+def test_make_file_handler_writes_and_rotates(tmp_path):
+    import logging
+
+    from text_c3po.app import _make_file_handler
+
+    handler = _make_file_handler(str(tmp_path / "sub" / "t.log"))
+    assert handler is not None
+    try:
+        handler.emit(logging.LogRecord("x", logging.INFO, __file__, 1, "hello-%d", (7,), None))
+        handler.flush()
+        assert "hello-7" in (tmp_path / "sub" / "t.log").read_text()
+    finally:
+        try:
+            handler.close()
+        except Exception:
+            pass
+
+
+def test_make_file_handler_unwritable_returns_none(tmp_path):
+    from text_c3po.app import _make_file_handler
+
+    blocker = tmp_path / "file"
+    blocker.write_text("not a dir")
+    assert _make_file_handler(str(blocker / "t.log")) is None
+
+
+def test_raising_handler_never_breaks_pipeline(monkeypatch):
+    import logging
+
+    from text_c3po.runtimes.audio_devices import list_devices
+    from text_c3po.runtimes.whisper_client import transcribe_wav
+    from text_c3po.services.asr import transcribe_file
+
+    class RaisingHandler(logging.Handler):
+        def emit(self, record):
+            raise RuntimeError("broken handler")
+
+    root = logging.getLogger()
+    guard, prev = logging.raiseExceptions, None
+    logging.raiseExceptions = False
+    root.addHandler(RaisingHandler())
+    try:
+        assert list_devices(run_fn=lambda argv: (_ for _ in ()).throw(OSError("x"))) == []
+
+        def down(req):
+            raise ConnectionRefusedError("down")
+
+        out = transcribe_wav(b"\x01\x02", urlopen_fn=down)
+        assert out.get("error") and out.get("retryable") is True
+
+        out = transcribe_file(
+            "/tmp/does-not-exist-4-9.wav",
+            "German",
+            "m",
+            decode_fn=lambda p: (_ for _ in ()).throw(OSError("nope")),
+        )
+        assert out.get("error") and out.get("retryable") is True
+    finally:
+        root.handlers = [h for h in root.handlers if not isinstance(h, RaisingHandler)]
+        logging.raiseExceptions = guard
+
+
+def test_translate_payload_gated_from_log(monkeypatch, caplog):
+    import logging
+
+    import text_c3po.services.translation as tr
+    from langchain_core.output_parsers import JsonOutputParser
+
+    marker = "ZZZGARBAGEPAYLOADZZZ"
+
+    class FakeChunk:
+        content = marker
+        response_metadata = {"done_reason": "stop"}
+
+    class FakeLLM:
+        def __init__(self, **kwargs):
+            pass
+
+        def stream(self, messages):
+            yield FakeChunk()
+
+    orig = tr.ChatOllama
+    tr.ChatOllama = FakeLLM
+    try:
+        parser = JsonOutputParser(pydantic_object=tr.Translation)
+        monkeypatch.delenv("TEXT_C3PO_DEBUG_PAYLOADS", raising=False)
+        with caplog.at_level(logging.ERROR, logger="text_c3po.services.translation"):
+            out = tr._translate_single("Hello", "German", "m", parser)
+        assert out.get("error")
+        assert not any(marker in r.message for r in caplog.records)
+        assert any("done_reason" in r.message for r in caplog.records)
+
+        caplog.clear()
+        monkeypatch.setenv("TEXT_C3PO_DEBUG_PAYLOADS", "1")
+        with caplog.at_level(logging.ERROR, logger="text_c3po.services.translation"):
+            out = tr._translate_single("Hello", "German", "m", parser)
+        assert out.get("error")
+        assert any(marker in r.message for r in caplog.records)
+    finally:
+        tr.ChatOllama = orig

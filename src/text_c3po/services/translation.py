@@ -11,6 +11,7 @@ passed as a parameter.
 """
 
 import logging
+import os
 import threading
 from typing import List, Union
 
@@ -36,6 +37,19 @@ logger = logging.getLogger(__name__)
 
 
 TRANSLATION_TEMPERATURE = 0.2
+
+# Payload privacy gate: translated user content reaches the log only with
+# explicit opt-in. Read at call time (not import) so tests can flip it.
+DEBUG_PAYLOADS_ENV = "TEXT_C3PO_DEBUG_PAYLOADS"
+
+
+def _debug_payloads() -> bool:
+    """True when raw model payloads may be logged. Never raises."""
+    try:
+        return os.getenv(DEBUG_PAYLOADS_ENV) == "1"
+    except Exception:
+        return False
+
 
 # Context window: deliberately NOT overridden. An earlier revision pinned
 # num_ctx=4096 on the theory that small local models are memory-bound, but
@@ -489,20 +503,39 @@ def _translate_single(
         # A length-truncated mid-JSON payload dies here, before the
         # end-of-stream debug log below — so emit the stream metadata
         # with the failure or the cutoff case stays undiagnosable.
-        logger.error(
-            "translate_text parse failure: %r; done_reason=%r eval_count=%r; "
-            "raw payload: %r",
-            exc,
-            last_meta.get("done_reason"),
-            last_meta.get("eval_count"),
-            raw[:2000],
-        )
+        # Content-free by design: langchain's exception repr embeds the
+        # raw payload, so only the exception type is logged; payload
+        # content itself only with TEXT_C3PO_DEBUG_PAYLOADS=1.
+        exc_name = type(exc).__name__
+        if _debug_payloads():
+            logger.error(
+                "translate_text parse failure: %s; done_reason=%r eval_count=%r; "
+                "raw payload: %r",
+                exc_name,
+                last_meta.get("done_reason"),
+                last_meta.get("eval_count"),
+                raw[:2000],
+            )
+        else:
+            logger.error(
+                "translate_text parse failure: %s; done_reason=%r eval_count=%r; "
+                "raw_chars=%d",
+                exc_name,
+                last_meta.get("done_reason"),
+                last_meta.get("eval_count"),
+                len(raw),
+            )
         return {"error": RETRY_MESSAGE, "retryable": True}
     normalized = _normalize(parsed)
     if normalized is None:
-        logger.error(
-            "translate_text unexpected payload shape; raw payload: %r", raw[:2000]
-        )
+        if _debug_payloads():
+            logger.error(
+                "translate_text unexpected payload shape; raw payload: %r", raw[:2000]
+            )
+        else:
+            logger.error(
+                "translate_text unexpected payload shape; raw_chars=%d", len(raw)
+            )
         return {"error": RETRY_MESSAGE, "retryable": True}
     # Full-parse loop check (L1): a repetition loop that ends cleanly
     # under the ceiling still parses — screen it against the input the

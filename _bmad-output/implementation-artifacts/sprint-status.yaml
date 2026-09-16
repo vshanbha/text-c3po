@@ -75,5 +75,5 @@ development_status:
   4-6-publish-updated-docs-to-github-pages: done
   4-7-fix-unit-ci-and-repair-sprint-tracking: done
   4-8-refresh-stale-v1-docs-and-infra: done
-  4-9-file-logging-with-rotation-and-per-module-diagnostics: ready-for-dev
+  4-9-file-logging-with-rotation-and-per-module-diagnostics: review
   epic-4-retrospective: optional

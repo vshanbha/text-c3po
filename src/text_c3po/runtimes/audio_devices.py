@@ -17,10 +17,13 @@ relying on ffmpeg name resolution (duplicate/aggregate names collide).
 """
 
 import json
+import logging
 import re
 import subprocess
 import threading
 import time
+
+logger = logging.getLogger(__name__)
 
 LIST_TIMEOUT_S = 10.0
 
@@ -71,6 +74,7 @@ def _query_raw_devices(run_fn=None):
         ]
         completed = _run(argv, run_fn=run_fn)
         if completed is None:
+            logger.debug("ffmpeg -list_devices failed")
             return None
         try:
             err = completed.stderr
@@ -145,6 +149,7 @@ def _query_input_names(run_fn=None):
     try:
         completed = _run(["system_profiler", "SPAudioDataType", "-json"], run_fn=run_fn)
         if completed is None:
+            logger.debug("system_profiler SPAudioDataType failed")
             return None
         try:
             raw = completed.stdout
