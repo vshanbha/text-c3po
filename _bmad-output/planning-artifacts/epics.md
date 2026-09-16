@@ -67,8 +67,8 @@ Tracked as planned; not in E1 build scope. Depends on E1 translation service.
 ### Story 2.1: Sounddevice device enumeration and picker source
 
 Add runtimes/audio_devices querying sounddevice each launch with no
-hard-coded names; expose the list for the E3 device picker with BlackHole
-present-only per CAP-1.
+hard-coded names (pre-D7-A; superseded by ffmpeg enumeration); expose
+the list for the E3 device picker with BlackHole present-only per CAP-1.
 
 ### Story 2.2: Port VAD chunker with unit tests
 
@@ -140,8 +140,8 @@ disabled follow.
 ### Story 3.6: Decouple translation from capture loop and label overflow
 
 Keep the LLM drain off the capture read path so frames are still read
-during translation, and surface PortAudio overflow as labeled gap rows
-per AD-8. Audit defect: synchronous drain inside the read loop plus a
+during translation, and surface capture overflow as labeled gap rows
+per AD-8 (PortAudio-era wording; path is mechanism-agnostic post-D7-A). Audit defect: synchronous drain inside the read loop plus a
 discarded overflow flag could silently drop speech.
 
 ### Story 3.7: Fix session queue and seq races on start and gap

@@ -3,7 +3,8 @@
   description: >-
     Add runtimes/audio_devices querying sounddevice each launch with no
     hard-coded names; expose the list for the E3 device picker with
-    BlackHole present-only per CAP-1.
+    BlackHole present-only per CAP-1. Historical (done pre-D7-A):
+    superseded by story 5, which reimplements enumeration on ffmpeg.
 - id: "2"
   title: Port VAD chunker with unit tests
   description: >-
