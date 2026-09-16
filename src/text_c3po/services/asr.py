@@ -8,11 +8,15 @@ tests; every failure surfaces as a readable ``{"error"}`` dict and never
 raises.
 """
 
+import logging
+
 from text_c3po.runtimes.audio_file import decode_to_wav
 from text_c3po.runtimes.whisper_client import transcribe_wav
 from text_c3po.messages import NO_SPEECH_MESSAGE
 from text_c3po.messages import RETRY_HINT as RETRY_MESSAGE
 from text_c3po.services.translation import translate_text
+
+logger = logging.getLogger(__name__)
 
 BLANK_MARKERS = ("[BLANK_AUDIO]",)
 
@@ -48,6 +52,7 @@ def transcribe_file(
         try:
             decoded = decode(path)
         except Exception as exc:
+            logger.warning("file decode failed for %r: %r", path, exc)
             return {
                 "error": "Could not decode '{}': {!r}".format(path, exc),
                 "retryable": True,
@@ -59,16 +64,19 @@ def transcribe_file(
         try:
             result = transcribe(decoded["wav"])
         except Exception as exc:
+            logger.warning("file transcribe failed for %r: %r", path, exc)
             return {"error": "Couldn't reach whisper-server. Retry.", "retryable": True}
         if not isinstance(result, dict) or "text" not in result:
             if isinstance(result, dict) and result.get("error"):
                 return result
             return {"error": "Couldn't reach whisper-server. Retry.", "retryable": True}
         if _is_blank(result.get("text")):
+            logger.debug("file blank audio for %r", path)
             return {"error": NO_SPEECH_MESSAGE, "retryable": False}
         try:
             return translate(result["text"], target_language, model)
-        except Exception:
+        except Exception as exc:
+            logger.debug("file translate failed for %r: %r", path, exc)
             return {"error": RETRY_MESSAGE, "retryable": True}
     except Exception:
         return {"error": RETRY_MESSAGE, "retryable": True}

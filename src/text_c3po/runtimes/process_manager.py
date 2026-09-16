@@ -14,12 +14,15 @@ utterances as gaps (never silently dropped) during a restart.
 """
 
 import atexit
+import logging
 import os
 import socket
 import subprocess
 import time
 
 from text_c3po.languages import LANGUAGE_CODES
+
+logger = logging.getLogger(__name__)
 
 WHISPER_HOST = "127.0.0.1"
 WHISPER_PORT = 9001
@@ -211,7 +214,8 @@ class ProcessManager:
                 stderr=subprocess.DEVNULL,
             )
             return self.is_alive()
-        except Exception:
+        except Exception as exc:
+            logger.warning("whisper spawn failed: %r", exc)
             self._process = None
             return False
 
@@ -236,6 +240,7 @@ class ProcessManager:
                 return
             except Exception:
                 pass
+            logger.warning("whisper stop hung; killing")
             try:
                 proc.kill()
             except Exception:
@@ -279,6 +284,7 @@ class ProcessManager:
                 try:
                     proc = self._process
                     if proc is not None and proc.poll() is not None:
+                        logger.warning("whisper died during readiness wait")
                         return False
                 except Exception:
                     pass
@@ -305,6 +311,7 @@ class ProcessManager:
                 return "ready"
             if self.start() and self.wait_ready():
                 return "restarted"
+            logger.warning("whisper ensure failed (model=%r)", self.model_path)
             return "failed"
         except Exception:
             return "failed"

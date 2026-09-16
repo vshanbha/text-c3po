@@ -741,8 +741,8 @@ def main(page: ft.Page) -> None:
                 try:
                     whisper_manager.start()
                     whisper_manager.wait_ready()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning("whisper pre-warm failed: %r", exc)
 
             threading.Thread(target=_start_whisper, daemon=True).start()
     except Exception:
@@ -1707,24 +1707,65 @@ def main(page: ft.Page) -> None:
                         _ui_update(page)
                     if went_down:
                         _show_snackbar(page, DISCONNECT_SNACKBAR_HINT, on_retry)
-            except Exception:
+            except Exception as exc:
+                logger.warning("ollama poll loop exiting: %r", exc)
                 return
 
     threading.Thread(target=_poll_ollama, daemon=True).start()
 
 
-def _configure_logging() -> None:
-    """Console logging so service diagnostics are operator-visible.
+def _default_log_path() -> str:
+    """Return the log file path: TEXT_C3PO_LOG override else the macOS default."""
+    try:
+        override = os.getenv("TEXT_C3PO_LOG", "")
+        if override and override.strip():
+            return override.strip()
+        return os.path.expanduser("~/Library/Logs/text-c3po/text-c3po.log")
+    except Exception:
+        return os.path.expanduser("~/Library/Logs/text-c3po/text-c3po.log")
 
-    Without this the root logger drops everything below WARNING, which
-    makes TEST-PLAN's log cross-checks (translate_text ok-lines,
-    done_reason evidence) unexecutable. Console entry points only —
-    library import stays side-effect free.
+
+def _make_file_handler(path):
+    """Return a 1 MB × 3 rotating file handler for ``path``, or None.
+
+    None when the directory is unwritable — the app keeps console-only
+    logging instead of failing startup. Never raises.
     """
     try:
+        import logging.handlers
+
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        return logging.handlers.RotatingFileHandler(
+            path, maxBytes=1000000, backupCount=3, encoding="utf-8"
+        )
+    except Exception:
+        return None
+
+
+def _configure_logging() -> None:
+    """Console plus persistent-file logging so diagnostics survive the bundle.
+
+    Without the console handler the root logger drops everything below
+    WARNING, which makes TEST-PLAN's log cross-checks (translate_text
+    ok-lines, done_reason evidence) unexecutable. Without the file
+    handler every diagnostic evaporates in the packaged .app, which has
+    no console (E4-3). Console entry points only — library import stays
+    side-effect free.
+    """
+    try:
+        handlers: list = [logging.StreamHandler()]
+        try:
+            file_handler = _make_file_handler(_default_log_path())
+        except Exception:
+            file_handler = None
+        if file_handler is not None:
+            handlers.append(file_handler)
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+            handlers=handlers,
         )
     except Exception:
         pass

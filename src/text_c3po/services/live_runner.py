@@ -381,7 +381,10 @@ class LiveRunner:
                 while not self._stop_event.is_set():
                     try:
                         data, overflow = stream.read(FRAME_SAMPLES)
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning(
+                            "capture stream ended for %r: %r", self.device, exc
+                        )
                         break
                     if overflow:
                         if not self._in_overflow:
@@ -445,7 +448,8 @@ class LiveRunner:
                     pass
                 self._join_callbacks()
             return posted
-        except Exception:
+        except Exception as exc:
+            logger.warning("live run aborted: %r", exc)
             try:
                 self._running = False
             except Exception:
@@ -508,7 +512,8 @@ class LiveRunner:
                 return 0
             try:
                 result = self._transcribe_fn(wav)
-            except Exception:
+            except Exception as exc:
+                logger.warning("live transcribe failed: %r", exc)
                 result = {"error": "whisper unreachable", "retryable": True}
             if isinstance(result, dict) and result.get("error"):
                 try:

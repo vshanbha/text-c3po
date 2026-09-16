@@ -306,6 +306,13 @@ executes the code stories first; **this section is deliberately last.**
   `kill -9` mid-session gap rows; no orphans after quit.
 - [ ] **E6 — long file (~5 min).** Completes, UI responsive after, no runaway
   memory (NFR-4 soak companion).
+- [ ] **Log file (story 4-9).** After any live or file session:
+  `~/Library/Logs/text-c3po/text-c3po.log` exists (override via
+  `TEXT_C3PO_LOG`); a Start refusal (C5/F11), whisper kill (D3/F4), or
+  no-audio trip (F15) each leaves a line naming the reason;
+  `translate_text ok` lines match displayed lengths (B6);
+  `grep -i -E "guten morgen|good morning" <log>` is empty (no
+  transcripts — payload content needs `TEXT_C3PO_DEBUG_PAYLOADS=1`).
 - [ ] **GitHub Pages repo settings.** Repo API still reports a legacy
   `source: master//docs` alongside `build_type: workflow`. Confirm in
   Settings → Pages that the workflow (not a branch folder) is the active

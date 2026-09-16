@@ -6,8 +6,11 @@ malformed body yields connected=False and never raises.
 """
 
 import json
+import logging
 import urllib.error
 import urllib.request
+
+logger = logging.getLogger(__name__)
 
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 OLLAMA_TAGS_URL = OLLAMA_BASE_URL + "/api/tags"
@@ -41,7 +44,8 @@ def _fetch_tags_payload():
             OLLAMA_TAGS_URL, timeout=PROBE_TIMEOUT_S
         ) as response:
             return json.load(response)
-    except Exception:
+    except Exception as exc:
+        logger.debug("ollama probe failed: %r", exc)
         return None
 
 
