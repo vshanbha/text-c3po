@@ -178,9 +178,14 @@ Source: `_bmad-output/specs/spec-e4-ops-eval-polish/SPEC.md`
 (SPEC-e4-ops-eval-polish). Tracked as planned; not in E1 build scope.
 Closes the blueprint section-6 gates.
 
+> Scope note (D9, 2026-09-16): story 4.3 (macOS bundle packaging) was
+> moved to Epic 5 story 5.1. Packaging waits for the general-release
+> decision — v2 stays a run-from-source side project, so E4 closes
+> without an installable artifact.
+
 ### Story 4.1: setup.sh for clean-machine install
 
-Add setup.sh covering Ollama install, model pull, PortAudio/sounddevice,
+Add setup.sh covering Ollama install, model pull,
 ffmpeg check, and BlackHole guidance; clean-machine run completes in
 <=15 min with missing BlackHole as guidance per CAP-1.
 
