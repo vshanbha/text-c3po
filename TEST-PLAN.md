@@ -169,6 +169,11 @@ sounddevice/PortAudio retired.
   new row announced once (translation + timestamp).
 - **F7 — BlackHole loopback.** Pick BlackHole 2ch, play a German
   video, Start. Expect: system audio captioned without a mic.
+  Verified 2026-09-16 by owner manual test (YouTube talk audio):
+  captions flowed, meaning mostly preserved, word-level fidelity
+  imperfect; voice-to-caption lag is several seconds (utterance flush
+  + whisper + LLM). Owner wants more live sessions before calling
+  quality confident.
 - **F8 — no mic permission.** Revoke mic access (TCC), Start.
   Expect: clean failure, no hang, Stop re-arms.
 - **F9 — picker timing.** Change device/target/model mid-session.
@@ -193,7 +198,8 @@ sounddevice/PortAudio retired.
   routed into it, Start, wait ~60 s. Expect: session ends itself with
   "No audio from BlackHole 2ch — is anything playing into it?" (not a
   bare Idle, not a stuck red Live). Route audio in and Start again:
-  captions flow, no trip.
+  captions flow, no trip. Verified 2026-09-16 by owner manual test:
+  trip fired with `no audio from 'BlackHole 2ch' for ~60s` in the log.
 
 ## G. Eval gate (E1, repeatable)
 
@@ -257,8 +263,8 @@ ad-hoc signature suffices for local runs.
 
 ## Coverage map (what automation owns)
 
-- `pytest` (191 unit + 1 web smoke, all headless/deterministic —
-  recount with `pytest --collect-only -q` after any test-adding diff):
+- `pytest` (205 collected, 6 integration deselected — recount with
+  `pytest --collect-only -q` after any test-adding diff):
   VAD chunking rules, device/VAD/decode/transcribe pure logic, manager
   lifecycle with fake processes, session ordering/gaps/retry under
   lock, captions sync incl. in-place retry updates, pipeline
