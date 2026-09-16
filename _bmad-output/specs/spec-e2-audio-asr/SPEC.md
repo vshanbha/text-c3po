@@ -19,7 +19,7 @@ Text mode alone cannot follow a meeting or translate a recording — the PoC's R
 ## Capabilities
 
 - **CAP-1**
-  - **intent:** User can pick a capture device from the ffmpeg-enumerated list, with BlackHole shown only when present. (Built on sounddevice; reimplemented on ffmpeg avfoundation per D7-A story 5.)
+  - **intent:** User can pick a capture device from the ffmpeg-enumerated list, with BlackHole shown only when present. (Originally built on sounddevice; reimplemented on ffmpeg avfoundation per D7-A story 5.)
   - **success:** With BlackHole absent the picker lists remaining devices and live capture still starts on mic; no hard-coded device names.
 - **CAP-2**
   - **intent:** System can segment the int16 PCM stream into utterances via ported RMS-silence logic, flushing on 2 silent frames or max-utterance length.

@@ -1,5 +1,5 @@
 - id: "1"
-  title: Sounddevice device enumeration and picker source
+  title: Device enumeration and picker source (historical, superseded by story 5)
   description: >-
     Add runtimes/audio_devices querying sounddevice each launch with no
     hard-coded names; expose the list for the E3 device picker with
