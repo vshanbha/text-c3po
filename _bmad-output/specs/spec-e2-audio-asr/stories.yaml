@@ -50,3 +50,17 @@
     lines 10-12 plus 29-31; keep list_devices list[str] contract and
     stream_factory injection so VAD/ASR/UI stay untouched.
   done_checkpoint: true
+- id: "6"
+  title: Dual capture mic plus loopback for meetings
+  description: >-
+    Owner manual test 2026-09-16: meetings want near-end (mic) and far-end
+    (BlackHole) captured together. Run two ffmpeg pipes into one session
+    (mixed or parallel VAD streams with speaker-side labeling), or record
+    the chosen architecture in AD-9 first — dual pipelines touch the
+    session ordering and gap contracts, so this story needs an E2 SPEC
+    amendment before build.
+  invoke_dev_with: >-
+    Backlog only until the SPEC amendment lands: decide mix-vs-parallel,
+    per-side labeling, and double whisper/LLM load. Manual gate is a live
+    meeting session, not automatable.
+  done_checkpoint: false

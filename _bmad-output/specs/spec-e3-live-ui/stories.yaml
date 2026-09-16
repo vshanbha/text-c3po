@@ -116,3 +116,28 @@
   invoke_dev_with: >-
     Least-surprise overridden by owner intent: one Stop cancels everything;
     a per-mode abort would need explicit new control. Update UX copy.
+- id: "11"
+  title: Label capture devices by kind (mic vs loopback)
+  description: >-
+    Owner manual test 2026-09-16: the device picker names (e.g. "EPOS PC 8
+    USB" vs "BlackHole 2ch") do not say which is a mic and which captures
+    system audio. Annotate each picker entry with its kind (microphone /
+    loopback / other input) from the enumeration data, plus a one-line
+    hint for BlackHole ("captures system audio routed into it").
+  invoke_dev_with: >-
+    Derive kind from system_profiler input/output channels already queried
+    (loopback drivers expose both directions); never hard-code names.
+    Unit-test the label mapping headless; manual eyeball per TEST-PLAN C1.
+  done_checkpoint: false
+- id: "12"
+  title: Pin live controls outside the scrolling captions pane
+  description: >-
+    Owner manual test 2026-09-16: long sessions scroll the whole Live view,
+    carrying the Stop button out of sight. Restructure so Start/Stop plus
+    status indicators live in a fixed (non-scrolling) controls row while
+    only the captions pane scrolls; auto-follow keeps the newest row
+    visible without manual scrolling.
+  invoke_dev_with: >-
+    Flet layout only, no pipeline change. Manual check per TEST-PLAN F5
+    plus a long-session eyeball: Stop reachable at any scroll position.
+  done_checkpoint: false
