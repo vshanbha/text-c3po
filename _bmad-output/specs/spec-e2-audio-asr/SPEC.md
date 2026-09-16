@@ -19,7 +19,7 @@ Text mode alone cannot follow a meeting or translate a recording — the PoC's R
 ## Capabilities
 
 - **CAP-1**
-  - **intent:** User can pick a capture device from the sounddevice-enumerated list, with BlackHole shown only when present.
+  - **intent:** User can pick a capture device from the ffmpeg-enumerated list, with BlackHole shown only when present. (Built on sounddevice; reimplemented on ffmpeg avfoundation per D7-A story 5.)
   - **success:** With BlackHole absent the picker lists remaining devices and live capture still starts on mic; no hard-coded device names.
 - **CAP-2**
   - **intent:** System can segment the int16 PCM stream into utterances via ported RMS-silence logic, flushing on 2 silent frames or max-utterance length.
@@ -33,7 +33,7 @@ Text mode alone cannot follow a meeting or translate a recording — the PoC's R
 
 ## Constraints
 
-- Devices enumerated from sounddevice each launch; BlackHole listed only when present (AD-9).
+- Devices enumerated from ffmpeg avfoundation each launch (reimplemented per D7-A story 5; originally sounddevice); BlackHole listed only when present (AD-9).
 - VAD emits immutable utterance WAV bytes (16 kHz mono s16le, RMS threshold, flush on 2 silent frames or max-utterance); file mode decodes via ffmpeg into the same ASR entry point (AD-9).
 - whisper-server called transcribe-only over HTTP on `127.0.0.1:9001`; translation owned exclusively by the LLM (AD-7).
 - One `ProcessManager` owns whisper spawn (default `ggml-small.bin`), health-check, restart-on-crash, cleanup-on-exit; missed utterances during restart labeled as gaps, never silently dropped (AD-8).
@@ -45,7 +45,7 @@ Text mode alone cannot follow a meeting or translate a recording — the PoC's R
 
 - Captions pane rendering, Start/Stop toggle, status indicators, session list ownership (E3).
 - Text-mode translation changes beyond reusing the E1 service with `{text, source_lang}` utterance payloads.
-- setup.sh PortAudio/BlackHole install guidance, soak/latency gates (E4).
+- setup.sh ffmpeg/BlackHole install guidance, soak/latency gates (E4).
 - Token-streaming ASR partials, diarization, persisted audio.
 
 ## Success signal
@@ -54,7 +54,7 @@ On a machine without BlackHole, the app lists real devices, chunks live mic spee
 
 ## Assumptions
 
-- Assumed PortAudio present post-setup (`brew install portaudio` + pip sounddevice); verified absent pre-E2.
+- Assumed ffmpeg present post-setup (D7-A replaced the PortAudio/sounddevice assumption); verified absent pre-E2.
 - Assumed `ggml-small.bin` is the default whisper model (~2s ready); medium optional via flag.
 - Assumed file container floor is mp3 / wav / m4a / mp4 (PRD Q2).
 

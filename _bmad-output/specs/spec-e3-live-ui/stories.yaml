@@ -57,9 +57,11 @@
   title: Decouple translation from capture loop and label overflow
   description: >-
     Keep the LLM drain off the capture read path so LiveRunner keeps
-    reading frames during an in-flight translation, and surface PortAudio
+    reading frames during an in-flight translation, and surface capture
     overflow / dropped frames as labeled gap rows per AD-8 rather than
-    discarding the read overflow flag per CAP-1 and NFR-1.
+    discarding the read overflow flag per CAP-1 and NFR-1. (Done pre-D7-A
+    against the PortAudio stream; the gap path is mechanism-agnostic and
+    survives the ffmpeg pipe, which reports no overflow.)
   invoke_dev_with: >-
     2026-09-13 audit defect: _submit() calls the on_utterance callback that
     drains and translates synchronously inside the read loop, while

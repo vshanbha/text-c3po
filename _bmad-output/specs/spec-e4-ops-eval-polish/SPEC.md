@@ -19,7 +19,7 @@ E1–E3 produce a working app on vshanbha's machine that nobody else can install
 ## Capabilities
 
 - **CAP-1**
-  - **intent:** New user can run `setup.sh` covering Ollama install, model pull, PortAudio/sounddevice, and BlackHole guidance.
+  - **intent:** New user can run `setup.sh` covering Ollama install, model pull, ffmpeg check, and BlackHole guidance (PortAudio/sounddevice retired per D7-A).
   - **success:** Clean-machine run completes in ≤15 min on broadband; missing BlackHole is guidance, never a failure.
 - **CAP-2**
   - **intent:** Builder can run the full 23-language eval harness recording per-language scores and JSON-validity per installed model.
@@ -39,7 +39,7 @@ E1–E3 produce a working app on vshanbha's machine that nobody else can install
 
 ## Constraints
 
-- `setup.sh` owns environment (Ollama install, model pull, PortAudio/sounddevice, BlackHole guidance); bundle carries `NSMicrophoneUsageDescription` (AD-13).
+- `setup.sh` owns environment (Ollama install, model pull, ffmpeg check, BlackHole guidance — PortAudio/sounddevice retired per D7-A); bundle carries `NSMicrophoneUsageDescription` (AD-13, bundle deferred to E5 per D9).
 - Eval harness reuses the E1 translation service with model passed as parameter; quality variance never gates the UI (AD-6).
 - After first-run download, zero outbound: loopback to `127.0.0.1:11434` and `127.0.0.1:9001` only; `langchain-openai` banned, no secrets files (AD-11).
 - Latency budget <3s end-to-end per utterance at flush granularity; 5-min soak with no unbounded memory growth (NFR-1, NFR-4).
