@@ -251,3 +251,9 @@ TEST-PLAN section H; ad-hoc local bundle only unless D5 is revisited.
 Headline only, no work yet: decide whether the render/entry/picker smoke
 layer deserves browser-e2e automation given the §I3 limits. Coordinate-tap
 spike first; real story only if the spike converts.
+
+### Story 5.3: Live-tuning controls
+
+Owner F7 finding: expose utterance cap, source-language pin, whisper
+model choice, and VAD threshold as Live-view controls (live-translate
+parity). Language pin needs the deferred D2-B policy first.
