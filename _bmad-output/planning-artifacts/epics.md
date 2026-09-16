@@ -192,13 +192,6 @@ JSON-validity to research.md with comparable rows per CAP-2. Reuse the
 translation service with model as parameter; never gate UI combos on
 scores.
 
-### Story 4.3: Package macOS bundle with mic permission
-
-Ship the installable macOS bundle (flet build macos or PyInstaller
---windowed decision recorded) carrying NSMicrophoneUsageDescription so
-first Live start prompts and TCC grants mic access per CAP-3. Bundle runs
-loopback-only to 127.0.0.1:11434 and 127.0.0.1:9001 after download.
-
 ### Story 4.4: Regression tests for VAD parser and whisper health
 
 Add tests covering VAD silence-threshold and max-utterance flush paths,
@@ -230,3 +223,20 @@ defect: the master unit run is red (FileNotFoundError 'uv').
 Update the parent workspace AGENTS.md, fix .devcontainer, drop the stale
 pyproject "no CI" comment, and pin docs/requirements.txt. Audit hygiene;
 no behavior change.
+
+## Epic 5: General Release Readiness
+
+Source: `_bmad-output/specs/spec-e5-release/SPEC.md` (SPEC-e5-release).
+Tracked as backlog; not in v2 scope. Opens only when the owner decides
+to take the project from open-source side project to general release.
+Packaging (moved from E4 story 4.3 per D9, 2026-09-16) is the seed;
+further release work (signing scope, distribution, support posture)
+accrues here, never in E1–E4.
+
+### Story 5.1: Package macOS bundle with mic permission
+
+Ship the installable macOS bundle (`flet build macos` tool of record
+per D5-A) carrying NSMicrophoneUsageDescription so first Live start
+prompts and TCC grants mic access. Bundle runs loopback-only to
+127.0.0.1:11434 and 127.0.0.1:9001 after download. Manual session per
+TEST-PLAN section H; ad-hoc local bundle only unless D5 is revisited.

@@ -13,18 +13,6 @@
   invoke_dev_with: >-
     Reuse the translation service with model as parameter; never gate UI
     combos on scores.
-- id: "3"
-  title: Package macOS bundle with mic permission
-  description: >-
-    Ship the installable macOS bundle (flet build macos or PyInstaller
-    --windowed decision recorded) carrying NSMicrophoneUsageDescription so
-    first Live start prompts and TCC grants mic access per CAP-3.
-  invoke_dev_with: >-
-    D5-A approved 2026-09-13: tool of record is `flet build macos`
-    (PyInstaller not chosen); ad-hoc local bundle only, no sign/notarize;
-    document Gatekeeper copy path for another Mac. Bundle runs loopback-only
-    to 127.0.0.1:11434 and 127.0.0.1:9001 after download; verify with the
-    loopback-only check. Manual session per TEST-PLAN section H.
 - id: "4"
   title: Regression tests for VAD parser and whisper health
   description: >-

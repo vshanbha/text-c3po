@@ -211,7 +211,7 @@ sounddevice/PortAudio retired.
   2026-09-14: gemma4:e4b-mlx 115/115; lfm2.5 109/115 (echoes cluster
   on sentence 4, "I would like a coffee, please.").
 
-## H. Packaging (E4-3, manual session)
+## H. Packaging (E5 story 5.1, manual session — release gate only)
 
 Prereqs: Xcode + Apple Developer signing identity for distribution;
 ad-hoc signature suffices for local runs.
@@ -299,8 +299,8 @@ executes the code stories first; **this section is deliberately last.**
   `NSMicrophoneUsageDescription`; verify the one-time TCC mic prompt and that
   denial yields the clean F8 failure; launch the `.app` with no terminal;
   confirm `pgrep -f whisper-server` empty after Cmd-Q **and** Dock quit; copy
-  to another Mac and document the Gatekeeper path. *(E4-3 remains backlog —
-  record the `flet build macos` tool-of-record decision when done.)*
+  to another Mac and document the Gatekeeper path. *(E5 story 5.1 — runs
+  only at the general-release decision, not for v2 side-project scope.)*
 - [ ] **D1–D3 — whisper subprocess timing.** Cold-model readiness vs the 30 s
   `READY_TIMEOUT_S` (D7-A; dead-child fast-fail, no full-budget burn);
   `kill -9` mid-session gap rows; no orphans after quit.
