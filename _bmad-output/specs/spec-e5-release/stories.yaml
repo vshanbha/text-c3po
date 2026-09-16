@@ -12,3 +12,14 @@
     to 127.0.0.1:11434 and 127.0.0.1:9001 after download; verify with the
     loopback-only check. Manual session per TEST-PLAN section H.
   done_checkpoint: true
+- id: "2"
+  title: Consider browser-e2e automation for the TEST-PLAN smoke ceiling
+  description: >-
+    Headline only (owner 2026-09-16, no work yet): decide whether the
+    render/entry/picker smoke layer of TEST-PLAN (§I) is worth automating
+    via browser e2e, given the §I3 limits (CanvasKit a11y, taps not
+    registering). Spike coordinate-tap feasibility first; file the real
+    story only if the spike converts the maybe-column.
+  invoke_dev_with: >-
+    Do not build before the spike. See session notes 2026-09-16.
+  done_checkpoint: false

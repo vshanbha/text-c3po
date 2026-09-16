@@ -245,3 +245,9 @@ per D5-A) carrying NSMicrophoneUsageDescription so first Live start
 prompts and TCC grants mic access. Bundle runs loopback-only to
 127.0.0.1:11434 and 127.0.0.1:9001 after download. Manual session per
 TEST-PLAN section H; ad-hoc local bundle only unless D5 is revisited.
+
+### Story 5.2: Consider browser-e2e automation for the TEST-PLAN smoke ceiling
+
+Headline only, no work yet: decide whether the render/entry/picker smoke
+layer deserves browser-e2e automation given the §I3 limits. Coordinate-tap
+spike first; real story only if the spike converts.
