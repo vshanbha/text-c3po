@@ -34,7 +34,7 @@ here; no cross-imports.
 | LLM integration | LangChain: `langchain-ollama` → `ChatOllama` (replaces `ChatOpenAI`) |
 | Model selection | User picks any installed Ollama model at runtime (list from `/api/tags`); suggested default: `lfm2.5` (langchain-ollama pulls on first use if not present) |
 | Automatic Speech Recognition | whisper.cpp `whisper-server` (Metal GPU), spawned as subprocess by the app on `127.0.0.1:9001`; `transcribe` only (no `-tr`); Large Language Model handles translation |
-| Audio capture | **sounddevice** (PortAudio) — device picker: Built-in Microphone, BlackHole (if installed) |
+| Audio capture | **ffmpeg avfoundation** — device picker: Built-in Microphone, BlackHole (if installed) |
 | Structured output | Live mode: lightweight `{text, source_lang}` JSON; text mode: full `Translation` pydantic schema via `JsonOutputParser`; Ollama JSON format enforced |
 | Network | After first-run model download: **zero outbound.** Loopback to Ollama `:11434` and whisper-server `:9001` only |
 | Scope | 100% inside text-c3po/ |
@@ -84,7 +84,7 @@ Flet desktop app (native window, no webserver)
 │     → ChatOllama (selected model) → JsonOutputParser
 │     → formal / informal / commentary / origin_language
 ├── Live mode  (button/toggle)
-│     sounddevice (Built-in Microphone | BlackHole) — device picker in UI
+│     ffmpeg avfoundation (Built-in Microphone | BlackHole) — device picker in UI
 │     → int16 PCM stream → VAD + chunking
 │       (ported from the proof-of-concept:
 │        RMS silence threshold, flush on 2 silent frames or max-utterance)
@@ -96,7 +96,7 @@ Flet desktop app (native window, no webserver)
 ```
 
 **Dependencies (requirements.txt after rewrite):**
-`flet==<pinned>`, `sounddevice`, `langchain`, `langchain-ollama`, `requests`
+`flet==<pinned>`, `langchain`, `langchain-ollama`, `requests` (plus system `ffmpeg`)
 
 **External services (spawned by app or started before):**
 - `ollama serve` (or desktop app) — model: `lfm2.5` (langchain-ollama pulls automatically if absent)
@@ -131,7 +131,7 @@ Prereqs: Node ≥ 20.12, uv, ollama, whisper-cpp, ffmpeg.
   repeatable so new Ollama models can be tested against all 23 languages
   anytime.*
 
-- **E2 — Audio capture + Automatic Speech Recognition**: sounddevice device
+- **E2 — Audio capture + Automatic Speech Recognition**: ffmpeg avfoundation device
   picker, port VAD/chunking from PoC (RMS silence + flush logic),
   whisper-server subprocess lifecycle (start on launch, health check,
   restart on crash, cleanup on exit), file upload / file picker path.
@@ -165,7 +165,7 @@ Prereqs: Node ≥ 20.12, uv, ollama, whisper-cpp, ffmpeg.
 | Ollama MoE bug: ≤ v0.17.0 fails on LFM MoE models (`missing tensor 'output_norm.weight'`) | Default to dense 1.2B; document Ollama ≥ v0.17.1 for MoE |
 | whisper + Large Language Model both on Metal | Memory budget documented in architecture; ~6–8 GB combined on 16 GB Macs |
 | macOS mic permissions (TCC) for packaged app | Info.plist must include `NSMicrophoneUsageDescription`; setup.sh tests and warns |
-| BlackHole not installed | Device picker shows available sounddevice devices; file upload path does not need it; setup.sh guides user |
+| BlackHole not installed | Device picker shows available ffmpeg/avfoundation input devices; file upload path does not need it; setup.sh guides user |
 
 ## 8. Out of scope (v1)
 

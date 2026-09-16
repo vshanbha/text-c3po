@@ -47,13 +47,7 @@ need_brew
 
 brew_pkg ffmpeg ffmpeg
 brew_pkg whisper-cpp whisper-server
-# PortAudio is a library (no binary to probe) — ask brew directly.
-if brew list portaudio >/dev/null 2>&1; then
-  echo "setup.sh: portaudio present, skipping."
-else
-  echo "setup.sh: brew install portaudio ..."
-  brew install portaudio
-fi
+# D7-A: capture runs on ffmpeg avfoundation — PortAudio/sounddevice retired.
 brew_pkg ollama ollama
 
 if [ ! -d "/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver" ] \

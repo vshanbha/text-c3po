@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falling into BlackHole — A Brainstorm Keepsake</title>
+<style>
+  :root {
+    --bg: #07080f;
+    --panel: #0e1120;
+    --panel-2: #131731;
+    --ink: #dfe4f5;
+    --dim: #8b93b5;
+    --faint: #5a628a;
+    --gold: #f0b429;
+    --cyan: #4fd1e8;
+    --magenta: #e05fa8;
+    --green: #57d9a3;
+    --red: #ff6b6b;
+    --amber: #ffb347;
+    --violet: #9d7bff;
+    --line: #232a4d;
+    --serif: Georgia, 'Times New Roman', serif;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --mono: 'SF Mono', Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    position: relative;
+    min-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem 1.5rem 4rem;
+    overflow: hidden;
+  }
+  #hole-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .header-inner { position: relative; z-index: 2; max-width: 780px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .78rem;
+    letter-spacing: .35em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 1.2rem;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.4rem, 6vw, 4.2rem);
+    font-weight: 400;
+    line-height: 1.12;
+    background: linear-gradient(180deg, #fff 20%, var(--gold) 120%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 1.4rem;
+  }
+  .lede { font-size: 1.12rem; color: var(--dim); max-width: 620px; margin: 0 auto 2rem; }
+  .lede em { color: var(--ink); font-style: normal; }
+  .meta-strip {
+    display: inline-flex; flex-wrap: wrap; gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: .72rem;
+  }
+  .meta-strip span { padding: .5rem 1.1rem; color: var(--dim); }
+  .meta-strip span + span { border-left: 1px solid var(--line); }
+  .meta-strip b { color: var(--gold); font-weight: 600; }
+  .scroll-hint {
+    position: absolute; bottom: 1.6rem; left: 50%; transform: translateX(-50%);
+    z-index: 2; color: var(--faint); font-family: var(--mono); font-size: .7rem;
+    letter-spacing: .25em; text-transform: uppercase;
+    animation: bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob { 0%,100% { transform: translate(-50%,0);} 50% { transform: translate(-50%,8px);} }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(7,8,15,.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: center; gap: .3rem; flex-wrap: wrap;
+    padding: .6rem 1rem;
+  }
+  nav a {
+    color: var(--dim); text-decoration: none;
+    font-family: var(--mono); font-size: .74rem; letter-spacing: .08em;
+    padding: .45rem .9rem; border-radius: 999px;
+    border: 1px solid transparent;
+    transition: all .25s;
+  }
+  nav a:hover { color: var(--ink); border-color: var(--line); background: var(--panel); }
+
+  /* ---------- sections ---------- */
+  main { max-width: 1080px; margin: 0 auto; padding: 0 1.5rem 6rem; }
+  section { padding-top: 6rem; }
+  .sec-tag {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .3em;
+    text-transform: uppercase; margin-bottom: .7rem;
+  }
+  h2 {
+    font-family: var(--serif); font-weight: 400;
+    font-size: clamp(1.8rem, 4vw, 2.7rem);
+    margin-bottom: .9rem; line-height: 1.2;
+  }
+  .sec-sub { color: var(--dim); max-width: 680px; margin-bottom: 2.6rem; font-size: 1.02rem; }
+  .t1 { color: var(--cyan); } .t2 { color: var(--magenta); } .t3 { color: var(--green); } .t4 { color: var(--gold); }
+
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s ease, transform .8s ease; }
+  .reveal.seen { opacity: 1; transform: none; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.6rem 1.8rem;
+  }
+  .figure-wrap { border: 1px solid var(--line); border-radius: 14px; background: radial-gradient(ellipse at 50% 40%, #10142a 0%, var(--bg) 75%); padding: 1rem; overflow-x: auto; }
+  .fig-caption { text-align: center; font-family: var(--mono); font-size: .72rem; color: var(--faint); letter-spacing: .12em; padding: .8rem 0 .4rem; text-transform: uppercase; }
+
+  /* ---------- loop cards ---------- */
+  .loop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.1rem; margin-top: 2rem; }
+  .loop-card { border-left: 3px solid var(--cyan); }
+  .loop-card h3 { font-size: .96rem; font-family: var(--mono); letter-spacing: .02em; color: var(--cyan); margin-bottom: .5rem; font-weight: 600; }
+  .loop-card p { font-size: .92rem; color: var(--dim); }
+  .loop-card .chain { margin-top: .8rem; font-family: var(--mono); font-size: .74rem; color: var(--faint); line-height: 1.9; }
+  .loop-card .chain i { color: var(--gold); font-style: normal; }
+
+  svg text { font-family: var(--mono); }
+  .loop-arrow { stroke-dasharray: 6 6; animation: dash 30s linear infinite; }
+  @keyframes dash { to { stroke-dashoffset: -600; } }
+  .pulse-node { animation: pulse 3s ease-in-out infinite; transform-origin: center; }
+  @keyframes pulse { 0%,100% { opacity: 1;} 50% { opacity: .55;} }
+
+  /* ---------- fishbone ---------- */
+  .bones { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.1rem; margin-top: 2rem; }
+  .bone { border-top: 3px solid var(--magenta); }
+  .bone h3 { font-family: var(--mono); color: var(--magenta); font-size: .95rem; margin-bottom: .7rem; }
+  .bone ul { list-style: none; }
+  .bone li { font-size: .9rem; color: var(--dim); padding: .45rem 0 .45rem 1.3rem; position: relative; border-bottom: 1px dashed #1b2142; }
+  .bone li:last-child { border-bottom: none; }
+  .bone li::before { content: '◆'; position: absolute; left: 0; top: .45rem; color: var(--magenta); font-size: .6rem; }
+  .bone code { font-family: var(--mono); font-size: .8em; color: var(--gold); background: #1a1608; padding: .05em .4em; border-radius: 4px; }
+
+  /* ---------- disney ---------- */
+  .disney-stage { display: grid; grid-template-columns: 1fr; gap: 1.4rem; margin-top: 2rem; }
+  .dcard { position: relative; border-radius: 16px; padding: 1.8rem; overflow: hidden; border: 1px solid var(--line); }
+  .dcard .persona {
+    font-family: var(--serif); font-size: 1.5rem; margin-bottom: .2rem;
+  }
+  .dcard .role { font-family: var(--mono); font-size: .7rem; letter-spacing: .25em; text-transform: uppercase; margin-bottom: 1.1rem; opacity: .75; }
+  .dcard ul { list-style: none; }
+  .dcard li { padding: .5rem 0 .5rem 1.6rem; position: relative; font-size: .95rem; }
+  .dcard li::before { position: absolute; left: 0; top: .5rem; }
+  .dreamer { background: linear-gradient(150deg, #0a1f33 0%, #0c1428 70%); }
+  .dreamer .persona, .dreamer .role { color: var(--cyan); }
+  .dreamer li::before { content: '✦'; color: var(--cyan); }
+  .realist { background: linear-gradient(150deg, #241a06 0%, #14100a 70%); }
+  .realist .persona, .realist .role { color: var(--amber); }
+  .realist li::before { content: '⚙'; color: var(--amber); }
+  .critic { background: linear-gradient(150deg, #2a0d16 0%, #170a10 70%); }
+  .critic .persona, .critic .role { color: var(--red); }
+  .critic li::before { content: '✗'; color: var(--red); }
+  .leverage {
+    margin-top: 2rem; text-align: center;
+    border: 1px solid var(--green); border-radius: 16px;
+    background: radial-gradient(ellipse at 50% 0%, #0c2b1f 0%, var(--panel) 70%);
+    padding: 2.2rem 1.8rem;
+  }
+  .leverage .kicker { font-family: var(--mono); font-size: .72rem; letter-spacing: .3em; text-transform: uppercase; color: var(--green); margin-bottom: .8rem; }
+  .leverage blockquote { font-family: var(--serif); font-size: clamp(1.2rem, 3vw, 1.7rem); color: var(--ink); max-width: 640px; margin: 0 auto .6rem; line-height: 1.4; }
+  .leverage .src { font-size: .85rem; color: var(--dim); }
+  .leverage blockquote b { color: var(--green); font-weight: 400; }
+
+  /* ---------- synthesis ---------- */
+  #synthesis { padding-bottom: 2rem; }
+  .synth-head {
+    text-align: center; border: 1px solid var(--gold); border-radius: 18px;
+    background: radial-gradient(ellipse at 50% 120%, #241a06 0%, var(--panel) 70%);
+    padding: 2.4rem 1.8rem; margin-bottom: 3rem;
+  }
+  .synth-head .kicker { font-family: var(--mono); font-size: .72rem; letter-spacing: .3em; text-transform: uppercase; color: var(--gold); margin-bottom: .9rem; }
+  .synth-head p { max-width: 700px; margin: 0 auto; color: var(--dim); font-size: 1.02rem; }
+  .synth-head p b { color: var(--ink); font-weight: 600; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 640px; margin: 1.6rem auto 0; }
+  .split .mode { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; background: #0b0e1c; }
+  .split .mode h4 { font-family: var(--mono); font-size: .8rem; color: var(--gold); margin-bottom: .4rem; }
+  .split .mode p { font-size: .85rem; color: var(--dim); margin: 0; }
+
+  .cause { display: grid; grid-template-columns: 64px 1fr; gap: 1.2rem; align-items: start; padding: 1.5rem 0; border-bottom: 1px solid var(--line); }
+  .cause:last-of-type { border-bottom: none; }
+  .rank {
+    font-family: var(--serif); font-size: 2.2rem; color: var(--gold);
+    text-align: center; line-height: 1;
+  }
+  .rank small { display: block; font-family: var(--mono); font-size: .55rem; letter-spacing: .2em; color: var(--faint); margin-top: .3rem; }
+  .cause h3 { font-size: 1.08rem; margin-bottom: .35rem; }
+  .cause h3 code { font-family: var(--mono); font-size: .82em; color: var(--cyan); }
+  .cause p { font-size: .93rem; color: var(--dim); max-width: 720px; }
+  .sev { height: 5px; border-radius: 3px; background: #1a1f3d; margin-top: .9rem; max-width: 420px; overflow: hidden; }
+  .sev i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, var(--cyan), var(--gold), var(--red)); transition: width 1.4s cubic-bezier(.2,.8,.2,1); }
+  .cause .sev-label { font-family: var(--mono); font-size: .66rem; color: var(--faint); letter-spacing: .15em; margin-top: .4rem; text-transform: uppercase; }
+
+  .fixes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.1rem; margin-top: 2.4rem; }
+  .fix { border-left: 3px solid var(--green); position: relative; }
+  .fix .fno { position: absolute; top: 1rem; right: 1.2rem; font-family: var(--mono); font-size: .65rem; color: var(--faint); }
+  .fix h3 { font-size: .98rem; color: var(--green); font-family: var(--mono); margin-bottom: .45rem; }
+  .fix p { font-size: .9rem; color: var(--dim); }
+  .fix .targets { margin-top: .7rem; font-family: var(--mono); font-size: .7rem; color: var(--faint); }
+  .fix .targets b { color: var(--gold); font-weight: 600; }
+
+  .chosen {
+    margin-top: 2.4rem; text-align: center; padding: 2rem 1.5rem;
+    border: 1px dashed var(--gold); border-radius: 14px;
+    font-family: var(--mono); font-size: .82rem; color: var(--dim); letter-spacing: .04em;
+  }
+  .chosen b { color: var(--gold); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    text-align: center; padding: 3rem 1.5rem 4rem;
+    color: var(--faint); font-family: var(--mono); font-size: .72rem; letter-spacing: .12em;
+  }
+  footer .heart { color: var(--magenta); }
+  @media (max-width: 640px) { .split { grid-template-columns: 1fr; } .cause { grid-template-columns: 48px 1fr; gap: .8rem; } }
+</style>
+</head>
+<body>
+
+<header>
+  <canvas id="hole-canvas"></canvas>
+  <div class="header-inner">
+    <div class="eyebrow">Brainstorming Session · 15 Sept 2026 · Autonomous Mode</div>
+    <h1>Falling into BlackHole</h1>
+    <p class="lede">
+      The app says <em>Live</em>. The call says nothing. Every device — BlackHole included —
+      starts, then auto-stops, silently, every time. This is the keepsake of the session that
+      hunted the root cause: three techniques, one black hole, and the moment the silence broke.
+    </p>
+    <div class="meta-strip">
+      <span>topic <b>live capture fails in-call</b></span>
+      <span>goal <b>root cause + fixes</b></span>
+      <span>status <b>complete</b></span>
+      <span>techniques <b>3</b></span>
+    </div>
+  </div>
+  <div class="scroll-hint">▼ descend</div>
+</header>
+
+<nav>
+  <a href="#problem">The Problem</a>
+  <a href="#loops">I · Causal Loops</a>
+  <a href="#fishbone">II · Fishbone</a>
+  <a href="#disney">III · Disney Method</a>
+  <a href="#synthesis">IV · Synthesis</a>
+  <a href="#fixes">V · The Fixes</a>
+</nav>
+
+<main>
+
+  <section id="problem" class="reveal">
+    <div class="sec-tag t1">Field Notes</div>
+    <h2>What we heard from the dark</h2>
+    <p class="sec-sub">
+      Six symptoms kept echoing through the loop map — each one a reinforcing circuit where
+      failure produced no message, and no message produced retry. They are recorded here exactly
+      as they surfaced.
+    </p>
+    <div class="loop-grid">
+      <div class="card loop-card">
+        <h3>Loop 1 · The Silent Reset</h3>
+        <p>Whisper's 5-second READY_TIMEOUT vs a cold model load creates a reinforcing loop: it fails with no message, the user retries the same way, it fails again.</p>
+        <div class="chain">cold load <i>→</i> 5s timeout <i>→</i> no message <i>→</i> retry <i>→</i> fail</div>
+      </div>
+      <div class="card loop-card">
+        <h3>Loop 2 · Resample-or-Reject</h3>
+        <p>A forced 16kHz mono int16 InputStream vs BlackHole's native 48k stereo creates the second loop: PortAudio rejects, open-failed fires, the UI resets to Idle.</p>
+        <div class="chain">16k demand <i>→</i> PortAudio rejects <i>→</i> open-failed <i>→</i> Idle</div>
+      </div>
+      <div class="card loop-card">
+        <h3>Loop 3 · The Name Doubles</h3>
+        <p>A device-name string passed to sd.InputStream may resolve to the output instance when duplicate names exist — a deterministic, invisible open failure.</p>
+        <div class="chain">duplicate name <i>→</i> wrong instance <i>→</i> deterministic fail</div>
+      </div>
+      <div class="card loop-card">
+        <h3>Loop 4 · Hog-Mode Hold</h3>
+        <p>The call app's hog-mode mic lock (Zoom/Teams at the HAL layer) blocks a second InputStream open; stream.read dies instantly and _on_live_ended_naturally resets in silence.</p>
+        <div class="chain">HAL hog <i>→</i> 2nd open blocked <i>→</i> read dies <i>→</i> silent reset</div>
+      </div>
+      <div class="card loop-card">
+        <h3>Loop 5 · Too Hot for Silence</h3>
+        <p>VAD SILENCE_RMS = 350 is too hot for an attenuated loopback: the low-volume far-end never crosses threshold, the session stays Live but deaf — reported as "didn't work".</p>
+        <div class="chain">attenuated loopback <i>→</i> RMS never &gt; 350 <i>→</i> Live-but-silent</div>
+      </div>
+      <div class="card loop-card">
+        <h3>Loop 6 · The No-Routing Trap</h3>
+        <p>BlackHole selected while call output still goes to the speakers means capturing digital silence — and silence is not an auto-stop. Two failure modes, conflated.</p>
+        <div class="chain">output → speakers <i>→</i> capture → silence <i>→</i> no auto-stop <i>→</i> confusion</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="loops" class="reveal">
+    <div class="sec-tag t1">Technique I · Causal Loop Mapping</div>
+    <h2>The spiral that swallows its own tail</h2>
+    <p class="sec-sub">
+      Every failure fed the next attempt. The map below traces how a cold Whisper model and a
+      rate-mismatched stream braid into one reinforcing orbit around a UI that never speaks.
+    </p>
+    <div class="figure-wrap">
+      <svg viewBox="0 0 900 560" width="100%" role="img" aria-label="Causal loop diagram: two reinforcing loops feeding a silent reset">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#4fd1e8"/>
+          </marker>
+          <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#f0b429"/>
+          </marker>
+          <radialGradient id="bh" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#000"/>
+            <stop offset="62%" stop-color="#05060d"/>
+            <stop offset="82%" stop-color="#241a06"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </radialGradient>
+        </defs>
+
+        <circle cx="450" cy="285" r="120" fill="url(#bh)"/>
+        <circle cx="450" cy="285" r="96" fill="none" stroke="#f0b429" stroke-opacity=".25" stroke-width="1"/>
+        <circle cx="450" cy="285" r="112" fill="none" stroke="#4fd1e8" stroke-opacity=".15" stroke-width="1"/>
+        <text x="450" y="280" text-anchor="middle" fill="#f0b429" font-size="15" letter-spacing="3">SILENT</text>
+        <text x="450" y="300" text-anchor="middle" fill="#f0b429" font-size="15" letter-spacing="3">RESET</text>
+        <text x="450" y="330" text-anchor="middle" fill="#5a628a" font-size="9">(no message ever surfaces)</text>
+
+        <!-- outer loop A: whisper timeout -->
+        <g>
+          <rect x="60" y="60" width="210" height="46" rx="23" fill="#0e1120" stroke="#4fd1e8"/>
+          <text x="165" y="83" text-anchor="middle" fill="#dfe4f5" font-size="11">Whisper cold model load</text>
+          <text x="165" y="97" text-anchor="middle" fill="#5a628a" font-size="9">ensure_running()</text>
+
+          <rect x="60" y="200" width="210" height="46" rx="23" fill="#0e1120" stroke="#4fd1e8"/>
+          <text x="165" y="223" text-anchor="middle" fill="#dfe4f5" font-size="11">READY_TIMEOUT = 5s</text>
+          <text x="165" y="237" text-anchor="middle" fill="#ff6b6b" font-size="9">too short for cold start</text>
+
+          <rect x="60" y="360" width="210" height="46" rx="23" fill="#0e1120" stroke="#4fd1e8"/>
+          <text x="165" y="383" text-anchor="middle" fill="#dfe4f5" font-size="11">User retries, same way</text>
+          <text x="165" y="397" text-anchor="middle" fill="#5a628a" font-size="9">no signal what to change</text>
+
+          <path class="loop-arrow" d="M165,106 L165,200" stroke="#4fd1e8" stroke-width="1.6" fill="none" marker-end="url(#arr)"/>
+          <path class="loop-arrow" d="M165,246 C120,290 120,320 165,360" stroke="#4fd1e8" stroke-width="1.6" fill="none" marker-end="url(#arr)"/>
+          <path class="loop-arrow" d="M270,383 C400,430 460,420 470,340" stroke="#4fd1e8" stroke-width="1.6" fill="none" marker-end="url(#arr)"/>
+          <path class="loop-arrow" d="M270,223 L350,255" stroke="#4fd1e8" stroke-width="1.6" fill="none" marker-end="url(#arr)"/>
+          <text x="90" y="150" fill="#4fd1e8" font-size="10" opacity=".8">R1 · retry loop</text>
+        </g>
+
+        <!-- outer loop B: rate mismatch -->
+        <g>
+          <rect x="630" y="60" width="210" height="46" rx="23" fill="#0e1120" stroke="#e05fa8"/>
+          <text x="735" y="83" text-anchor="middle" fill="#dfe4f5" font-size="11">Forced 16k mono int16</text>
+          <text x="735" y="97" text-anchor="middle" fill="#5a628a" font-size="9">sd.InputStream request</text>
+
+          <rect x="630" y="200" width="210" height="46" rx="23" fill="#0e1120" stroke="#e05fa8"/>
+          <text x="735" y="223" text-anchor="middle" fill="#dfe4f5" font-size="11">BlackHole native 48k stereo</text>
+          <text x="735" y="237" text-anchor="middle" fill="#5a628a" font-size="9">re-clocking mid-session too</text>
+
+          <rect x="630" y="360" width="210" height="46" rx="23" fill="#0e1120" stroke="#e05fa8"/>
+          <text x="735" y="383" text-anchor="middle" fill="#dfe4f5" font-size="11">PortAudio rejects open</text>
+          <text x="735" y="397" text-anchor="middle" fill="#5a628a" font-size="9">open-failed → Idle</text>
+
+          <path class="loop-arrow" d="M735,106 L735,200" stroke="#e05fa8" stroke-width="1.6" fill="none" marker-end="url(#arr)" style="stroke:#e05fa8"/>
+          <path class="loop-arrow" d="M735,246 C780,290 780,320 735,360" stroke="#e05fa8" stroke-width="1.6" fill="none" marker-end="url(#arr)" style="stroke:#e05fa8"/>
+          <path class="loop-arrow" d="M630,383 C520,430 460,420 450,340" stroke="#e05fa8" stroke-width="1.6" fill="none" marker-end="url(#arr)" style="stroke:#e05fa8"/>
+          <path class="loop-arrow" d="M630,223 L560,255" stroke="#e05fa8" stroke-width="1.6" fill="none" marker-end="url(#arr)" style="stroke:#e05fa8"/>
+          <text x="700" y="150" fill="#e05fa8" font-size="10" opacity=".8">R2 · reject loop</text>
+        </g>
+
+        <!-- satellites feeding the hole -->
+        <g font-size="10" fill="#8b93b5">
+          <rect class="pulse-node" x="150" y="470" width="180" height="36" rx="18" fill="#0b0e1c" stroke="#232a4d"/>
+          <text x="240" y="492" text-anchor="middle">name → wrong instance</text>
+          <rect class="pulse-node" x="360" y="470" width="150" height="36" rx="18" fill="#0b0e1c" stroke="#232a4d"/>
+          <text x="435" y="492" text-anchor="middle">mic hog-mode</text>
+          <rect class="pulse-node" x="540" y="470" width="200" height="36" rx="18" fill="#0b0e1c" stroke="#232a4d"/>
+          <text x="640" y="492" text-anchor="middle">VAD 350 / no-routing trap</text>
+          <path d="M300,470 C340,430 380,400 410,360" stroke="#232a4d" stroke-width="1.2" fill="none" marker-end="url(#arrg)"/>
+          <path d="M435,470 C445,430 448,410 450,390" stroke="#232a4d" stroke-width="1.2" fill="none" marker-end="url(#arrg)"/>
+          <path d="M600,470 C560,430 520,400 490,360" stroke="#232a4d" stroke-width="1.2" fill="none" marker-end="url(#arrg)"/>
+        </g>
+        <text x="450" y="545" text-anchor="middle" fill="#5a628a" font-size="9">every arm of the diagram terminates in the same event: _on_live_ended_naturally — a reset nobody sees</text>
+      </svg>
+      <div class="fig-caption">Causal loop map · R1 + R2 spiral into the silent reset</div>
+    </div>
+  </section>
+
+  <section id="fishbone" class="reveal">
+    <div class="sec-tag t2">Technique II · Fishbone Diagram</div>
+    <h2>Dissecting the dead fish</h2>
+    <p class="sec-sub">
+      If the loops tell us <em>how</em> failure reproduces, the spine tells us <em>where</em> it hides.
+      Four ribs of cause, head pointed straight at the effect: "capture fails in-call".
+    </p>
+    <div class="figure-wrap">
+      <svg viewBox="0 0 900 400" width="100%" role="img" aria-label="Fishbone diagram with Tools, Environment, Process, and People ribs">
+        <defs>
+          <marker id="skull" viewBox="0 0 20 20" refX="10" refY="10" markerWidth="26" markerHeight="26">
+            <circle cx="10" cy="10" r="9" fill="#e05fa8" fill-opacity=".12" stroke="#e05fa8"/>
+          </marker>
+        </defs>
+        <!-- spine -->
+        <line x1="70" y1="200" x2="770" y2="200" stroke="#e05fa8" stroke-width="2.5"/>
+        <polygon points="770,200 748,186 748,214" fill="#e05fa8"/>
+        <rect x="778" y="176" width="112" height="48" rx="10" fill="#2a0d16" stroke="#e05fa8"/>
+        <text x="834" y="196" text-anchor="middle" fill="#ff9ecf" font-size="11">capture fails</text>
+        <text x="834" y="212" text-anchor="middle" fill="#ff9ecf" font-size="11">in-call</text>
+
+        <!-- rib: Tools (top-left) -->
+        <g stroke="#4fd1e8" stroke-width="1.6">
+          <line x1="180" y1="200" x2="300" y2="70"/>
+        </g>
+        <text x="150" y="52" fill="#4fd1e8" font-size="13" font-weight="bold">TOOLS</text>
+        <g font-size="9.5" fill="#8b93b5">
+          <text x="218" y="96">• no input-level meter</text>
+          <text x="240" y="80">• no audible monitor</text>
+          <text x="262" y="64">• no preflight open test</text>
+          <text x="284" y="48">• open-failed exception never logged</text>
+        </g>
+
+        <!-- rib: Environment (bottom-left) -->
+        <g stroke="#57d9a3" stroke-width="1.6">
+          <line x1="220" y1="200" x2="340" y2="330"/>
+        </g>
+        <text x="196" y="368" fill="#57d9a3" font-size="13" font-weight="bold">ENVIRONMENT</text>
+        <g font-size="9.5" fill="#8b93b5">
+          <text x="258" y="256">• aggregate / multi-output device required</text>
+          <text x="280" y="276">• to hear + capture simultaneously</text>
+          <text x="302" y="296">• unplug or sleep re-clocks BlackHole</text>
+          <text x="324" y="316">• mid-session to 48k</text>
+        </g>
+
+        <!-- rib: Process (top-right) -->
+        <g stroke="#ffb347" stroke-width="1.6">
+          <line x1="480" y1="200" x2="600" y2="70"/>
+        </g>
+        <text x="452" y="52" fill="#ffb347" font-size="13" font-weight="bold">PROCESS</text>
+        <g font-size="9.5" fill="#8b93b5">
+          <text x="516" y="96">• TEST-PLAN F7: play German video</text>
+          <text x="538" y="80">• user tested a LIVE CALL instead</text>
+          <text x="560" y="64">• echo-cancellation not covered</text>
+          <text x="582" y="48">• duplex load not covered</text>
+        </g>
+
+        <!-- rib: People (bottom-right) -->
+        <g stroke="#9d7bff" stroke-width="1.6">
+          <line x1="520" y1="200" x2="640" y2="330"/>
+        </g>
+        <text x="498" y="368" fill="#9d7bff" font-size="13" font-weight="bold">PEOPLE</text>
+        <g font-size="9.5" fill="#8b93b5">
+          <text x="558" y="256">• default device = mic</text>
+          <text x="580" y="276">• so the call far-end is never heard</text>
+          <text x="602" y="296">• user must discover routing alone</text>
+          <text x="624" y="316">• the app never guides</text>
+        </g>
+
+        <text x="80" y="205" fill="#5a628a" font-size="9" text-anchor="end">tail →</text>
+      </svg>
+      <div class="fig-caption">Fishbone · four ribs, one effect: capture fails in-call</div>
+    </div>
+    <div class="bones">
+      <div class="card bone">
+        <h3>Tools</h3>
+        <ul>
+          <li>No input-level meter — the one gauge that would expose silence instantly.</li>
+          <li>No audible monitor of what the app actually hears.</li>
+          <li>No preflight open test before commit.</li>
+          <li>No log of the open-failed exception text — the truth is thrown away.</li>
+        </ul>
+      </div>
+      <div class="card bone">
+        <h3>Environment</h3>
+        <ul>
+          <li>macOS demands an aggregate / multi-output device to hear and capture at once.</li>
+          <li>Unplugging or display sleep re-clocks the device mid-session to 48k.</li>
+        </ul>
+      </div>
+      <div class="card bone">
+        <h3>Process</h3>
+        <ul>
+          <li>TEST-PLAN F7 says "play a German video"; the user tested a live call.</li>
+          <li>Echo-cancellation and duplex load are simply not covered by the checklist.</li>
+        </ul>
+      </div>
+      <div class="card bone">
+        <h3>People</h3>
+        <ul>
+          <li>Default device is the mic, so the call far-end is never heard at all.</li>
+          <li>The user must discover Core Audio routing themselves — the app never guides.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="disney" class="reveal">
+    <div class="sec-tag t3">Technique III · The Disney Method</div>
+    <h2>Three rooms, one idea at a time</h2>
+    <p class="sec-sub">
+      Dream in the sky, plan at the workbench, storm in the dark. Nobody was allowed to be
+      in two rooms at once.
+    </p>
+    <div class="disney-stage">
+      <div class="dcard dreamer">
+        <div class="persona">The Dreamer</div>
+        <div class="role">room 1 · no limits</div>
+        <ul>
+          <li>A <b>live level meter</b> on the capture page, plus a <b>"Test Device" 2-second button</b> that proves the pipeline before you ever join a call.</li>
+          <li><b>Auto native-rate capture</b> with an internal resample down to 16k — the app adapts to BlackHole, never the reverse.</li>
+          <li><b>Dual-capture</b>: microphone and loopback mixed into one stream, so you hear both sides of the call.</li>
+          <li>A <b>guided BlackHole routing wizard</b> that walks the user through aggregate-device setup step by step.</li>
+        </ul>
+      </div>
+      <div class="dcard realist">
+        <div class="persona">The Realist</div>
+        <div class="role">room 2 · how it actually ships</div>
+        <ul>
+          <li>Query the device's native rate via <code>sd.query_devices()</code>, open the stream <em>at</em> that rate, resample in Python.</li>
+          <li>Pass the <b>device index</b>, never the name — indices can't resolve to the wrong instance.</li>
+          <li>Surface <code>ensure_running failed</code> <b>with the reason</b> — make the invisible visible.</li>
+          <li>Extend the Whisper READY window to <b>30s for cold starts</b>.</li>
+        </ul>
+      </div>
+      <div class="dcard critic">
+        <div class="persona">The Critic</div>
+        <div class="role">room 3 · what bites back</div>
+        <ul>
+          <li>Resampling adds CPU on a machine already running a local LLM.</li>
+          <li>Dual-capture doubles the Whisper load — twice the audio, twice the transcribe.</li>
+          <li>A longer timeout slows Start feedback; dead air feels like a hang.</li>
+          <li>Index persistence breaks across reboots — CoreAudio renumbers devices freely.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="leverage">
+      <div class="kicker">⚡ The Leverage Point</div>
+      <blockquote>"Break the silence with diagnostics — show the exact open exception, the Whisper state, the live RMS. <b>The silent reset is the root amplifier.</b>"</blockquote>
+      <div class="src">Every other fix is downstream of the ability to see what failed.</div>
+    </div>
+  </section>
+
+  <section id="synthesis" class="reveal">
+    <div class="synth-head">
+      <div class="kicker">◈ Synthesis · The Climax</div>
+      <p>
+        The session collapsed six causes into <b>two failure modes that were being conflated</b>.
+        What looked like one bug is actually two diseases wearing one symptom:
+      </p>
+      <div class="split">
+        <div class="mode">
+          <h4>Mode A · auto-stop</h4>
+          <p>= open-failed (rate / index / hog) <b>or</b> Whisper 5s timeout — both ending in a silent reset.</p>
+        </div>
+        <div class="mode">
+          <h4>Mode B · silent-live</h4>
+          <p>= VAD threshold too hot <b>plus</b> the no-routing trap. It "runs" forever, hearing nothing.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-tag t4">Ranked Root Causes</div>
+    <h2 style="margin-bottom:1.6rem">Six suspects, arraigned in order</h2>
+
+    <div class="cause reveal">
+      <div class="rank">1<small>prime</small></div>
+      <div>
+        <h3>Whisper 5s timeout → silent reset</h3>
+        <p>The cold model never finishes loading before READY_TIMEOUT expires, and the failure surfaces as <em>nothing at all</em>. It is the root amplifier: it converts every other fault into an unexplanable auto-stop and sends the user into retry-loop R1.</p>
+        <div class="sev"><i data-w="96%"></i></div>
+        <div class="sev-label">blast radius</div>
+      </div>
+    </div>
+    <div class="cause reveal">
+      <div class="rank">2<small>prime</small></div>
+      <div>
+        <h3>Forced 16kHz vs BlackHole's native rate</h3>
+        <p>Asking PortAudio for 16k mono int16 on a 48k stereo loopback is a resample-or-reject wager the app always loses. Open-failed fires, the UI snaps to Idle, and the exception text vanishes unlogged.</p>
+        <div class="sev"><i data-w="90%"></i></div>
+        <div class="sev-label">blast radius</div>
+      </div>
+    </div>
+    <div class="cause reveal">
+      <div class="rank">3<small>latent</small></div>
+      <div>
+        <h3>Device-name vs device-index</h3>
+        <p>Names collide — BlackHole 2 ch exists as both input and output. A name lookup can deterministically bind the input stream to the output instance and fail every time, invisibly.</p>
+        <div class="sev"><i data-w="72%"></i></div>
+        <div class="sev-label">blast radius</div>
+      </div>
+    </div>
+    <div class="cause reveal">
+      <div class="rank">4<small>latent</small></div>
+      <div>
+        <h3>Call-app hog-mode</h3>
+        <p>Zoom/Teams lock the mic at the HAL layer. The second InputStream open is blocked, <code>stream.read</code> dies instantly, and <code>_on_live_ended_naturally</code> resets the UI as if the user had stopped it.</p>
+        <div class="sev"><i data-w="64%"></i></div>
+        <div class="sev-label">blast radius</div>
+      </div>
+    </div>
+    <div class="cause reveal">
+      <div class="rank">5<small>insidious</small></div>
+      <div>
+        <h3>VAD SILENCE_RMS = 350 threshold</h3>
+        <p>Too hot for an attenuated loopback signal. The far-end voice never crosses threshold, the session sits Live and mute, and the honest user report is simply: "didn't work".</p>
+        <div class="sev"><i data-w="58%"></i></div>
+        <div class="sev-label">blast radius</div>
+      </div>
+    </div>
+    <div class="cause reveal">
+      <div class="rank">6<small>insidious</small></div>
+      <div>
+        <h3>The no-routing trap</h3>
+        <p>Select BlackHole in the app, leave call output on the speakers, and you are recording perfect digital silence — which is not an auto-stop, which is why it masquerades as every other failure. The conflation itself is the disease.</p>
+        <div class="sev"><i data-w="52%"></i></div>
+        <div class="sev-label">blast radius</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="fixes" class="reveal">
+    <div class="sec-tag t3">Direction of Travel</div>
+    <h2>The fix map — in the order it must happen</h2>
+    <p class="sec-sub">
+      Diagnostics before optimization: you cannot fix what you cannot see. Everything below
+      traces back to a ranked cause above.
+    </p>
+    <div class="fixes">
+      <div class="card fix"><span class="fno">01</span>
+        <h3>Diagnostics first</h3>
+        <p>Surface the exact open exception, Whisper state, and live RMS. No more silent resets — the root amplifier dies here.</p>
+        <div class="targets">kills amplification of <b>#1–#4</b></div>
+      </div>
+      <div class="card fix"><span class="fno">02</span>
+        <h3>Native rate + resample</h3>
+        <p>Query the device's native rate with <code>sd.query_devices</code>, open at that rate, resample to 16k in Python. Accept the CPU cost — it buys reliability.</p>
+        <div class="targets">fixes <b>#2</b> · counters <b>#4's</b> re-clock trap</div>
+      </div>
+      <div class="card fix"><span class="fno">03</span>
+        <h3>Device index, not name</h3>
+        <p>Bind streams by integer index resolved from the input-bearing device list; re-resolve at start so reboots and renumbering can't strand the pick.</p>
+        <div class="targets">fixes <b>#3</b></div>
+      </div>
+      <div class="card fix"><span class="fno">04</span>
+        <h3>Longer ready timeout</h3>
+        <p>Extend Whisper READY_TIMEOUT from 5s to 30s for cold starts — and show a countdown so waiting never feels like hanging.</p>
+        <div class="targets">fixes <b>#1</b></div>
+      </div>
+      <div class="card fix"><span class="fno">05</span>
+        <h3>Level meter + Test button</h3>
+        <p>A live input meter plus a 2-second Test Device preflight. Silent capture becomes visible in one glance; VAD tuning gets a ground truth.</p>
+        <div class="targets">fixes <b>#5</b> · exposes <b>#6</b></div>
+      </div>
+      <div class="card fix"><span class="fno">06</span>
+        <h3>Routing wizard</h3>
+        <p>A guided BlackHole setup: build or verify the aggregate / multi-output device so the user can hear the call <em>and</em> capture it. No more discovery-by-despair.</p>
+        <div class="targets">fixes <b>#6</b> · guides <b>People-rib</b></div>
+      </div>
+    </div>
+    <div class="chosen reveal">
+      <b>CHOSEN TO ACT ON:</b>&nbsp; preflight level meter + surfaced errors + an F7 reproduction protocol that actually uses a live call —
+      <br>then native-rate capture, device index, and the longer ready timeout.
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div>text-c3po · brainstorm-blackhole-call-capture-failure · 2026-09-15 · status: complete</div>
+  <br>
+  <div>the opposite of a black hole is a good error message <span class="heart">♥</span></div>
+</footer>
+
+<script>
+(function () {
+  // ---- reveal on scroll + severity bar animation ----
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('seen');
+      e.target.querySelectorAll('.sev i').forEach(function (bar) {
+        requestAnimationFrame(function () { bar.style.width = bar.getAttribute('data-w'); });
+      });
+      io.unobserve(e.target);
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+  // ---- black hole header canvas ----
+  var canvas = document.getElementById('hole-canvas');
+  var ctx = canvas.getContext('2d');
+  var W, H, cx, cy, dpr = window.devicePixelRatio || 1;
+  function resize() {
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cx = W / 2; cy = H * 0.46;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  var parts = [];
+  for (var i = 0; i < 220; i++) {
+    var r = 90 + Math.random() * Math.min(W, H) * 0.9;
+    parts.push({
+      r: r,
+      a: Math.random() * Math.PI * 2,
+      v: 0.15 + 40 / r * 0.09,
+      s: Math.random() * 1.6 + 0.4,
+      hue: Math.random() < 0.6 ? 190 : 42,
+      drift: 0.00006 + Math.random() * 0.00012
+    });
+  }
+  function spiralX(p, a) { return cx + Math.cos(a) * p.r * 1.6; }
+  function spiralY(p, a) { return cy + Math.sin(a) * p.r * 0.52; }
+
+  function tick() {
+    ctx.clearRect(0, 0, W, H);
+    // event horizon
+    var g = ctx.createRadialGradient(cx, cy, 4, cx, cy, 110);
+    g.addColorStop(0, '#000');
+    g.addColorStop(0.55, 'rgba(2,3,8,0.96)');
+    g.addColorStop(0.78, 'rgba(240,180,41,0.14)');
+    g.addColorStop(1, 'rgba(240,180,41,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 160, 74, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // accretion particles
+    parts.forEach(function (p) {
+      p.a += p.v * 0.02;
+      p.r -= p.r * p.drift * 30;           // slowly fall in
+      if (p.r < 30) { p.r = 90 + Math.random() * 380; p.a = Math.random() * Math.PI * 2; }
+      var x = spiralX(p, p.a), y = spiralY(p, p.a);
+      var alpha = Math.max(0.06, Math.min(0.75, (p.r - 30) / 300));
+      ctx.fillStyle = 'hsla(' + p.hue + ',85%,65%,' + alpha + ')';
+      ctx.beginPath();
+      ctx.arc(x, y, p.s * (p.r < 90 ? 1.4 : 1), 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // the one waveform that never arrives — a flatlined echo
+    var t = performance.now() / 1000;
+    ctx.strokeStyle = 'rgba(79,209,232,0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (var x2 = 0; x2 < W; x2 += 3) {
+      var damp = Math.exp(-Math.pow((x2 - cx) / (W * 0.36), 2));
+      var y2 = H * 0.88 + Math.sin(x2 * 0.02 + t * 2.2) * 14 * damp * Math.abs(Math.sin(t * 0.5));
+      if (x2 === 0) ctx.moveTo(x2, y2); else ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(90,98,138,0.7)';
+    ctx.font = '10px monospace';
+    ctx.fillText('captured signal during call ▁▁▁▁▁▁▁▁▁▁', W * 0.5 - 120, H * 0.88 - 22);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

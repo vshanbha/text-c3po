@@ -47,12 +47,12 @@ Notes:
 - The translation contract is language names ("German"), never picker codes ("de"); UI layers convert via `languages.name_for_code` at call time so manual use matches the gated test path.
 - Ship the 23-language code and name constant from blueprint section 2.1; keep the backend model-agnostic.
 - Spawn `whisper-server` as a subprocess on 127.0.0.1:9001 with transcribe only; do the translation in the LLM.
-- Capture audio via sounddevice with a picker for Built-in Microphone and BlackHole.
+- Capture audio via ffmpeg avfoundation with a picker for Built-in Microphone and BlackHole.
 
 ## Known pitfalls
 
 - Ollama at or below 0.17.0 fails on LFM MoE models with missing tensor output_norm.weight; require Ollama at or above 0.17.1.
 - Packaged macOS app without NSMicrophoneUsageDescription fails mic permission under TCC.
-- BlackHole may be absent; keep the file-upload path working without it and list only available sounddevice devices.
+- BlackHole may be absent; keep the file-upload path working without it and list only available ffmpeg/avfoundation input devices.
 
 <!-- /bmad:context -->

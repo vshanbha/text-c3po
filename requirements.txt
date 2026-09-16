@@ -3,4 +3,3 @@
 # two files identical; test_dependency_pins_agree enforces it.
 flet==0.86.5
 langchain-ollama==1.1.0
-sounddevice==0.5.6

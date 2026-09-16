@@ -29,7 +29,11 @@ from text_c3po.runtimes.process_manager import (
 )
 from text_c3po.runtimes.whisper_client import transcribe_wav
 from text_c3po.services.asr import transcribe_file
-from text_c3po.services.live_runner import LiveRunner
+from text_c3po.services.live_runner import (
+    REASON_NO_AUDIO,
+    REASON_OPEN_FAILED,
+    LiveRunner,
+)
 from text_c3po.services.session import SessionController
 from text_c3po.ui.captions import reset_pane, sync_captions
 from text_c3po.ui.status import LIVE_GREEN, LIVE_RED, paint_status
@@ -701,7 +705,7 @@ def main(page: ft.Page) -> None:
     # tall output scrolls the window instead of clipping without a scrollbar.
     page.scroll = ft.ScrollMode.AUTO
 
-    # E2-1: enumerate capture devices once at launch (sounddevice may be
+    # E2-1: enumerate capture devices once at launch (ffmpeg may be
     # absent — list_devices yields [] and never raises, so the app always
     # starts and file mode keeps working without a capture device).
     startup_devices = list_devices()
@@ -1311,19 +1315,81 @@ def main(page: ft.Page) -> None:
                 pass
             try:
                 if not runner.was_stopped():
-                    _on_live_ended_naturally(runner)
+                    try:
+                        no_audio = runner.end_reason == REASON_NO_AUDIO
+                    except Exception:
+                        no_audio = False
+                    if no_audio:
+                        _on_live_no_audio(runner)
+                    else:
+                        _on_live_ended_naturally(runner)
             except Exception:
                 pass
 
-    def _on_live_open(device_value, opened: bool, reason: str = "") -> None:
+    def _on_live_no_audio(runner) -> None:
+        # Digital-silence trip: the device yielded ~60 s of exact-zero
+        # frames, i.e. nothing is routed into it. Same chrome reset as a
+        # natural end, but the label names the cause (and the routing
+        # fix) instead of falling back to bare "Idle".
         try:
-            if opened or reason != "open-failed":
+            if live_runner.get("current") is not runner:
                 return
-            _refuse_live_start(
-                "Couldn't open {} — check the device, then retry.".format(
+            live_runner["current"] = None
+            live_runner["thread"] = None
+            try:
+                live_state["starting"] = False
+            except Exception:
+                pass
+            try:
+                live_controller.end_session()
+            except Exception:
+                pass
+            try:
+                device_value = runner.device
+            except Exception:
+                device_value = None
+            _set_live_buttons(False)
+            _paint_live(False, None)
+            try:
+                refs = _live_refs()
+                label = refs.get("capture_label")
+                if label is not None:
+                    label.value = (
+                        "No audio from {} — is anything playing into it? "
+                        "Route the call into the device, then Start.".format(
+                            device_value or "capture device"
+                        )
+                    )
+            except Exception:
+                pass
+            _ui_update(page)
+        except Exception:
+            pass
+
+    def _on_live_open(device_value, opened: bool, reason: str = "") -> None:
+        # Contract: LiveRunner reports (True, REASON_OPEN) on success,
+        # (False, REASON_OPEN_FAILED + ": detail") when the pipe won't
+        # open, and (False, REASON_STOP) when a stop latched first (owned
+        # by _run_live's was_stopped check — ignored here, never
+        # user-facing). Matched on the imported constant, never a
+        # literal, so a rename breaks loudly at import.
+        try:
+            if opened:
+                return
+            if not isinstance(reason, str) or not reason.startswith(REASON_OPEN_FAILED):
+                return
+            detail = ""
+            try:
+                detail = reason[len(REASON_OPEN_FAILED) :].lstrip(": ").strip()
+            except Exception:
+                detail = ""
+            if detail:
+                message = detail
+            else:
+                message = "Couldn't open {} — check the device, then retry.".format(
                     device_value or "capture device"
                 )
-            )
+            _refuse_live_start(message)
         except Exception:
             pass
 
@@ -1333,20 +1399,22 @@ def main(page: ft.Page) -> None:
         try:
             manager = whisper_manager
             if manager is None:
-                _paint_live(False, False)
-                _set_live_buttons(False)
+                _refuse_live_start(
+                    "Whisper model missing — expected models/ggml-small.bin "
+                    "(or WHISPER_MODEL). See setup.sh, then retry."
+                )
                 live_state["starting"] = False
-                _ui_update(page)
                 return
             try:
                 state = manager.ensure_running()
             except Exception:
                 state = "failed"
             if state not in ("ready", "restarted"):
-                _paint_live(False, False)
-                _set_live_buttons(False)
+                _refuse_live_start(
+                    "Whisper server failed to start — check the model file "
+                    "and that port 9001 is free, then retry."
+                )
                 live_state["starting"] = False
-                _ui_update(page)
                 return
             if token != live_state["gen"]:
                 # Stopped while supervising: leave stop's state alone.
@@ -1397,16 +1465,19 @@ def main(page: ft.Page) -> None:
                 pass
 
     def _refuse_live_start(message: str) -> None:
+        # Order matters (review): _paint_live(False, None) resets the
+        # capture label to "Idle", so the message must land after it —
+        # otherwise the refusal reason is overwritten before render.
         try:
             refs = _live_refs()
+            _set_live_buttons(False)
+            _paint_live(False, None)
             label = refs.get("capture_label")
             if label is not None:
                 try:
                     label.value = message
                 except Exception:
                     pass
-            _set_live_buttons(False)
-            _paint_live(False, None)
             _ui_update(page)
         except Exception:
             pass

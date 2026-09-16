@@ -74,3 +74,27 @@
     2026-09-13 audit hygiene items; no behavior change. Keep requirements.txt
     and pyproject [project] dependencies identical (test_dependency_pins_agree).
     D1 docs-only, D6 reproducible `uv sync` for clean-machine goal.
+- id: "9"
+  title: File logging with rotation and per-module diagnostics
+  description: >-
+    Give the packaged app a persistent log: _configure_logging keeps the
+    console handler and adds a stdlib RotatingFileHandler at
+    ~/Library/Logs/text-c3po/text-c3po.log (1 MB x 3, TEXT_C3PO_LOG path
+    override, console-only fallback when the dir is unwritable). Wire
+    per-module loggers into the silent zones the 2026-09 audit ranked:
+    process_manager spawn/ready/stop/restart reasons, whisper_client
+    transport cause, asr decode/transcribe causes, live_runner stream-end
+    and transcribe-failure causes, audio_devices enumeration failure,
+    ollama_client probe reason, and the app.py whisper boot thread; gate
+    the translate parse-failure raw-payload dump so translated content
+    never reaches the file log; never log audio bytes or transcripts;
+    keep TEST-PLAN translate_text ok and done_reason lines at their
+    current levels and add a log-file cross-check row per CAP.
+  invoke_dev_with: >-
+    stdlib logging only, no new deps; configure at entry points only so
+    library import stays side-effect free; every new log call inside the
+    existing never-raises guards (a raising handler must not break the
+    pipeline); log exception repr plus stage labels, identifiers and
+    counts, never user text; add the TEST-PLAN row checking the log file
+    exists after a session and D3/F4 failures appear in it.
+  done_checkpoint: true

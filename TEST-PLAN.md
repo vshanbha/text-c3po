@@ -6,11 +6,16 @@ lifecycle, and end-to-end speech. Run top to bottom after any epic lands;
 regressions fixed in review are tagged **[R]** with their commit.
 
 Environment: macOS Apple Silicon, `ollama serve` running, `brew install
-ffmpeg whisper-cpp portaudio`, `brew install --cask blackhole-2ch`,
+ffmpeg whisper-cpp`, `brew install --cask blackhole-2ch`,
 Python 3.12 with `uv`. Fast model for all live checks: `lfm2.5:latest`.
 Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded
 (G1 gate) — owner override permits loading it for manual G2 capability
 comparisons, one model at a time.
+
+Capture stack (D7-A 2026-09-16): ffmpeg avfoundation — enumeration via
+`ffmpeg -f avfoundation -list_devices`, capture via
+`ffmpeg -f avfoundation -i ":<index>" -ac 1 -ar 16000 -f s16le -`.
+sounddevice/PortAudio retired.
 
 ## 0. Setup (E4-1)
 
@@ -94,7 +99,7 @@ comparisons, one model at a time.
   probe (reports, never asserts): `PYTHONPATH=src uv run python
   tests/benchmark/probe_echo.py [model]`.
 
-## C. Capture devices (E2-1)
+## C. Capture devices (E2-1, D7-A)
 
 - **C1 — picker lists inputs.** Open Live view. Expect: every
   input-capable device verbatim (mics, headsets, BlackHole 2ch when
@@ -103,9 +108,12 @@ comparisons, one model at a time.
   first non-BlackHole input, never BlackHole itself.
 - **C3 — selection sticks.** Change the device, switch Text→Live→File
   and back. Expect: selection preserved **[R]** `0906a98`.
-- **C4 — no capture hardware path.** (Machine without sounddevice /
-  PortAudio is hard to fake — code-reviewed instead: `list_devices`
-  yields `[]`, app starts, file mode works.)
+- **C4 — no capture hardware path.** (No ffmpeg / no avfoundation input
+  devices: `list_devices` yields `[]`, app starts, file mode works.)
+- **C5 — Start failure reasons surface (D7-A).** With no model file
+  (rename `models/` away), press Start. Expect: readable refusal naming
+  the missing model, buttons re-armed — never a silent flip to Idle.
+  Restore `models/` after.
 
 ## D. whisper-server lifecycle (E2-3)
 
@@ -181,6 +189,11 @@ comparisons, one model at a time.
 - **F14 — device unplug mid-session.** Start, then unplug the USB mic
   (or disable the device). Expect: session ends gracefully — buttons
   reset to Idle, list retained, no hang, no stuck red "Live".
+- **F15 — no-audio auto-stop (D7-A).** Pick BlackHole 2ch with nothing
+  routed into it, Start, wait ~60 s. Expect: session ends itself with
+  "No audio from BlackHole 2ch — is anything playing into it?" (not a
+  bare Idle, not a stuck red Live). Route audio in and Start again:
+  captions flow, no trip.
 
 ## G. Eval gate (E1, repeatable)
 
@@ -276,7 +289,8 @@ executes the code stories first; **this section is deliberately last.**
 - [ ] **§F — real-mic live session, all rows.** The live path has never run
   with a real microphone. Minimum: F1 (captions), F2/F13 (stop timing),
   F5 (scroll + Jump under load), F7 (BlackHole loopback), F8 (revoked TCC),
-  F10 (caption retry), F12 (double-start), F14 (device unplug). Failing F5
+  F10 (caption retry), F12 (double-start), F14 (device unplug),
+  F15 (no-audio auto-stop), C5 (Start refusal surfacing). Failing F5
   or F1 reopens E3-5.
 - [ ] **F6 — VoiceOver.** One utterance; new row announced once. Requires a
   screen reader, not automation.
@@ -287,8 +301,9 @@ executes the code stories first; **this section is deliberately last.**
   confirm `pgrep -f whisper-server` empty after Cmd-Q **and** Dock quit; copy
   to another Mac and document the Gatekeeper path. *(E4-3 remains backlog —
   record the `flet build macos` tool-of-record decision when done.)*
-- [ ] **D1–D3 — whisper subprocess timing.** Cold-model readiness vs the 5 s
-  `READY_TIMEOUT_S`; `kill -9` mid-session gap rows; no orphans after quit.
+- [ ] **D1–D3 — whisper subprocess timing.** Cold-model readiness vs the 30 s
+  `READY_TIMEOUT_S` (D7-A; dead-child fast-fail, no full-budget burn);
+  `kill -9` mid-session gap rows; no orphans after quit.
 - [ ] **E6 — long file (~5 min).** Completes, UI responsive after, no runaway
   memory (NFR-4 soak companion).
 - [ ] **GitHub Pages repo settings.** Repo API still reports a legacy

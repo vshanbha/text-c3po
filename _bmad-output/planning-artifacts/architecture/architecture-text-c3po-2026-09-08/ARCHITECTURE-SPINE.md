@@ -100,11 +100,12 @@ flowchart LR
 - **Prevents:** orphan or double-spawned whisper-server processes.
 - **Rule:** One `ProcessManager` owns spawn (with `ggml-small.bin` default), health-check, restart-on-crash, and cleanup-on-exit; UI reads status only. Pipeline clients check whisper readiness before POSTing; utterances missed during restart are labeled as gaps, never silently dropped.
 
-### AD-9 — Capture boundary with file-mode bypass
+### AD-9 — Capture boundary with file-mode bypass [AMENDED D7-A 2026-09-16]
 
 - **Binds:** FR-6, FR-7, FR-9
 - **Prevents:** hard-coded device-name brittleness; capture/file pipeline forks.
-- **Rule:** Devices are enumerated from sounddevice each launch (no hard-coded names; BlackHole listed only when present); the VAD emits immutable Utterance WAV bytes (RMS threshold, flush on 2 silent frames or max-utterance); file mode decodes via ffmpeg into the same ASR entry point, needing no device.
+- **Rule:** Devices are enumerated from `ffmpeg -f avfoundation -list_devices` each launch (no hard-coded names; BlackHole listed only when present; output-only devices excluded via system_profiler input channels); live capture opens `ffmpeg -f avfoundation -i ":<index>" -ac 1 -ar 16000 -f s16le -` piped to the VAD (ffmpeg owns device open plus resample); the VAD emits immutable Utterance WAV bytes (RMS threshold, flush on 2 silent frames or max-utterance); file mode decodes via ffmpeg into the same ASR entry point, needing no device.
+- **Amends:** sounddevice/PortAudio enumeration and capture retired (failed manual BlackHole in-call test; see sprint-change-proposal-2026-09-16).
 
 ### AD-10 — Single language constant [ADOPTED]
 
@@ -124,11 +125,11 @@ flowchart LR
 - **Prevents:** inconsistent error UX (dialog in one mode, silent fail in another).
 - **Rule:** Recoverable failures render inline in the failing card/row plus a `SnackBar` retry; no modal dialogs for recoverable errors.
 
-### AD-13 — Setup and packaging ownership
+### AD-13 — Setup and packaging ownership [AMENDED D7-A 2026-09-16]
 
 - **Binds:** FR-6, FR-13, FR-15, NFR-5
 - **Prevents:** TCC mic denial and clean-machine setup drift.
-- **Rule:** `setup.sh` owns environment (Ollama install, model pull, PortAudio/sounddevice, BlackHole guidance); the macOS bundle carries `NSMicrophoneUsageDescription`.
+- **Rule:** `setup.sh` owns environment (Ollama install, model pull, ffmpeg check, BlackHole guidance — PortAudio/sounddevice retired); the macOS bundle carries `NSMicrophoneUsageDescription`.
 
 ## Consistency Conventions
 
@@ -145,7 +146,7 @@ flowchart LR
 | python | 3.12.10 |
 | flet | ==0.86.5 exact (re-pin check at E1 kickoff; changelog before any upgrade) |
 | langchain / langchain-ollama | E1-latest at install (ChatOllama, JSON format enforced) |
-| sounddevice (+ brew portaudio) | 0.5.6 at E2 install |
+| ffmpeg | system prerequisite (capture via avfoundation + file decode; D7-A) |
 | requests | E2-latest at install |
 | ollama runtime | 0.33.3 verified; models listed live, default lfm2.5 5.2GB |
 | whisper-server (whisper.cpp) | ggml 0.23.0 verified; model ggml-small.bin default |

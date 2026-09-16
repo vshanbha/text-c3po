@@ -26,7 +26,10 @@ WHISPER_PORT = 9001
 WHISPER_INFERENCE_PATH = "/inference"
 DEFAULT_MODEL_FILENAME = "ggml-small.bin"
 AUTO_LANGUAGE = "auto"
-READY_TIMEOUT_S = 5.0
+# D7-A: 30 s bounds cold first-load (small model ~2 s warm, slower cold);
+# spawn failure still fast-fails via build_command/start, and the Start
+# path now surfaces the failure reason instead of silently resetting.
+READY_TIMEOUT_S = 30.0
 PROBE_TIMEOUT_S = 1.0
 STOP_TIMEOUT_S = 5.0
 
@@ -255,7 +258,12 @@ class ProcessManager:
             return False
 
     def wait_ready(self, timeout_s=READY_TIMEOUT_S) -> bool:
-        """True once the probe succeeds within the timeout. Never raises."""
+        """True once the probe succeeds within the timeout. Never raises.
+
+        Fast-fails when the owned process dies mid-wait (crash/OOM/bad
+        model) instead of burning the full timeout on a dead child; a
+        live-but-slow cold load still gets the whole budget.
+        """
         try:
             limit = float(timeout_s)
         except Exception:
@@ -266,6 +274,12 @@ class ProcessManager:
                 try:
                     if self._probe_fn():
                         return True
+                except Exception:
+                    pass
+                try:
+                    proc = self._process
+                    if proc is not None and proc.poll() is not None:
+                        return False
                 except Exception:
                     pass
                 try:
