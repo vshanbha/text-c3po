@@ -83,4 +83,5 @@ development_status:
   epic-5: backlog
   5-1-package-macos-bundle-with-mic-permission: backlog
   5-2-consider-browser-e2e-automation-for-the-test-plan-smoke-ceiling: backlog
+  5-3-live-tuning-controls-utterance-cap-language-pin-model-vad-threshold: backlog
   epic-5-retrospective: optional

@@ -23,3 +23,20 @@
   invoke_dev_with: >-
     Do not build before the spike. See session notes 2026-09-16.
   done_checkpoint: false
+- id: "3"
+  title: Live-tuning controls (utterance cap, language pin, model, VAD threshold)
+  description: >-
+    Owner manual test 2026-09-16 (F7): voice-to-caption lag is seconds and
+    word fidelity imperfect. live-translate already solves the tunable
+    half: --max-utterance (latency vs context trade-off), --lang pin
+    (steadier than auto-detect), --model small/medium choice, and
+    --silence-rms tuning. Expose these four as Live-view controls over
+    the existing constants (MAX_UTTERANCE_S, whisper -l, WHISPER_MODEL,
+    SILENCE_RMS), with the PoC README's trade-off guidance as helper
+    text. Whisper translate-task and faster-whisper local inference stay
+    out by design (AD-7, D7-A).
+  invoke_dev_with: >-
+    Controls only, no pipeline change; language pin needs the deferred
+    D2-B whisper-restart policy decided first. Manual gate is a live
+    talk session comparing default vs tuned settings.
+  done_checkpoint: false
