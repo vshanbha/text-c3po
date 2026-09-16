@@ -4377,7 +4377,9 @@ def test_make_file_handler_writes_and_rotates(tmp_path):
     handler = _make_file_handler(str(tmp_path / "sub" / "t.log"))
     assert handler is not None
     try:
-        handler.emit(logging.LogRecord("x", logging.INFO, __file__, 1, "hello-%d", (7,), None))
+        handler.emit(
+            logging.LogRecord("x", logging.INFO, __file__, 1, "hello-%d", (7,), None)
+        )
         handler.flush()
         assert "hello-7" in (tmp_path / "sub" / "t.log").read_text()
     finally:
@@ -4407,11 +4409,14 @@ def test_raising_handler_never_breaks_pipeline(monkeypatch):
             raise RuntimeError("broken handler")
 
     root = logging.getLogger()
-    guard, prev = logging.raiseExceptions, None
+    saved_handlers = root.handlers[:]
+    saved_raise = logging.raiseExceptions
     logging.raiseExceptions = False
     root.addHandler(RaisingHandler())
     try:
-        assert list_devices(run_fn=lambda argv: (_ for _ in ()).throw(OSError("x"))) == []
+        assert (
+            list_devices(run_fn=lambda argv: (_ for _ in ()).throw(OSError("x"))) == []
+        )
 
         def down(req):
             raise ConnectionRefusedError("down")
@@ -4427,8 +4432,8 @@ def test_raising_handler_never_breaks_pipeline(monkeypatch):
         )
         assert out.get("error") and out.get("retryable") is True
     finally:
-        root.handlers = [h for h in root.handlers if not isinstance(h, RaisingHandler)]
-        logging.raiseExceptions = guard
+        root.handlers = saved_handlers
+        logging.raiseExceptions = saved_raise
 
 
 def test_translate_payload_gated_from_log(monkeypatch, caplog):
