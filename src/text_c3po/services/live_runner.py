@@ -17,6 +17,7 @@ with zero audio hardware. Nothing here raises.
 """
 
 import logging
+import select
 import subprocess
 import threading
 
@@ -26,6 +27,13 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
+
+# First-bytes watchdog: a spawned ffmpeg that never delivers (avfoundation
+# open hung on a hogged/busy device) must fail here with a readable
+# refusal — never a wedged thread with zero evidence. Field case
+# 2026-09-18: `-i :1` BlackHole hung pre-first-byte, SIGTERM-immune,
+# six silent minutes, no device fd ever opened.
+FIRST_BYTES_TIMEOUT_S = 5.0
 
 # Capture-open status reasons (closed world — app.py matches on these
 # constants, never on literals, so a rename breaks loudly at import).
@@ -231,21 +239,93 @@ def open_input_stream(device=None, popen_factory=None):
             proc.wait(timeout=2.0)
         except Exception:
             pass
-        try:
-            err_text = ""
-            err_pipe = getattr(proc, "stderr", None)
-            if err_pipe is not None:
-                err_raw = err_pipe.read()
-                if isinstance(err_raw, bytes):
-                    err_text = err_raw.decode("utf-8", "replace").strip()
-                elif isinstance(err_raw, str):
-                    err_text = err_raw.strip()
-        except Exception:
-            err_text = ""
-        if err_text:
-            logger.debug("ffmpeg capture failed for %r: %s", device, err_text[-500:])
+        _log_spawn_stderr(proc, device)
+        _close_proc_pipes(proc)
         raise OSError("Couldn't open {} — check the device, then retry.".format(device))
+    _watch_first_bytes(proc, device, selector)
+    logger.debug("ffmpeg capture open: %s", selector)
     return FfmpegPipeStream(proc)
+
+
+def _close_proc_pipes(proc) -> None:
+    """Close a dead/failed child's stdout/stderr. Never raises."""
+    try:
+        for name in ("stdout", "stderr"):
+            try:
+                pipe = getattr(proc, name, None)
+                if pipe is not None:
+                    pipe.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _log_spawn_stderr(proc, device) -> None:
+    """Debug-log a dead child's ffmpeg stderr (busy-device detail lives here).
+
+    Call only for a confirmed-dead child: the EOF makes the read return
+    immediately. Never raises.
+    """
+    try:
+        err_text = ""
+        err_pipe = getattr(proc, "stderr", None)
+        if err_pipe is not None:
+            err_raw = err_pipe.read()
+            if isinstance(err_raw, bytes):
+                err_text = err_raw.decode("utf-8", "replace").strip()
+            elif isinstance(err_raw, str):
+                err_text = err_raw.strip()
+    except Exception:
+        err_text = ""
+    if err_text:
+        logger.debug("ffmpeg capture failed for %r: %s", device, err_text[-500:])
+
+
+def _watch_first_bytes(proc, device, selector) -> None:
+    """Raise OSError when the child yields no bytes within the watchdog window.
+
+    A live avfoundation capture streams frames immediately; a hung
+    device-open yields nothing while staying alive. select() waits
+    without consuming, so a healthy child's first frames are untouched.
+    """
+    try:
+        out = getattr(proc, "stdout", None)
+        if out is None:
+            return
+        try:
+            ready, _, _ = select.select([out], [], [], FIRST_BYTES_TIMEOUT_S)
+        except Exception:
+            return
+        if ready:
+            return
+    except Exception:
+        return
+    try:
+        logger.warning(
+            "ffmpeg capture no bytes from %r (%s) — killing", device, selector
+        )
+    except Exception:
+        pass
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=2.0)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=2.0)
+        except Exception:
+            pass
+    _close_proc_pipes(proc)
+    raise OSError(
+        "Couldn't open {} — the device may be busy in another app.".format(device)
+    )
 
 
 def _frame_bytes(data) -> bytes:
@@ -327,6 +407,7 @@ class LiveRunner:
             self._stop_event.set()
         except Exception:
             pass
+        logger.debug("capture stop requested for %r", self.device)
         try:
             stream, self._stream = self._stream, None
             if stream is not None:

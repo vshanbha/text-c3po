@@ -1291,6 +1291,7 @@ def main(page: ft.Page) -> None:
         try:
             if live_runner.get("current") is not runner:
                 return
+            logger.debug("live ended naturally (stream died on its own)")
             live_runner["current"] = None
             live_runner["thread"] = None
             try:
@@ -1572,6 +1573,9 @@ def main(page: ft.Page) -> None:
             source_value = name_for_code(source_value)
             model_value = current_model.get("value")
             device_value = current_device.get("value")
+            logger.info(
+                "live start requested: device=%r model=%r", device_value, model_value
+            )
             _set_live_buttons(True)
             _paint_live(True, None)
             try:
@@ -1591,6 +1595,7 @@ def main(page: ft.Page) -> None:
 
     def on_stop_live(e=None) -> None:
         try:
+            logger.info("live stop requested")
             try:
                 live_state["gen"] += 1
                 live_state["starting"] = False
@@ -1606,6 +1611,13 @@ def main(page: ft.Page) -> None:
                     thread = live_runner.get("thread")
                     if thread is not None:
                         thread.join(timeout=2.0)
+                        try:
+                            logger.debug(
+                                "live stop join done: worker_alive=%r",
+                                thread.is_alive(),
+                            )
+                        except Exception:
+                            pass
                 except Exception:
                     pass
             live_runner["current"] = None
