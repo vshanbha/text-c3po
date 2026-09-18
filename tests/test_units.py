@@ -2772,6 +2772,63 @@ def test_open_input_stream_reaps_instant_death(monkeypatch):
     assert made and made[0].waited is True
 
 
+def test_open_input_stream_kills_byte_starved_child(monkeypatch):
+    # Field case 2026-09-18: ffmpeg hung pre-first-byte on a busy device
+    # (alive, SIGTERM-immune, zero evidence). The watchdog must kill it
+    # and refuse readably instead of wedging the capture thread.
+    import os
+
+    import text_c3po.services.live_runner as lr
+    from text_c3po.services.live_runner import open_input_stream
+
+    monkeypatch.setattr(lr, "FIRST_BYTES_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(lr, "_resolve_av_index", lambda device: 3)
+    rfd, wfd = os.pipe()
+
+    class StarvedProc:
+        def __init__(self):
+            self.stdout = os.fdopen(rfd, "rb")
+            self.stderr = None
+            self.terminated = False
+            self.killed = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+
+        def wait(self, timeout=None):
+            return 0
+
+    made = []
+
+    def factory(argv):
+        assert argv[argv.index("-i") + 1] == ":3"
+        proc = StarvedProc()
+        made.append(proc)
+        return proc
+
+    try:
+        open_input_stream(device="Mic", popen_factory=factory)
+        raised = False
+    except OSError as exc:
+        raised = "busy" in str(exc)
+    assert raised is True
+    assert made and (made[0].terminated or made[0].killed)
+    try:
+        made[0].stdout.close()
+    except Exception:
+        pass
+    try:
+        os.close(wfd)
+    except Exception:
+        pass
+
+
 def test_ffmpeg_pipe_stream_exact_read_and_eof():
     import io
 
