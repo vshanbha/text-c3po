@@ -295,11 +295,13 @@ def _watch_first_bytes(proc, device, selector) -> None:
             return
         try:
             ready, _, _ = select.select([out], [], [], FIRST_BYTES_TIMEOUT_S)
-        except Exception:
+        except Exception as exc:
+            logger.debug("first-bytes watch skipped: %r", exc)
             return
         if ready:
             return
-    except Exception:
+    except Exception as exc:
+        logger.debug("first-bytes watch skipped: %r", exc)
         return
     try:
         logger.warning(
