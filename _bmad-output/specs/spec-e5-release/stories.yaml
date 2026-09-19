@@ -40,3 +40,17 @@
     D2-B whisper-restart policy decided first. Manual gate is a live
     talk session comparing default vs tuned settings.
   done_checkpoint: false
+- id: "4"
+  title: Cross-platform capture notes (Linux, Windows)
+  description: >-
+    Headline only (owner 2026-09-16, no work yet): the product core is
+    portable Python plus ffmpeg, but four spots are macOS-only —
+    avfoundation capture backend, system_profiler input filter,
+    ~/Library/Logs log path, and BlackHole loopback. Linux needs no
+    extra driver (PulseAudio monitor sources / PipeWire) and XDG log
+    paths; Windows needs WASAPI loopback. Record per-OS backends, setup
+    deltas, and TEST-PLAN adjustments before any porting work.
+  invoke_dev_with: >-
+    Notes and setup deltas only; no code until a port is actually
+    decided. macOS stays the only supported platform meanwhile.
+  done_checkpoint: false

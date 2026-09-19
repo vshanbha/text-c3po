@@ -257,3 +257,9 @@ spike first; real story only if the spike converts.
 Owner F7 finding: expose utterance cap, source-language pin, whisper
 model choice, and VAD threshold as Live-view controls (live-translate
 parity). Language pin needs the deferred D2-B policy first.
+
+### Story 5.4: Cross-platform capture notes (Linux, Windows)
+
+Headline only, no work yet: record per-OS capture backends (Linux
+PulseAudio/PipeWire monitors, Windows WASAPI loopback), setup deltas,
+and TEST-PLAN adjustments. macOS stays the only supported platform.
