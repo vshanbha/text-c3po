@@ -2,8 +2,34 @@
 
 Human-run checks that unit tests (`pytest`) and the E1 eval gate cannot
 cover: real windows, dialogs, snackbars, device hardware, subprocess
-lifecycle, and end-to-end speech. Run top to bottom after any epic lands;
-regressions fixed in review are tagged **[R]** with their commit.
+lifecycle, and end-to-end speech. Regressions fixed in review are tagged
+**[R]** with their commit.
+
+## How to use this plan
+
+1. **Run top to bottom** after any epic lands (§0 → §J). Each row is
+   self-contained: what it needs, what to do, what to expect.
+2. **Tick the §J boxes** as you go — they are the release gate.
+3. **Record results inline**: append `Verified <date> by owner manual
+   test` (plus evidence) to passing rows; failing rows stay open until
+   the fix lands, then gain an **[R]** tag.
+4. **Rows state their needs up front** — second Mac, USB hardware,
+   screen reader, idle minutes. Skip what your setup lacks, say so.
+
+## Contents
+
+- §0 Setup (clean-machine install)
+- §A Launch and connectivity (Ollama up/down, model switch)
+- §B Text translation (happy path, guards, flakes)
+- §C Capture devices (picker, defaults, failures)
+- §D whisper-server lifecycle (spawn, orphans, crash)
+- §E File mode end-to-end (containers, errors, long files)
+- §F Live session (mic, loopback, stop, scroll, retry, guards)
+- §G Eval gate (repeatable model-quality scripts)
+- §H Packaging (E5, release gate only)
+- §I Browser testing (agent/headless limits)
+- Coverage map (what automation owns — read before §J)
+- §J Release-verification gate (checkboxes)
 
 Environment: macOS Apple Silicon, `ollama serve` running, `brew install
 ffmpeg whisper-cpp`, `brew install --cask blackhole-2ch`,
@@ -29,6 +55,8 @@ sounddevice/PortAudio retired.
 
 ## A. Launch and connectivity (E1 + snackbar fix)
 
+Needs: `ollama serve` you can stop/start; two installed models for A4.
+
 - **A1 — healthy launch.** `ollama serve` up, then `uv run text-c3po`.
   Expect: green Connected dot, picker lists installed models with
   `lfm2.5` preselected, no snackbar.
@@ -47,6 +75,8 @@ sounddevice/PortAudio retired.
 
 ## B. Text translation (E1)
 
+Needs: `ollama serve` with lfm2.5 (B6/B7 probes reuse it).
+
 - **B1 — happy path.** Type a sentence, target German, Translate.
   Expect: formal/informal tabs fill plus "Translated · N chars" tally.
 - **B2 — stop.** Press Stop mid-stream. Expect: "Stopped.", controls
@@ -58,12 +88,15 @@ sounddevice/PortAudio retired.
   so this is asserted by unit tests, not live translation: `uv run
   pytest -q -k "render_blank or render_error or render_missing or
   render_nonretryable or render_truncated"`.
-  Contract under test — Formal shows the translation; blank Informal
-  shows "No separate informal version for this translation — see
-  Formal." with **no** retry toast; blank Formal or transport/parse
-  error shows the retry hint **with** toast; non-retryable errors
-  show their message with no toast; missing controls toast the
-  wiring notice. Live eyeball rule: whenever real use surfaces a
+  Contract under test:
+  - Formal shows the translation; blank Informal shows "No separate
+    informal version for this translation — see Formal." with **no**
+    retry toast;
+  - blank Formal or transport/parse error shows the retry hint **with**
+    toast;
+  - non-retryable errors show their message with no toast;
+  - missing controls toast the wiring notice.
+  Live eyeball rule: whenever real use surfaces a
   blank field, the UI must match this contract — never a bare error
   toast on a good translation. **[R]** 2026-09-14 (toast used to
   fire on any blank field).
@@ -78,18 +111,19 @@ sounddevice/PortAudio retired.
 - **B6 — long multi-paragraph translation (early-stop flake, repeatable).**
   Paste the 10-paragraph lighthouse text (`\n\n`-separated; source:
   `LIGHTHOUSE_PARAS` in `tests/benchmark/probe_collapse.py`), target
-  Spanish, Translate (lfm2.5). Known flake: ~3/5 runs collapse to the
-  first-sentence collapse (stable "El viejo faro se encontraba" prefix,
-  ~78–110 chars) with `done_reason='stop'` — clean stop, not a token
-  cap. Expect either full output (~850+ chars, all paragraphs) or
-  that collapse; pressing Translate again
-  (retry) yields the full text. German on the same text is 4/4 full —
-  use it as the control cell. Cross-check the logs
-  (`translate_text ok: in=N out=M`): M must match the displayed
-  length. Model-side probe (reports, never asserts):
-  `PYTHONPATH=src uv run python tests/benchmark/probe_collapse.py
-  [model]` (up to 5 serial attempts). **[R]** 2026-09-14
-  (`num_predict` now `-1`; cap ruled out by `done_reason` evidence).
+  Spanish, Translate (lfm2.5).
+  - Known flake: ~3/5 runs collapse to the first-sentence collapse
+    (stable "El viejo faro se encontraba" prefix, ~78–110 chars) with
+    `done_reason='stop'` — clean stop, not a token cap.
+  - Expect either full output (~850+ chars, all paragraphs) or that
+    collapse; pressing Translate again (retry) yields the full text.
+  - German on the same text is 4/4 full — use it as the control cell.
+  - Cross-check the logs (`translate_text ok: in=N out=M`): M must
+    match the displayed length.
+  - Model-side probe (reports, never asserts):
+    `PYTHONPATH=src uv run python tests/benchmark/probe_collapse.py
+    [model]` (up to 5 serial attempts). **[R]** 2026-09-14
+    (`num_predict` now `-1`; cap ruled out by `done_reason` evidence).
 - **B7 — unsupported target language (accepted limitation).** Pick
   Kannada or Marathi, Translate "Good morning. How are you today?".
   Expect: the English input echoed back as Formal (plus casual-English
@@ -100,6 +134,8 @@ sounddevice/PortAudio retired.
   tests/benchmark/probe_echo.py [model]`.
 
 ## C. Capture devices (E2-1, D7-A)
+
+Needs: BlackHole installed for the BlackHole rows; a terminal for C5.
 
 - **C1 — picker lists inputs.** Open Live view. Expect: every
   input-capable device verbatim (mics, headsets, BlackHole 2ch when
@@ -118,6 +154,8 @@ sounddevice/PortAudio retired.
 
 ## D. whisper-server lifecycle (E2-3)
 
+Needs: a terminal (`curl`, `pgrep`, `kill -9 <whisper pid>` — find it via `pgrep -f whisper-server`).
+
 - **D1 — auto-spawn.** Launch, then `curl -X POST
   http://127.0.0.1:9001/inference`. Expect: HTTP response within ~5 s
   warm (cold model load longer on first run).
@@ -129,6 +167,8 @@ sounddevice/PortAudio retired.
   (No mid-session auto-restart by design — restart happens on next Start.)
 
 ## E. File mode end-to-end (E2-4)
+
+Needs: sample files (German speech recipe in E1-gate row); a terminal for E4.
 
 - **E1 gate reference sample.** Generate German speech when needed:
   `say -v Anna "Guten Morgen. Wie geht es dir heute?" -o /tmp/t.aiff
@@ -151,6 +191,10 @@ sounddevice/PortAudio retired.
   worker (second open suppressed while busy) **[R]** `0906a98`.
 
 ## F. Live session (E3)
+
+Needs: a mic; a call app or video for F7; USB hardware or
+`sudo killall coreaudiod` for F14 (§F14 tells how); ~60 idle seconds
+for F15; VoiceOver for F6 (screen-reader machine only).
 
 - **F1 — mic captions.** Live view → Start, speak German sentences
   with pauses. Expect: red Live dot, timestamped formal captions
@@ -211,6 +255,8 @@ sounddevice/PortAudio retired.
   trip fired with `no audio from 'BlackHole 2ch' for ~60s` in the log.
 
 ## G. Eval gate (E1, repeatable)
+
+Needs: `ollama serve`, patience (25 serial LLM calls per model).
 
 - **G1.** `PYTHONPATH=src uv run python -m
   text_c3po.services.eval_harness --models lfm2.5:latest`.
