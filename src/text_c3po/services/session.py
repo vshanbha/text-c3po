@@ -169,6 +169,12 @@ class SessionController:
         """
         added = []
         try:
+            # A closed session drops everything, matching post_utterance and
+            # mark_gap: without this, a drain that loses the race with
+            # end_session (e.g. the stop handler's join timeout) would still
+            # translate and append queued utterances after the user stopped.
+            if not self._active:
+                return []
             while True:
                 try:
                     item = self._queue.get_nowait()
@@ -279,6 +285,9 @@ class SessionController:
                                 formal if isinstance(formal, str) else ""
                             )
                             target["truncated"] = truncated
+                            # A successful retry is no longer an error row, so
+                            # the stale retryable flag must not survive it.
+                            target.pop("retryable", None)
                     try:
                         target["at"] = self._now_iso()
                     except Exception:

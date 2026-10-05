@@ -940,6 +940,20 @@ def test_session_drops_blanks_and_closed_posts():
     assert ctl.captions() == []
 
 
+def test_drain_after_close_drops_queued_utterances():
+    # A drain that loses the race with end_session (stop-handler join
+    # timeout) must drop already-queued utterances rather than translate
+    # and append captions after the user stopped.
+    ctl = _session_controller()
+    ctl.start_session()
+    assert ctl.post_utterance("Hallo") is True
+    assert ctl.pending() == 1
+    ctl.end_session()
+    assert ctl.drain() == []
+    assert ctl.captions() == []
+    assert ctl.pending() == 1  # queued item untouched, simply not drained
+
+
 def test_session_translate_failures_become_error_captions():
     ctl = _session_controller()
     ctl.start_session()
@@ -1091,6 +1105,9 @@ def test_retry_caption_flips_and_fails():
     fixed = ctl.retry_caption(1)
     assert fixed["kind"] == "caption"
     assert fixed["text"] == "Hallo" and fixed["translation"] == "OK:Hallo"
+    # The stale error-row flag must not survive a successful retry.
+    assert "retryable" not in fixed
+    assert "retryable" not in ctl.captions()[0]
     assert ctl.captions()[0]["kind"] == "caption"
 
     def boom(text, target, model):

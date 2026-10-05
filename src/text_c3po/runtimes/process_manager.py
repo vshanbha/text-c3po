@@ -220,7 +220,12 @@ class ProcessManager:
             return False
 
     def stop(self) -> None:
-        """Terminate, wait, kill on hang, forget. Never raises; no orphans."""
+        """Terminate, wait, kill on hang, forget. Never raises.
+
+        Best-effort: a process whose ``poll()`` itself raises is forgotten,
+        not terminated (there is no safe way to signal a handle we cannot
+        query). The app owns a single manager, so this path is defensive.
+        """
         try:
             proc = self._process
             self._process = None

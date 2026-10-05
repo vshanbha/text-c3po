@@ -7,7 +7,6 @@ malformed body yields connected=False and never raises.
 
 import json
 import logging
-import urllib.error
 import urllib.request
 
 logger = logging.getLogger(__name__)

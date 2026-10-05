@@ -463,7 +463,10 @@ def _translate_single(
                         }
                     if callable(on_token):
                         try:
-                            on_token(piece, sum(len(p) for p in pieces))
+                            # raw_len is the running total maintained above;
+                            # recomputing sum(len(p) for p in pieces) here
+                            # would be O(n^2) across the whole stream.
+                            on_token(piece, raw_len)
                         except Exception:
                             pass
         except GeneratorExit:
