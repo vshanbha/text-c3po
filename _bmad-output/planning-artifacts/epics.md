@@ -229,6 +229,26 @@ Update the parent workspace AGENTS.md, fix .devcontainer, drop the stale
 pyproject "no CI" comment, and pin docs/requirements.txt. Audit hygiene;
 no behavior change.
 
+### Story 4.9: File logging with rotation and per-module diagnostics
+
+Give the packaged app a persistent log at
+`~/Library/Logs/text-c3po/text-c3po.log` (1 MB × 3, `TEXT_C3PO_LOG`
+override, console-only fallback) and wire per-module loggers into the
+silent zones the 2026-09 audit ranked. Payload dumps stay behind
+`TEXT_C3PO_DEBUG_PAYLOADS`; never log audio bytes or transcripts.
+Per D8, 2026-09-16. *(Entry added 2026-10-05 to close the epics.md gap;
+stories.yaml and sprint-status already carried story 9. Delivery recorded
+in the E4 memlog.)*
+
+### Story 4.10: Remediate Dependabot dependency vulnerabilities
+
+Raise the two flagged transitive packages to their first-patched versions
+in `uv.lock` — oauthlib 3.3.1 → 4.0.0 and urllib3 2.7.0 → 2.8.0 — clearing
+5 open Dependabot alerts (2 high, 3 moderate) per D16-A. No direct
+dependency, `src/`, or `tests/` change; verify with `pip-audit`, an OSV
+querybatch, and the unit suite. Source:
+`sprint-change-proposal-2026-10-05.md`.
+
 ## Epic 5: General Release Readiness
 
 Source: `_bmad-output/specs/spec-e5-release/SPEC.md` (SPEC-e5-release).

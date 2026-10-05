@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-08-2026 18:30
-last_updated: 09-19-2026 08:30
+last_updated: 10-05-2026 22:34
 project: text-c3po
 project_key: NOKEY
 tracking_system: file-system
@@ -78,6 +78,7 @@ development_status:
   4-7-fix-unit-ci-and-repair-sprint-tracking: done
   4-8-refresh-stale-v1-docs-and-infra: done
   4-9-file-logging-with-rotation-and-per-module-diagnostics: review
+  4-10-remediate-dependabot-dependency-vulnerabilities: done
   epic-4-retrospective: optional
 
   epic-5: backlog

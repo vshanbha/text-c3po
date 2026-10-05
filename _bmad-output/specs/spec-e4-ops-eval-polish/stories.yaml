@@ -86,3 +86,21 @@
     counts, never user text; add the TEST-PLAN row checking the log file
     exists after a session and D3/F4 failures appear in it.
   done_checkpoint: true
+- id: "10"
+  title: Remediate Dependabot dependency vulnerabilities
+  description: >-
+    Clear the 5 open Dependabot alerts on master (2 high, 3 moderate) by
+    raising the two flagged transitive packages to their first-patched
+    versions in uv.lock: oauthlib 3.3.1 -> 4.0.0 (GHSA-hj66-6f7g-4r5v,
+    GHSA-xpv3-w29h-x7cv) and urllib3 2.7.0 -> 2.8.0 (GHSA-8988-9cw3-xx77,
+    GHSA-vxq7-64xx-v4gw, GHSA-gh4c-6fx4-qh6g) per D16-A. oauthlib is a
+    flet dependency (>=3.2.2, no upper bound) and urllib3 a requests
+    dependency; neither is used at runtime by this loopback-only app.
+    No direct-dependency, src/, or tests/ change.
+  invoke_dev_with: >-
+    Lockfile-only remediation: `uv lock --upgrade-package oauthlib
+    --upgrade-package urllib3`, then verify no other package moved, uv lock
+    --check is clean, pip-audit and an OSV querybatch over the exported lock
+    report zero hits, and the unit suite stays green. Do not touch
+    pyproject.toml / requirements.txt direct pins (test_dependency_pins_agree).
+  done_checkpoint: true
