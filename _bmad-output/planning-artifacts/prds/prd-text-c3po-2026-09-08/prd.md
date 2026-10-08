@@ -32,7 +32,7 @@ Cloud-API users, teams needing shared history/TM, anyone needing token-streaming
 
 ### 2.3 Key User Journeys
 
-- **UJ-1. vshanbha translates a paragraph before sending it.** At his Mac, Flet app open on Text mode, he pastes English, picks German, picks model lfm2.5, and gets formal/informal/commentary back as structured output.
+- **UJ-1. vshanbha translates a paragraph before sending it.** At his Mac, Flet app open on Text mode, he pastes English, picks German, picks model ornith-1.5:9b, and gets formal/informal/commentary back as structured output.
 - **UJ-2. vshanbha follows a live talk with captions.** In Live mode he picks BlackHole (or Built-in Mic), target language, presses Start, and watches timestamped translated utterances accumulate; he presses Stop and the session stays readable.
 - **UJ-3. vshanbha translates a recorded clip.** In File mode he picks an audio/video file without any capture device present and gets the same ASR→translate captions as live.
 

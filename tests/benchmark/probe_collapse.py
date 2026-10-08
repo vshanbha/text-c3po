@@ -29,7 +29,7 @@ LIGHTHOUSE_PARAS = [
 COLLAPSE_PREFIX = "El viejo faro se encontraba"
 
 
-def main(model="lfm2.5:latest", attempts=5):
+def main(model="ornith-1.5:9b", attempts=5):
     from text_c3po.services.translation import translate_text
 
     text = "\n\n".join(LIGHTHOUSE_PARAS)
@@ -60,4 +60,4 @@ def main(model="lfm2.5:latest", attempts=5):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "lfm2.5:latest"))
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "ornith-1.5:9b"))

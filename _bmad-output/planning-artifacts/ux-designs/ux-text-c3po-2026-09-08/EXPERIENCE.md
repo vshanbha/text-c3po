@@ -101,7 +101,7 @@ Behavioral. Visual contrast lives in `DESIGN.md` (brand overrides target WCAG AA
 Product-specific. The offline promise is a UX contract, not just an NFR.
 
 - After first-run download the app makes zero outbound connections; the UI never shows accounts, keys, sign-ins, or usage meters. If a model pull is needed, it happens via Ollama locally with explicit user action — never silently.
-- The top strip model label always names the exact model serving the current surface (e.g., "lfm2.5"). No "auto" or "best" abstraction — the eval harness earns trust, the picker states facts.
+- The top strip model label always names the exact model serving the current surface (e.g., "ornith-1.5:9b"). No "auto" or "best" abstraction — the eval harness earns trust, the picker states facts.
 - Commentary output is labeled as model opinion ("Model notes:"), visually subordinate to formal/informal results.
 - No persistence across restarts in v1 (memory-only). The UI states this once per session list ("Kept until you close the app") rather than implying history.
 
@@ -132,7 +132,7 @@ Failure: model returns malformed JSON → the commentary card shows "Couldn't pa
 ### Flow 2 — Follow a live talk (vshanbha, afternoon tech talk over BlackHole, UJ-2)
 
 1. vshanbha flips to Live mode, picks BlackHole (present), source auto-detect, target English, and presses Start — the button turns red and reads Stop.
-2. Timestamped translated utterances append in order; status row shows capture live, whisper 0.4s, model lfm2.5.
+2. Timestamped translated utterances append in order; status row shows capture live, whisper 0.4s, model ornith-1.5:9b.
 3. He scrolls back to re-read an earlier caption; auto-follow pauses. A "Jump to latest" chip appears.
 4. **Climax:** He taps "Jump to latest" mid-talk and lands exactly on the current utterance as the next caption streams in — he lost nothing by looking back; the session held its place and caught him up in one tap.
 5. He presses Stop; the full ordered list stays readable. Switching to Text and back doesn't clear it.

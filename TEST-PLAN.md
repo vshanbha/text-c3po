@@ -125,14 +125,19 @@ Needs: `ollama serve` with ornith-1.5:9b (B6/B7 probes take `--model`).
     `PYTHONPATH=src uv run python tests/benchmark/probe_collapse.py
     [model]` (up to 5 serial attempts). **[R]** 2026-09-14
     (`num_predict` now `-1`; cap ruled out by `done_reason` evidence).
-- **B7 — unsupported target language (accepted limitation).** Pick
-  Kannada or Marathi, Translate "Good morning. How are you today?".
+  - Not observed on the default: 5/5 full runs on ornith-1.5:9b,
+    verified 2026-10-08 via the probe above (no model argument).
+- **B7 — unsupported target language (accepted limitation, lfm2.5-only).**
+  Select model `lfm2.5:latest`, pick Kannada or Marathi, Translate
+  "Good morning. How are you today?".
   Expect: the English input echoed back as Formal (plus casual-English
   Informal), valid JSON, no error, no retry — lfm2.5 cannot render
   these scripts and the UI cannot tell. Owner-accepted for now; if a
-  future model genuinely translates, revisit the acceptance. Model-side
-  probe (reports, never asserts): `PYTHONPATH=src uv run python
-  tests/benchmark/probe_echo.py [model]`.
+  future model genuinely translates, revisit the acceptance. Does not
+  reproduce on the default: verified 2026-10-08, ornith-1.5:9b RENDERED
+  Kannada, Marathi, Hindi, and Spanish via `tests/benchmark/probe_echo.py`
+  (no model argument). Model-side probe (reports, never asserts):
+  `PYTHONPATH=src uv run python tests/benchmark/probe_echo.py [model]`.
 
 ## C. Capture devices (E2-1, D7-A)
 
