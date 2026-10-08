@@ -81,12 +81,12 @@ if [ "$HAVE_MEDIUM" = "1" ]; then
   fetch_model ggml-medium.bin
 fi
 
-if ollama list 2>/dev/null | grep -q "^lfm2\.5"; then
-  echo "setup.sh: lfm2.5 present, skipping."
+if ollama list 2>/dev/null | grep -q "^ornith"; then
+  echo "setup.sh: ornith present, skipping."
 else
-  echo "setup.sh: ollama pull lfm2.5 (needs 'ollama serve' running) ..."
-  if ollama pull lfm2.5; then
-    echo "setup.sh: lfm2.5 ready."
+  echo "setup.sh: ollama pull ornith-1.5:9b (needs 'ollama serve' running) ..."
+  if ollama pull ornith-1.5:9b; then
+    echo "setup.sh: ornith-1.5:9b ready."
   else
     echo "setup.sh: warning: ollama pull failed — start 'ollama serve' and re-run './setup.sh'."
   fi
@@ -102,7 +102,7 @@ setup.sh: done.
   Run:            ollama serve   # if not already running
                   uv run text-c3po
   Manual checks:  TEST-PLAN.md (top to bottom after any epic)
-  Live gate:      PYTHONPATH=src uv run python -m text_c3po.services.eval_harness --models lfm2.5:latest
+  Live gate:      PYTHONPATH=src uv run python -m text_c3po.services.eval_harness --models ornith-1.5:9b
   BlackHole routing (optional, for system-audio capture): Audio MIDI Setup ->
   create a Multi-Output Device (speakers + BlackHole, Drift Correction on),
   set it as the system output.

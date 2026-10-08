@@ -15,11 +15,11 @@ OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 OLLAMA_TAGS_URL = OLLAMA_BASE_URL + "/api/tags"
 PROBE_TIMEOUT_S = 2.0
 
-DEFAULT_MODEL_PREFIX = "lfm2.5"
+DEFAULT_MODEL_PREFIX = "ornith"
 
 
 def pick_default_model(models) -> "str | None":
-    """Return the default model pick: first ``lfm2.5*`` hit else first else None.
+    """Return the default model pick: first ``ornith*`` hit else first else None.
 
     Pure helper with no I/O; never raises. ``models`` is the verbatim
     ``/api/tags`` name list.

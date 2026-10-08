@@ -44,7 +44,7 @@ Cloud-API users, teams needing shared history/TM, anyone needing token-streaming
 - **Session** — One Start→Stop live run; owns an ordered Caption list.
 - **Source language** — Detected or selected input language code from the 23-language constant.
 - **Target language** — User-selected output language code from the 23-language constant.
-- **Model** — An installed Ollama model listed via `/api/tags`; suggested default lfm2.5.
+- **Model** — An installed Ollama model listed via `/api/tags`; suggested default ornith-1.5:9b.
 - **ASR** — Transcribe-only speech recognition via whisper-server subprocess on 127.0.0.1:9001.
 
 ## 4. Features — E1 Text mode + shell
@@ -90,12 +90,12 @@ User can submit typed text with a Target language and receive formal / informal 
 
 #### FR-4: Pick Model from installed list with default
 
-User can pick any installed Ollama Model listed from `/api/tags`; default preselects lfm2.5 when present, else first available. Realizes UJ-1.
+User can pick any installed Ollama Model listed from `/api/tags`; default preselects ornith-1.5:9b when present, else first available. Realizes UJ-1.
 
 **Consequences (testable):**
 
 - Picker lists exactly the models `/api/tags` returns at launch (+ refresh action).
-- Default selection rule holds on clean and lfm2.5-absent machines.
+- Default selection rule holds on clean and ornith-absent machines.
 
 #### FR-5: Ship the 23-language constant
 

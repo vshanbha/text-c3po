@@ -27,7 +27,7 @@ The eval harness gates JSON contract conformance only: lfm2.5 scored 100% while 
 
 - Local-first holds: datasets and metric weights download once, then loopback-only; no cloud judge APIs ever (AD-11).
 - Serial single-request LLM discipline and manual-only execution (never CI) extend to every E5 run; gate math and gate table shape stay untouched (AD-6).
-- Gate evidence stays lfm2.5-first; memory hogs (gemma4:e4b-mlx) manual-only by owner override (2026-09-14).
+- Gate evidence stays ornith-first; memory hogs (gemma4:e4b-mlx) manual-only by owner override (2026-09-14).
 - All product code inside `src/text_c3po/`; E5 reuses `services.translate_text` as the only LLM entry point.
 
 ## Non-goals

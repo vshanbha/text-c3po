@@ -38,8 +38,8 @@ where = ["src"]
 #   manually when needed: `pytest -m integration` (CLI -m overrides addopts).
 #   Integration tests are SERIAL ONLY: one LLM request at a time (hardware
 #   holds a single loaded model). Never add parallel runners (pytest-xdist,
-#   workers) for integration paths, and gate on lfm2.5 first
-#   (`--models lfm2.5:latest`); memory hogs such as gemma4:e4b-mlx stay out.
+#   workers) for integration paths, and gate on ornith first
+#   (`--models ornith-1.5:9b`); memory hogs such as gemma4:e4b-mlx stay out.
 # - The E1 eval gate (src/text_c3po/services/eval_harness.py) is a manual-only
 #   script, not a pytest test: run `PYTHONPATH=src python -m
 #   text_c3po.services.eval_harness [--models ...]` explicitly when gate

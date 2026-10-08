@@ -139,3 +139,13 @@ Echoes (valid JSON, unsupported target):
 - ECHO lfm2.5:latest | Persian | sentence 4
 - ECHO lfm2.5:latest | Urdu | sentence 4
 - ECHO lfm2.5:latest | Urdu | sentence 5
+
+## E1 gate — 5x5 smoke 14:14 (2026-10-08)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|
+| ornith-1.5:9b | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.

@@ -255,9 +255,9 @@ def test_main_rejects_unknown_languages(monkeypatch):
     assert harness._parse_args([]).languages == "matrix"
 
 
-def test_pick_default_model_prefers_lfm2():
-    models = ["mistral:latest", "lfm2.5:latest", "qwen3.5:9b-mlx"]
-    assert pick_default_model(models) == "lfm2.5:latest"
+def test_pick_default_model_prefers_ornith():
+    models = ["mistral:latest", "ornith-1.5:9b", "lfm2.5:latest"]
+    assert pick_default_model(models) == "ornith-1.5:9b"
 
 
 def test_pick_default_model_falls_back_to_first():
@@ -267,7 +267,7 @@ def test_pick_default_model_falls_back_to_first():
 def test_pick_default_model_empty_or_bad():
     assert pick_default_model([]) is None
     assert pick_default_model(None) is None
-    assert pick_default_model("lfm2.5:latest") is None
+    assert pick_default_model("ornith-1.5:9b") is None
 
 
 def test_verbatim_names_happy_path():

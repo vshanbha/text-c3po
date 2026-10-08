@@ -86,7 +86,7 @@ flowchart LR
 
 - **Binds:** FR-3, FR-4, FR-5, FR-14
 - **Prevents:** per-model code forks as new Ollama models arrive.
-- **Rule:** The model is an opaque runtime string from `/api/tags` (default `lfm2.5` when present, else first available); no model-specific branches in product code. Quality variance is owned by the eval harness, never by UI gating; the harness reuses the translation service with model passed as a parameter.
+- **Rule:** The model is an opaque runtime string from `/api/tags` (default `ornith-1.5:9b` when present, else first available); no model-specific branches in product code. Quality variance is owned by the eval harness, never by UI gating; the harness reuses the translation service with model passed as a parameter.
 
 ### AD-7 — Transcribe-only ASR boundary [ADOPTED]
 

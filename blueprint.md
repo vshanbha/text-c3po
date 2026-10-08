@@ -32,7 +32,7 @@ here; no cross-imports.
 | GUI framework | **Flet** (Flutter-rendered, Apache-2.0; pin `flet==<exact>` in requirements until 1.0 ships) |
 | LLM runtime | Ollama (OpenAI-compatible at 127.0.0.1:11434) |
 | LLM integration | LangChain: `langchain-ollama` → `ChatOllama` (replaces `ChatOpenAI`) |
-| Model selection | User picks any installed Ollama model at runtime (list from `/api/tags`); suggested default: `lfm2.5` (langchain-ollama pulls on first use if not present) |
+| Model selection | User picks any installed Ollama model at runtime (list from `/api/tags`); suggested default: `ornith-1.5:9b` (langchain-ollama pulls on first use if not present) |
 | Automatic Speech Recognition | whisper.cpp `whisper-server` (Metal GPU), spawned as subprocess by the app on `127.0.0.1:9001`; `transcribe` only (no `-tr`); Large Language Model handles translation |
 | Audio capture | **ffmpeg avfoundation** — device picker: Built-in Microphone, BlackHole (if installed) |
 | Structured output | Live mode: lightweight `{text, source_lang}` JSON; text mode: full `Translation` pydantic schema via `JsonOutputParser`; Ollama JSON format enforced |
@@ -99,7 +99,7 @@ Flet desktop app (native window, no webserver)
 `flet==<pinned>`, `langchain`, `langchain-ollama`, `requests` (plus system `ffmpeg`)
 
 **External services (spawned by app or started before):**
-- `ollama serve` (or desktop app) — model: `lfm2.5` (langchain-ollama pulls automatically if absent)
+- `ollama serve` (or desktop app) — model: `ornith-1.5:9b` (langchain-ollama pulls automatically if absent)
 - `whisper-server -m models/ggml-small.bin --port 9001 --task transcribe` — spawned as subprocess by the app on launch; cleaned up on exit
 
 ## 4. Process — BMAD Method

@@ -2,7 +2,7 @@
 
 MANUAL ONLY, SERIAL ONLY — never CI (pyproject deselects this module by
 default; run explicitly with ``pytest -m integration``). One LLM request
-at a time (single loaded model); lfm2.5-first; memory hogs such as
+at a time (single loaded model); ornith-first; memory hogs such as
 gemma4:e4b-mlx stay out. Every test skips readably when its service is
 down so the module is green-or-skipped on any machine. The full 5x5
 translation gate stays a manual script (see TEST-PLAN.md F1), not a test.
@@ -15,7 +15,7 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
-MODEL = "lfm2.5:latest"
+MODEL = "ornith-1.5:9b"
 
 
 def _ollama_models():
@@ -86,7 +86,7 @@ def test_ollama_probe_live():
     assert isinstance(models, list)
 
 
-def test_translate_live_lfm25():
+def test_translate_live_ornith():
     _require_model()
     from text_c3po.services.translation import translate_text
 

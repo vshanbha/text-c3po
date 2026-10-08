@@ -29,8 +29,8 @@ vshanbha's v1 translator needs a cloud key and a browser; the live-translate PoC
   - **intent:** User can submit typed text with a target language and receive formal / informal / origin_language.
   - **success:** Valid input returns all three fields; malformed model JSON surfaces as a retryable inline error, never raw; empty input is rejected client-side with no LLM call.
 - **CAP-4**
-  - **intent:** User can pick any installed Ollama model listed from `/api/tags`, defaulting to lfm2.5 when present else first available.
-  - **success:** Picker lists exactly what `/api/tags` returns at launch plus a refresh action; default-selection rule holds with and without lfm2.5 installed.
+  - **intent:** User can pick any installed Ollama model listed from `/api/tags`, defaulting to ornith-1.5:9b when present else first available.
+  - **success:** Picker lists exactly what `/api/tags` returns at launch plus a refresh action; default-selection rule holds with and without ornith-1.5:9b installed.
 - **CAP-5**
   - **intent:** App offers the 23 `{code, name}` languages from blueprint §2.1 as the target (and source-override) list.
   - **success:** Picker contains all 23 codes/names verbatim; any model×language combo submits with no client-side block.

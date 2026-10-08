@@ -14,7 +14,7 @@ All paths below need these installed first:
 - **Python 3.12** (check with `python3 --version`) including **pip**
   (`python3 -m pip --version`)
 - **Ollama** ([ollama.com](https://ollama.com)) with at least one model
-  pulled: `ollama pull lfm2.5` (the default; any installed model works via
+  pulled: `ollama pull ornith-1.5:9b` (the default; any installed model works via
   the in-app picker)
 
 ## Run
@@ -45,14 +45,14 @@ uv run text-c3po              # or: uv run python -m text_c3po.app
 
 Live speech (mic/BlackHole → whisper-server → timestamped captions) and
 file translation (mp3/wav/m4a/mp4 → translate) ship in E2/E3. First run
-`./setup.sh` on a clean machine (brews, models, `lfm2.5`, unit suite).
+`./setup.sh` on a clean machine (brews, models, `ornith-1.5`, unit suite).
 
 ## Testing
 
 - Fast unit checks (no Ollama, default): `pytest` — or `uv run pytest`
 - Manual Ollama-backed tests (opt-in, never CI): `pytest -m integration`
-- E1 translation gate, repeatable (serial, lfm2.5-first):  
-  `python -m text_c3po.services.eval_harness --models lfm2.5:latest`
+- E1 translation gate, repeatable (serial, ornith-first):  
+  `python -m text_c3po.services.eval_harness --models ornith-1.5:9b`
   Scores append to the model-quality `research.md` under
   `_bmad-output/planning-artifacts/research/`. Full policy (serial-only,
   memory-hog exclusions) is documented in `pyproject.toml` and the harness

@@ -33,7 +33,7 @@ lifecycle, and end-to-end speech. Regressions fixed in review are tagged
 
 Environment: macOS Apple Silicon, `ollama serve` running, `brew install
 ffmpeg whisper-cpp`, `brew install --cask blackhole-2ch`,
-Python 3.12 with `uv`. Fast model for all live checks: `lfm2.5:latest`.
+Python 3.12 with `uv`. Fast model for all live checks: `ornith-1.5:9b`.
 Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded
 (G1 gate) — owner override permits loading it for manual G2 capability
 comparisons, one model at a time.
@@ -47,7 +47,7 @@ sounddevice/PortAudio retired.
 
 - **S1 — clean-machine install.** On a fresh Mac: `./setup.sh`.
   Expect: brews install, `models/ggml-small.bin` downloads once,
-  `lfm2.5` pulls, unit suite ends green, exit 0. Re-run: every step
+  `ornith-1.5:9b` pulls, unit suite ends green, exit 0. Re-run: every step
   prints "present, skipping".
 - **S2 — setup failure modes.** No Homebrew → readable abort naming
   https://brew.sh; `ollama serve` down at pull time → warning naming
@@ -59,7 +59,7 @@ Needs: `ollama serve` you can stop/start; two installed models for A4.
 
 - **A1 — healthy launch.** `ollama serve` up, then `uv run text-c3po`.
   Expect: green Connected dot, picker lists installed models with
-  `lfm2.5` preselected, no snackbar.
+  `ornith-1.5:9b` preselected, no snackbar.
 - **A2 — launch with Ollama down.** Stop `ollama serve`, launch.
   Expect: red Down dot; hover reads "start it with `ollama serve`".
   Start `ollama serve`: dot flips green within ~15 s (background poll),
@@ -75,7 +75,7 @@ Needs: `ollama serve` you can stop/start; two installed models for A4.
 
 ## B. Text translation (E1)
 
-Needs: `ollama serve` with lfm2.5 (B6/B7 probes reuse it).
+Needs: `ollama serve` with ornith-1.5:9b (B6/B7 probes take `--model`).
 
 - **B1 — happy path.** Type a sentence, target German, Translate.
   Expect: formal/informal tabs fill plus "Translated · N chars" tally.
@@ -259,7 +259,7 @@ for F15; VoiceOver for F6 (screen-reader machine only).
 Needs: `ollama serve`, patience (25 serial LLM calls per model).
 
 - **G1.** `PYTHONPATH=src uv run python -m
-  text_c3po.services.eval_harness --models lfm2.5:latest`.
+  text_c3po.services.eval_harness --models ornith-1.5:9b`.
   Expect: exit 0, every model ≥95% JSON-valid, dated section appended
   to the model-quality `research.md`. Slow (25 LLM calls per model:
   5 sentences × 5 languages; use `--languages all` for the 23×5 full).
@@ -344,7 +344,7 @@ executes the code stories first; **this section is deliberately last.**
 
 - [ ] **S1/S2 — fresh-machine `setup.sh`.** Full §0 run on a clean Mac
   (not a re-run): installs finish, `models/ggml-small.bin` downloads once,
-  `lfm2.5` pulls, unit suite green, ≤15 min, exit 0; second run prints
+  `ornith-1.5:9b` pulls, unit suite green, ≤15 min, exit 0; second run prints
   "present, skipping" everywhere. *(Only re-run/idempotency is proven today —
   E4 retro, "Evidence inventory (missing)".)*
 - [ ] **§F — real-mic live session, all rows.** The live path has never run
