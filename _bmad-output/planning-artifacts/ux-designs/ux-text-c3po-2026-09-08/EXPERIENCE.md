@@ -34,7 +34,7 @@ Microcopy. Brand voice and aesthetic posture live in `DESIGN.md` (Brand & Style)
 
 | Do | Don't |
 |---|---|
-| "Pick a model — lfm2.5 is the default." | "Select your AI engine! ✨" |
+| "Pick a model — ornith-1.5:9b is the default." | "Select your AI engine! ✨" |
 | "Ollama isn't running. Start `ollama serve`, then Retry." | "Connection failed (ECONNREFUSED 11434)." |
 | "Couldn't parse that one. Retry." | "JSON validation error: expected formal:string." |
 | "Listening — captions appear below." | "Session initialized successfully ✓" |
@@ -121,7 +121,7 @@ macOS specifics: packaged bundle carries `NSMicrophoneUsageDescription`; first L
 
 ### Flow 1 — Translate before sending (vshanbha, Tuesday morning, UJ-1)
 
-1. vshanbha opens the app; Text mode is up, top strip shows Ollama connected + lfm2.5 preselected.
+1. vshanbha opens the app; Text mode is up, top strip shows Ollama connected + ornith-1.5:9b preselected.
 2. He pastes an English paragraph, picks German as target, hits Translate (`Ctrl+Enter`).
 3. Three cards render: formal (Sie), informal, and commentary noting the register choice, plus an "origin: English" caption.
 4. **Climax:** vshanbha copies the formal card with one tap and pastes it into his message — the structured output meant he never had to guess which register the model used; the app told him, side by side.

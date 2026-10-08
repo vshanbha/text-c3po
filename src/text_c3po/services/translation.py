@@ -53,10 +53,11 @@ def _debug_payloads() -> bool:
 
 # Context window: deliberately NOT overridden. An earlier revision pinned
 # num_ctx=4096 on the theory that small local models are memory-bound, but
-# live `ollama ps` shows lfm2.5 loaded at 128K fully on GPU (7.6 GB) — the
-# premise was wrong for this hardware. Worse, pinning a small value forces an
-# Ollama model reload whenever it differs from the loaded context, adding
-# seconds to every Translate. Let the server/model default decide.
+# live `ollama ps` (2026-10-08) shows ornith-1.5:9b resident fully on GPU at
+# its native context (262144 per `ollama show`) — the premise was wrong for
+# this hardware. Worse, pinning a small value forces an Ollama model reload
+# whenever it differs from the loaded context, adding seconds to every
+# Translate. Let the server/model default decide.
 
 # Hung Ollama must not freeze the caller forever: sync httpx timeout (s)
 # forwarded via sync_client_kwargs (ollama Client -> httpx). UI also runs

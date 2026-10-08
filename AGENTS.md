@@ -1,5 +1,5 @@
 <!-- bmad:context -->
-<!-- Verified 2026-09-09 against E1-done tree. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
+<!-- Verified 2026-10-08 against ornith-default tree (f4ea3c5). Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 
 ## text-c3po
 
@@ -19,9 +19,9 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 
 ## Running and verifying
 
-- Use prereqs Node >= 20.12, uv, ollama, whisper-cpp, ffmpeg; verified node v24.11.1, uv 0.12.10, ollama 0.33.3 with lfm2.5 present.
+- Use prereqs Node >= 20.12, uv, ollama, whisper-cpp, ffmpeg; verified node v24.11.1, uv 0.12.10, ollama 0.40.1 with ornith-1.5:9b present (default).
 - Work from the repo root: the app with `PYTHONPATH=src python -m text_c3po.app` (needs `ollama serve`); fast checks with `pytest` (unit only, integration deselected; `pythonpath=src` is wired in pyproject).
-- Ollama-backed tests are manual-only and serial (`pytest -m integration`, lfm2.5-first); the eval gate is `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm2.5:latest`. Never run Ollama tests in CI.
+- Ollama-backed tests are manual-only and serial (`pytest -m integration`, ornith-first); the eval gate is `PYTHONPATH=src python -m text_c3po.services.eval_harness --models ornith-1.5:9b`. Never run Ollama tests in CI.
 - Human-run checklist lives in `TEST-PLAN.md` (windows, dialogs, snackbars, hardware, subprocess timing, real speech) — run it top to bottom after any epic lands.
 - No lint or typecheck configured in this repo.
 
@@ -42,8 +42,8 @@ Notes:
 ## Conventions that differ from defaults
 
 - Pin `flet==exact` in `requirements.txt` until 1.0 ships; read the changelog before any upgrade.
-- Talk to Ollama via langchain-ollama ChatOllama with JSON format enforced; list runtime models from `/api/tags`, suggested default lfm2.5.
-- Run translation with thinking disabled (`reasoning=False` in the service): the reasoning trace costs ~10s per call with zero translation gain. Do not override `num_ctx` — the server default applies (lfm2.5 loads at 128K fully on GPU here); pinning a small value forces a model reload per call. Never add either back without re-running the gate.
+- Talk to Ollama via langchain-ollama ChatOllama with JSON format enforced; list runtime models from `/api/tags`, suggested default ornith-1.5:9b.
+- Run translation with thinking disabled (`reasoning=False` in the service): the reasoning trace costs ~10s per call with zero translation gain. Do not override `num_ctx` — the server default applies (ornith-1.5:9b, native context 262144, loads fully on GPU on this machine); pinning a smaller value forces a model reload whenever it differs from the loaded context. Never add either back without re-running the gate.
 - The translation contract is language names ("German"), never picker codes ("de"); UI layers convert via `languages.name_for_code` at call time so manual use matches the gated test path.
 - Ship the 23-language code and name constant from blueprint section 2.1; keep the backend model-agnostic.
 - Spawn `whisper-server` as a subprocess on 127.0.0.1:9001 with transcribe only; do the translation in the LLM.

@@ -3,7 +3,7 @@
 ## A. Mechanism decisions (not PRD normative)
 
 - LLM integration: `langchain-ollama` ChatOllama, JSON format enforced; text mode full Translation schema via JsonOutputParser; live/file lightweight `{text, source_lang}` JSON.
-- Model discovery: runtime list from Ollama `/api/tags`; suggested default lfm2.5 (present, 5.2GB, verified ollama 0.33.3).
+- Model discovery: runtime list from Ollama `/api/tags`; suggested default ornith-1.5:9b (present, 6.6GB, verified ollama 0.40.1).
 - ASR: whisper.cpp `whisper-server -m models/ggml-small.bin --port 9001 --task transcribe`, spawned as app subprocess; LLM does translation, never `-tr`.
 - VAD port: live-translate/transcribe.py RMS silence threshold, flush on 2 silent frames or max-utterance.
 - Deps post-rewrite: `flet==0.86.5`, `sounddevice`, `langchain`, `langchain-ollama`, `requests`; plus `brew install portaudio`, ffmpeg, whisper-cpp, Node ≥ 20.12, uv.

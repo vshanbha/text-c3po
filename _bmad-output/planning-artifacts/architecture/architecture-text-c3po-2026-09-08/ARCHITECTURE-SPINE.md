@@ -148,7 +148,7 @@ flowchart LR
 | langchain / langchain-ollama | E1-latest at install (ChatOllama, JSON format enforced) |
 | ffmpeg | system prerequisite (capture via avfoundation + file decode; D7-A) |
 | requests | E2-latest at install |
-| ollama runtime | 0.33.3 verified; models listed live, default lfm2.5 5.2GB |
+| ollama runtime | 0.40.1 verified; models listed live, default ornith-1.5:9b 6.6GB |
 | whisper-server (whisper.cpp) | ggml 0.23.0 verified; model ggml-small.bin default |
 | ffmpeg | system prerequisite |
 

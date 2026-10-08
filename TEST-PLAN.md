@@ -111,7 +111,8 @@ Needs: `ollama serve` with ornith-1.5:9b (B6/B7 probes take `--model`).
 - **B6 — long multi-paragraph translation (early-stop flake, repeatable).**
   Paste the 10-paragraph lighthouse text (`\n\n`-separated; source:
   `LIGHTHOUSE_PARAS` in `tests/benchmark/probe_collapse.py`), target
-  Spanish, Translate (lfm2.5).
+  Spanish, Translate with model `lfm2.5:latest` selected (the collapse
+  flake was characterized on lfm2.5).
   - Known flake: ~3/5 runs collapse to the first-sentence collapse
     (stable "El viejo faro se encontraba" prefix, ~78–110 chars) with
     `done_reason='stop'` — clean stop, not a token cap.

@@ -29,7 +29,7 @@ Local-first Mac users translating live meetings, videos, or text across 23 aspir
 ## Locked choices (from blueprint §2, verified 2026-09-08)
 
 - GUI: Flet, pin `flet==0.86.5` exact (0.x churn).
-- LLM: Ollama at 127.0.0.1:11434, `langchain-ollama` ChatOllama, user picks installed model at runtime from `/api/tags`, default lfm2.5 (present, 5.2GB). ollama 0.33.3 verified.
+- LLM: Ollama at 127.0.0.1:11434, `langchain-ollama` ChatOllama, user picks installed model at runtime from `/api/tags`, default ornith-1.5:9b (present, 6.6GB). ollama 0.40.1 verified.
 - ASR: whisper-server Metal GPU as app subprocess on 127.0.0.1:9001, transcribe only; LLM does translation. ggml-small.bin ready in ~2s.
 - Capture: sounddevice PortAudio picker (Built-in Mic, BlackHole if present). Needs `brew install portaudio`.
 - Scope: 100% in text-c3po/; live-translate/ is PoC, no cross-imports.
