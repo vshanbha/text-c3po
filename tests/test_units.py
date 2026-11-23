@@ -255,9 +255,9 @@ def test_main_rejects_unknown_languages(monkeypatch):
     assert harness._parse_args([]).languages == "matrix"
 
 
-def test_pick_default_model_prefers_ornith():
-    models = ["mistral:latest", "ornith-1.5:9b", "lfm2.5:latest"]
-    assert pick_default_model(models) == "ornith-1.5:9b"
+def test_pick_default_model_prefers_lfm3():
+    models = ["mistral:latest", "lfm3:latest", "ornith-1.5:9b"]
+    assert pick_default_model(models) == "lfm3:latest"
 
 
 def test_pick_default_model_falls_back_to_first():

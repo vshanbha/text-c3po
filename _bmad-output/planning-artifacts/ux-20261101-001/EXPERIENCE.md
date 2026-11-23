@@ -13,7 +13,7 @@ updated: 2026-11-01
 ## Foundation
 
 - **Form factor:** System-wide utility (macOS first). Works across any app.
-- **Architecture:** Menu bar/system tray app running in background. Handles hotkey registration, selection capture (Accessibility APIs), overlay rendering (always-on-top borderless window/layer), and translation via existing `text-c3po` backend (Ollama + ornith-1.5:9b, reasoning disabled).
+- **Architecture:** Menu bar/system tray app running in background. Handles hotkey registration, selection capture (Accessibility APIs), overlay rendering (always-on-top borderless window/layer), and translation via existing `text-c3po` backend (Ollama + lfm3, reasoning disabled).
 - **UI System:** None named. Custom overlay layer. `DESIGN.md` is the visual identity reference.
 - **Permissions:** Requires Accessibility permission on macOS to read selected text system-wide. Menu bar app provides place to explain/link to System Settings.
 - **Backend:** Reuse existing Ollama setup and dependencies. Only frontend/UX surface changes.

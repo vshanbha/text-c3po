@@ -81,6 +81,21 @@ if [ "$HAVE_MEDIUM" = "1" ]; then
   fetch_model ggml-medium.bin
 fi
 
+# Two models, two roles: lfm3 is the product default (the app preselects
+# it on a clean machine); ornith-1.5:9b is kept only because the
+# integration tests (tests/test_integration.py, ornith-first serial
+# policy) need it installed on a clean machine.
+if ollama list 2>/dev/null | grep -q "^lfm3"; then
+  echo "setup.sh: lfm3 present, skipping."
+else
+  echo "setup.sh: ollama pull lfm3 (needs 'ollama serve' running) ..."
+  if ollama pull lfm3; then
+    echo "setup.sh: lfm3 ready."
+  else
+    echo "setup.sh: warning: ollama pull failed — start 'ollama serve' and re-run './setup.sh'."
+  fi
+fi
+
 if ollama list 2>/dev/null | grep -q "^ornith"; then
   echo "setup.sh: ornith present, skipping."
 else
@@ -102,7 +117,7 @@ setup.sh: done.
   Run:            ollama serve   # if not already running
                   uv run text-c3po
   Manual checks:  TEST-PLAN.md (top to bottom after any epic)
-  Live gate:      PYTHONPATH=src uv run python -m text_c3po.services.eval_harness --models ornith-1.5:9b
+  Live gate:      PYTHONPATH=src uv run python -m text_c3po.services.eval_harness --models lfm3
   BlackHole routing (optional, for system-audio capture): Audio MIDI Setup ->
   create a Multi-Output Device (speakers + BlackHole, Drift Correction on),
   set it as the system output.
