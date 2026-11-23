@@ -129,17 +129,53 @@ class Translation(BaseModel):
     )
 
 
+# lfm3 long-input fix (evidence 2026-11-23): at reasoning=False with long
+# input (~776 chars), lfm3 stopped after the first sentence (~89 chars,
+# done_reason='stop'). A direct Ollama prompt matrix found TWO triggers:
+# (1) langchain's verbose pydantic instruction block bound at
+# {format_instructions}, and (2) the template line "Respond strictly with
+# the translation of the complete input text in {language}" — with that
+# line the model returned first-sentence-only in 9/9 runs across every
+# instruction wording, without it 5/5+ full (its output-language intent is
+# already covered by the ENTIRE-output line above). The compact wording
+# replaces langchain's block and must state the full contract itself —
+# single JSON object, all three fields, COMPLETE input — because
+# JsonOutputParser does NOT validate in installed langchain_core 1.6.2
+# (.parse() only extracts JSON; missing/extra keys pass through), so the
+# prompt contract plus _normalize() are the sole enforcers. Keep in sync
+# with the Translation schema.
 _SYSTEM_TEMPLATE = """You are a translator. Translate the input text below into {language}.
 This input is one part of a longer document; translate only this part, preserving its full meaning.
 The ENTIRE output must be written in {language} — every sentence, no exceptions, no English paraphrase.
-Respond strictly with the translation of the complete input text in {language}.
 Where possible provide both formal and informal versions.
 Translated output must follow the JSON schema per the below instructions.
 {format_instructions}"""
 
 
+def _compact_format_instructions(language: str) -> str:
+    """One-line JSON contract naming the three ``Translation`` fields.
+
+    Follows the proven T1 wording (compact 3-field instruction that returned
+    the full translation at reasoning=False with long input); see the
+    evidence comment on ``_SYSTEM_TEMPLATE``. Not
+    ``parser.get_format_instructions()``: langchain's verbose pydantic block
+    is one of the two proven lfm3 first-sentence-stop triggers.
+    """
+    return (
+        f'Respond ONLY as JSON with keys: "formal" (formal {language} translation '
+        f'of the COMPLETE input), "informal" (informal {language} translation of '
+        f'the COMPLETE input), "origin_language" (language of the input). '
+        f"Translate every sentence of the input."
+    )
+
+
 def _build_request(text, target_language, parser):
-    """Return the v1 system+human message list with format instructions bound."""
+    """Return the v1 system+human message list with format instructions bound.
+
+    ``parser`` stays in the signature for the callers/tests; the bound
+    instructions are the compact contract above, not
+    ``parser.get_format_instructions()`` (see the comment on the template).
+    """
     prompt = ChatPromptTemplate.from_messages(
         [
             SystemMessagePromptTemplate.from_template(_SYSTEM_TEMPLATE),
@@ -149,7 +185,7 @@ def _build_request(text, target_language, parser):
     return prompt.format_prompt(
         text=text,
         language=target_language,
-        format_instructions=parser.get_format_instructions(),
+        format_instructions=_compact_format_instructions(target_language),
     ).to_messages()
 
 
