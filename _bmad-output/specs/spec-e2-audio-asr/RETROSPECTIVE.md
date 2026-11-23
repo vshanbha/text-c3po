@@ -45,3 +45,29 @@ None new. E1-A7 (native eyeball) is partially answered by the E4 browser E2E (`/
 
 - Single continuous implementation run (commits `d31a5f1`–`0906a98`); review was three parallel fresh-context passes (Task subagents) triaged by the implementer, not `bmad-code-review` (skill not installed).
 - Live proofs ran on macOS Tahoe / Python 3.12 / ollama 0.33.3 / whisper-cpp / ffmpeg 9 / flet 0.86.5 with lfm2.5 + ggml-small.
+
+## Addendum (2026-11-23) — post-retro work the original verdict could not see
+
+The original verdict above (2026-09-11) covered stories 2-1–2-4 only. Two
+stories and one major decision landed after it:
+
+- **Story 2-5 (D7-A, built 2026-09-16): sounddevice capture replaced by the
+  ffmpeg avfoundation pipeline** (full swap per sprint-change-proposal
+  2026-09-16, triggered by the failed manual BlackHole in-call test). This
+  **supersedes finding F3 above**: `sounddevice==0.5.6` is no longer a
+  dependency of this project — enumeration, pipe capture, silent-reset
+  surfacing, and the no-audio trip (F15) are ffmpeg-owned now. Code review
+  closed after 8 passes; 200 unit green; manual evidence F7 (BlackHole
+  loopback) verified 2026-09-16 and F15 (no-audio auto-stop) verified
+  2026-09-16. **F14 (device unplug) remains unverified** — the story's last
+  open condition.
+- **Story 2-6 (dual mic + loopback capture):** D10 (2026-09-16) filed it as
+  backlog, gated on an E2 SPEC amendment (ordering + gap contracts) before any
+  build. **Owner decision 2026-11-23: leave E2 open** — `epic-2` stays
+  `in-progress` until 2-6 is resolved (built or explicitly re-scoped), rather
+  than deferring it out of the epic. E6 planning proceeds in parallel; 2-6 is
+  not on the E6 critical path.
+- **Verdict unchanged: accepted-with-open-items.** The named open items are
+  now: F14 manual verification (blocks story 2-5 only) and story 2-6 (blocks
+  epic closure). Open question 2 (BlackHole-absent enumeration) still folds
+  into the next fresh-machine setup run.

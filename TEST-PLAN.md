@@ -47,7 +47,8 @@ sounddevice/PortAudio retired.
 
 - **S1 — clean-machine install.** On a fresh Mac: `./setup.sh`.
   Expect: brews install, `models/ggml-small.bin` downloads once,
-  `ornith-1.5:9b` pulls, unit suite ends green, exit 0. Re-run: every step
+  `lfm3` (default) and `ornith-1.5:9b` (integration policy) pull,
+  unit suite ends green, exit 0. Re-run: every step
   prints "present, skipping".
 - **S2 — setup failure modes.** No Homebrew → readable abort naming
   https://brew.sh; `ollama serve` down at pull time → warning naming
@@ -59,7 +60,7 @@ Needs: `ollama serve` you can stop/start; two installed models for A4.
 
 - **A1 — healthy launch.** `ollama serve` up, then `uv run text-c3po`.
   Expect: green Connected dot, picker lists installed models with
-  `ornith-1.5:9b` preselected, no snackbar.
+  `lfm3` preselected, no snackbar.
 - **A2 — launch with Ollama down.** Stop `ollama serve`, launch.
   Expect: red Down dot; hover reads "start it with `ollama serve`".
   Start `ollama serve`: dot flips green within ~15 s (background poll),
@@ -75,7 +76,7 @@ Needs: `ollama serve` you can stop/start; two installed models for A4.
 
 ## B. Text translation (E1)
 
-Needs: `ollama serve` with ornith-1.5:9b (B6/B7 probes take `--model`).
+Needs: `ollama serve` with `lfm3` (the default) plus `lfm2.5:latest` (B6/B7 take `--model`).
 
 - **B1 — happy path.** Type a sentence, target German, Translate.
   Expect: formal/informal tabs fill plus "Translated · N chars" tally.
@@ -127,6 +128,20 @@ Needs: `ollama serve` with ornith-1.5:9b (B6/B7 probes take `--model`).
     (`num_predict` now `-1`; cap ruled out by `done_reason` evidence).
   - Not observed on the default: 5/5 full runs on ornith-1.5:9b,
     verified 2026-10-08 via the probe above (no model argument).
+  - **lfm3 first-sentence stop (FIXED 2026-11-23, re-verified):** with
+    the app's `reasoning=False` and long input, lfm3 stopped after the
+    first sentence (formal ~89 of 776 chars, `done_reason='stop'`,
+    deterministic). Root cause: TWO prompt triggers — langchain's
+    verbose 3-field `format_instructions` AND the template line
+    "Respond strictly with the translation of the complete input text"
+    (9/9 short with it, 5/5+ full without). Thinking-on masks the bug
+    but is not app-viable (+18s short / 94s long > 60s timeout). Fix in
+    `translation.py`: compact same-contract instructions + that line
+    removed; fresh-context review APPROVE (independently reproduced
+    both triggers). Re-verify evidence (agent-run battery; owner manual
+    pass still welcome): probe_collapse lfm3 via app path **5/5 at
+    851–873 chars** (was 89–101); gate 25/25 lfm3 + ornith; 23×5
+    115/115; probe_echo 4/4 RENDERED. [R] `da799e2`.
 - **B7 — unsupported target language (accepted limitation, lfm2.5-only).**
   Select model `lfm2.5:latest`, pick Kannada or Marathi, Translate
   "Good morning. How are you today?".
@@ -259,13 +274,22 @@ for F15; VoiceOver for F6 (screen-reader machine only).
   bare Idle, not a stuck red Live). Route audio in and Start again:
   captions flow, no trip. Verified 2026-09-16 by owner manual test:
   trip fired with `no audio from 'BlackHole 2ch' for ~60s` in the log.
+- **F16 — concurrent audio client (Finding 1, open).** With a Live
+  session running (or the app open in Live view), start another
+  mic-using call — Zoom / Teams / FaceTime / browser Meet — and use it
+  normally. Expect: **no system hang**; at worst text-c3po's capture
+  degrades gracefully (labeled gap rows or the F15 no-audio trip) while
+  the other call keeps working. Owner observed a **machine hang** on
+  2026-11-23 (see stabilization run-sheet Finding 1) — no prior row
+  exercised parallel audio use. Stays open until the defect is fixed
+  and this row re-verified end to end.
 
 ## G. Eval gate (E1, repeatable)
 
 Needs: `ollama serve`, patience (25 serial LLM calls per model).
 
 - **G1.** `PYTHONPATH=src uv run python -m
-  text_c3po.services.eval_harness --models ornith-1.5:9b`.
+  text_c3po.services.eval_harness --models lfm3`.
   Expect: exit 0, every model ≥95% JSON-valid, dated section appended
   to the model-quality `research.md`. Slow (25 LLM calls per model:
   5 sentences × 5 languages; use `--languages all` for the 23×5 full).
@@ -350,7 +374,8 @@ executes the code stories first; **this section is deliberately last.**
 
 - [ ] **S1/S2 — fresh-machine `setup.sh`.** Full §0 run on a clean Mac
   (not a re-run): installs finish, `models/ggml-small.bin` downloads once,
-  `ornith-1.5:9b` pulls, unit suite green, ≤15 min, exit 0; second run prints
+  `lfm3` (default) and `ornith-1.5:9b` (integration policy) pull, unit
+  suite green, ≤15 min, exit 0; second run prints
   "present, skipping" everywhere. *(Only re-run/idempotency is proven today —
   E4 retro, "Evidence inventory (missing)".)*
 - [ ] **§F — real-mic live session, all rows.** The live path has never run
@@ -382,11 +407,16 @@ executes the code stories first; **this section is deliberately last.**
   `translate_text ok` lines match displayed lengths (B6);
   `grep -i -E "guten morgen|good morning" <log>` is empty (no
   transcripts — payload content needs `TEXT_C3PO_DEBUG_PAYLOADS=1`).
-- [ ] **GitHub Pages repo settings.** Repo API still reports a legacy
+- [x] **GitHub Pages repo settings.** Repo API still reports a legacy
   `source: master//docs` alongside `build_type: workflow`. Confirm in
   Settings → Pages that the workflow (not a branch folder) is the active
   source, and that `https://vshanbha.github.io/text-c3po/` serves the MkDocs
   Material build. Settings-only; not code.
+  Verified 2026-11-23 via GitHub API (`gh api .../pages`: `build_type:
+  workflow`, `status: built`, legacy `source` field present exactly as
+  predicted) plus live fetch: HTTP 200 serving the MkDocs Material build
+  (Material footer, nav = Overview/Blueprint/PRD/retrospectives/Test plan).
+  No Settings click needed — `build_type: workflow` is the active source.
 - [ ] **Deployment scope decision (S3-D5).** If distribution beyond
   "copy the bundle" is wanted: sign + notarize, and document Gatekeeper for
   the receiving Mac. Otherwise record ad-hoc-only as accepted.

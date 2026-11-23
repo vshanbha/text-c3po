@@ -82,3 +82,39 @@ Suite now 134 unit + 1 web smoke + 6 integration, all green
 
 - One continuous run (commits `9adf62f`–`23dfaf3` plus review/fix commits); final review was three parallel fresh-context Task subagents over `a7c39f1..HEAD` with the E2/E3 ranges explicitly excluded to avoid re-triage.
 - Environment as E2 (plus models/ggml-small.bin fetched by setup.sh into `models/`).
+
+## Addendum (2026-11-23) — post-retro stories 4-6–4-10 and action-item dispositions
+
+The original verdict above (2026-09-11) covered stories 4-1–4-5 only. Five
+stories shipped after it; the epic's shape changed underneath the retro:
+
+- **Story 4-6 (publish docs to GitHub Pages):** delivered by the MkDocs
+  Material migration (`static.yml`, `mkdocs build --strict` from docs/
+  symlinks); was untracked until 4-7 reconciled it. Done.
+- **Story 4-7 (fix unit CI + repair sprint tracking):** web-serve smoke runs
+  without `uv`, empty-collection masking stopped, stories.yaml reconciled
+  with sprint-status.yaml. Done.
+- **Story 4-8 (refresh stale v1 docs and infra):** parent AGENTS.md, .devcontainer,
+  pyproject comment, docs/requirements.txt pin. Done.
+- **Story 4-9 (file logging, D8):** rotating `~/Library/Logs/text-c3po/` log
+  + 7 module loggers + payload gate + 5 tests. Built 2026-09-16; review
+  closed (handler isolation fixed in `c6e1d93`), 205 unit green. **Last open
+  condition: the TEST-PLAN §J "Log file" manual row.**
+- **Story 4-10 (Dependabot remediation, D16-A):** oauthlib 3.3.1→4.0.0,
+  urllib3 2.7.0→2.8.0 in `uv.lock` only; pip-audit + OSV report 0 hits
+  (was 5 GHSA: 2 high, 3 moderate); 207 unit green. Done.
+- **Action item 1 (4-3 packaging):** resolved by D9 (2026-09-16) — moved to
+  E5 story 5.1; no longer E4's to close. Closed.
+- **Action item 2 (TEST-PLAN top-to-bottom pass):** **owner decision
+  2026-11-23** — clear the E4-owned §J rows now (log file; GitHub Pages
+  settings source check); defer the remaining human-battery rows (§F
+  live-mic battery, F6 VoiceOver, §H packaging, D1–D3, E6 soak) to one
+  consolidated pre-release session. The §J gate is the *v2-shippable* gate,
+  not the E4 epic gate — it does not block E4 closure or E6 kickoff.
+- **Open question 1 (`flet test` as UI-regression layer):** still open, no
+  change; unit + smoke + neo-skill remain the standing stack.
+- **Coverage-count anomaly:** standing disposition from the audit above —
+  TEST-PLAN counts are test cardinalities, not coverage ratios; pin the tool
+  only if a ratio ever gates a decision.
+- **Verdict unchanged: accepted-with-open-items.** The single named open item
+  for epic closure is now the 4-9 log-file manual row.
