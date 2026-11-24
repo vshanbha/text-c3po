@@ -33,7 +33,7 @@ lifecycle, and end-to-end speech. Regressions fixed in review are tagged
 
 Environment: macOS Apple Silicon, `ollama serve` running, `brew install
 ffmpeg whisper-cpp`, `brew install --cask blackhole-2ch`,
-Python 3.12 with `uv`. Fast model for all live checks: `ornith-1.5:9b`.
+Python 3.12 with `uv`. Fast model for all live checks: `lfm3`.
 Serial only — one LLM call at a time; keep `gemma4:e4b-mlx` unloaded
 (G1 gate) — owner override permits loading it for manual G2 capability
 comparisons, one model at a time.
@@ -47,7 +47,7 @@ sounddevice/PortAudio retired.
 
 - **S1 — clean-machine install.** On a fresh Mac: `./setup.sh`.
   Expect: brews install, `models/ggml-small.bin` downloads once,
-  `lfm3` (default) and `ornith-1.5:9b` (integration policy) pull,
+  `lfm3` pulls,
   unit suite ends green, exit 0. Re-run: every step
   prints "present, skipping".
 - **S2 — setup failure modes.** No Homebrew → readable abort naming
@@ -56,7 +56,10 @@ sounddevice/PortAudio retired.
 
 ## A. Launch and connectivity (E1 + snackbar fix)
 
-Needs: `ollama serve` you can stop/start; two installed models for A4.
+Needs: `ollama serve` you can stop/start; two installed models for A4 —
+on a clean machine pull any second model first (e.g.
+`ollama pull minicpm-v4.6:latest`); do **not** pull ornith for tests
+(VRAM pressure, F16 hang evidence).
 
 - **A1 — healthy launch.** `ollama serve` up, then `uv run text-c3po`.
   Expect: green Connected dot, picker lists installed models with
@@ -69,7 +72,8 @@ Needs: `ollama serve` you can stop/start; two installed models for A4.
 - **A3 — mid-run disconnect.** With the app open, stop `ollama serve`.
   Expect: **exactly one** "Ollama disconnected" snackbar with a working
   Retry action. Restart `ollama serve`: dot returns green, no repeat.
-- **A4 — model switch sticks.** Pick another installed model, press
+- **A4 — model switch sticks.** *Needs a second installed model (any —
+  see §A; not ornith).* Pick another installed model, press
   Translate. Expect: the new model answers (check `ollama ps`).
   **[R]** `0906a98` (Dropdown `on_change` never fired in flet 0.86;
   now `on_select` — before the fix the picker was decorative).
@@ -142,6 +146,20 @@ Needs: `ollama serve` with `lfm3` (the default) plus `lfm2.5:latest` (B6/B7 take
     pass still welcome): probe_collapse lfm3 via app path **5/5 at
     851–873 chars** (was 89–101); gate 25/25 lfm3 + ornith; 23×5
     115/115; probe_echo 4/4 RENDERED. [R] `da799e2`.
+  - **German long input FIXED (closed 2026-11-24, [R] `6420131`):**
+    raw-first methodology first proved the model innocent (raw plain
+    dual full, 595/767) and pinned trigger #3 as a framing CLASS —
+    `_SYSTEM_TEMPLATE` collapsed to the single proven instruction
+    (review APPROVE). Residual ~10–20% stochastic partial proved
+    model-side too (raw mirror 4/20, `done_reason='stop'`, skip-middle
+    cut points 362–602; Spanish long clean, shorts never flake) and is
+    handled by the **hybrid thinking ladder**: long inputs (>300 chars)
+    get rung-2 think-off retry then rung-3 think-on @360s timeout, with
+    thinking streamed to the UI. **Battery 2026-11-24 (re-verified):**
+    German long 5/5 full (844–876) incl. a live rung1→2→3 firing
+    (529→618→874); probe_collapse 5/5 (822–852); gate 25/25 both
+    models; 23×5 115/115; 218 unit. Rung-3 live proof: 8,662 thinking
+    deltas streamed, JSON clean, 180.5s.
 - **B7 — unsupported target language (accepted limitation, lfm2.5-only).**
   Select model `lfm2.5:latest`, pick Kannada or Marathi, Translate
   "Good morning. How are you today?".
@@ -374,8 +392,7 @@ executes the code stories first; **this section is deliberately last.**
 
 - [ ] **S1/S2 — fresh-machine `setup.sh`.** Full §0 run on a clean Mac
   (not a re-run): installs finish, `models/ggml-small.bin` downloads once,
-  `lfm3` (default) and `ornith-1.5:9b` (integration policy) pull, unit
-  suite green, ≤15 min, exit 0; second run prints
+  `lfm3` pulls, unit suite green, ≤15 min, exit 0; second run prints
   "present, skipping" everywhere. *(Only re-run/idempotency is proven today —
   E4 retro, "Evidence inventory (missing)".)*
 - [ ] **§F — real-mic live session, all rows.** The live path has never run

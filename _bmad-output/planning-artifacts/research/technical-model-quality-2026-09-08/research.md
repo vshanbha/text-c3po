@@ -210,3 +210,65 @@ Supported = JSON-valid with a usable formal that differs from the input sentence
 | lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
 
 No unsupported cells — every valid cell rendered the target.
+
+## E1 gate — 5x5 smoke 18:02 (2026-11-23)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
+| ornith-1.5:9b | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E4 gate — 23x5 full matrix 18:04 (2026-11-23)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115/115 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E4 gate — 23x5 full matrix 18:04 — capability (2026-11-23)
+
+Supported = JSON-valid with a usable formal that differs from the input sentence (echo/blank/malformed cells prove the model did not render the target). Rescored from the gate run above — no extra calls.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Supported |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
+
+No unsupported cells — every valid cell rendered the target.
+
+## E1 gate — 5x5 smoke 09:08 (2026-11-24)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
+| ornith-1.5:9b | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E4 gate — 23x5 full matrix 09:10 (2026-11-24)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Valid | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115/115 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E4 gate — 23x5 full matrix 09:10 — capability (2026-11-24)
+
+Supported = JSON-valid with a usable formal that differs from the input sentence (echo/blank/malformed cells prove the model did not render the target). Rescored from the gate run above — no extra calls.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Supported |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
+
+No unsupported cells — every valid cell rendered the target.
