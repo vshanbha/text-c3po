@@ -1,0 +1,80 @@
+# The entries in build order, inside the epic's tickets/ folder.
+# One [[entry]] table per planned story; covers cites the epic's R ids.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Scaffold Flet app shell and pinned requirements"
+description = "Create text-c3po/app.py entry plus ui/services/runtimes packages and requirements.txt with the flet==0.86.5 pin confirmed against the changelog; app launches to an empty single window per CAP-1."
+verify = "All three surfaces reachable within 2 taps from launch; switching neither kills the process nor resets the model pick."
+covers = ["R1"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Top strip with three-mode switching"
+description = "Add the always-visible top strip with Text/Live/File SegmentedButton; Live and File show placeholder surfaces while Text hosts the input; switching preserves process and model pick per CAP-1."
+verify = "All three surfaces reachable within 2 taps from launch; switching neither kills the process nor resets the model pick."
+covers = ["R1"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Ship the 23-language constant and pickers"
+description = "Add text-c3po/languages.py with the 23 {code, name} pairs verbatim from blueprint section 2.1 and bind target (plus source-override) Dropdowns to it per CAP-5."
+verify = "Picker contains all 23 codes/names verbatim; any model×language combo submits with no client-side block."
+covers = ["R5"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Ollama client with launch connectivity check"
+description = "Add runtimes/ollama_client probing 127.0.0.1:11434 at startup with connected/not-running top-strip state and Retry action per CAP-2."
+verify = "With `ollama serve` stopped the top strip shows not-running guidance within 5s; with it running the state flips to connected without restart."
+covers = ["R2"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Model picker with lfm2.5 default rule"
+description = "Add the top-strip model Dropdown listing exactly /api/tags output plus Refresh; preselect lfm2.5 when present else first available per CAP-4."
+verify = "Picker lists exactly what `/api/tags` returns at launch plus a refresh action; default-selection rule holds with and without ornith-1.5:9b installed."
+covers = ["R4"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Text translation service and Text mode wiring"
+description = "Add services/translation on ChatOllama with enforced JSON format and JsonOutputParser to the full Translation schema; wire Text mode input, Translate button, three output cards plus origin caption, inline retryable errors, and empty-input guard per CAP-3."
+verify = "Valid input returns all three fields; malformed model JSON surfaces as a retryable inline error, never raw; empty input is rejected client-side with no LLM call."
+covers = ["R3"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 7
+type = "story"
+title = "E1 gate — 5-language by 5-sentence smoke harness"
+description = "Add services/eval_harness running the repeatable 5x5 matrix over installed models reusing the translation service with model as parameter; record JSON-validity scores to research.md per CAP-6 and SM-1."
+verify = "Matrix output records per-model ≥95% JSON-valid to gate E1 exit; re-running with a new model appends a comparable row without code changes."
+covers = ["R6"]
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true

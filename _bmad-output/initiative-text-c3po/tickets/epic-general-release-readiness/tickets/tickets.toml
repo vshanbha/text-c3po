@@ -1,0 +1,47 @@
+# The entries in build order, inside the epic's tickets/ folder.
+# One [[entry]] table per planned story; covers cites the epic's R ids.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Package macOS bundle with mic permission"
+description = "Ship the installable macOS bundle (flet build macos tool of record per D5-A) carrying NSMicrophoneUsageDescription so first Live start prompts and TCC grants mic access per E5 CAP-1. Moved from E4 story 4.3 per D9 (2026-09-16): packaging waits for the general-release decision."
+verify = "`flet build macos` bundle carries NSMicrophoneUsageDescription; first Live start shows the TCC prompt; denial yields the clean F8 failure; bundle runs loopback-only after download; Gatekeeper copy path documented for another Mac."
+covers = ["R1"]
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true
+
+[[entry]]
+id = 2
+type = "story"
+title = "Consider browser-e2e automation for the TEST-PLAN smoke ceiling"
+description = "Headline only (owner 2026-09-16, no work yet): decide whether the render/entry/picker smoke layer of TEST-PLAN (§I) is worth automating via browser e2e, given the §I3 limits (CanvasKit a11y, taps not registering). Spike coordinate-tap feasibility first; file the real story only if the spike converts the maybe-column."
+verify = "Headline only (owner 2026-09-16, no work yet): decide whether the render/entry/picker smoke layer of TEST-PLAN (§I) is worth automating via browser e2e, given the §I3 limits (CanvasKit a11y, taps not registering)."
+covers = []
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Live-tuning controls"
+description = "Owner manual test 2026-09-16 (F7): voice-to-caption lag is seconds and word fidelity imperfect. live-translate already solves the tunable half: --max-utterance (latency vs context trade-off), --lang pin (steadier than auto-detect), --model small/medium choice, and --silence-rms tuning. Expose these four as Live-view controls over the existing constants (MAX_UTTERANCE_S, whisper -l, WHISPER_MODEL, SILENCE_RMS), with the PoC README's trade-off guidance as helper text. Whisper translate-task and faster-whisper local inference stay out by design (AD-7, D7-A)."
+verify = "Owner manual test 2026-09-16 (F7): voice-to-caption lag is seconds and word fidelity imperfect."
+covers = []
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Cross-platform capture notes (Linux, Windows)"
+description = "Headline only (owner 2026-09-16, no work yet): the product core is portable Python plus ffmpeg, but four spots are macOS-only — avfoundation capture backend, system_profiler input filter, ~/Library/Logs log path, and BlackHole loopback. Linux needs no extra driver (PulseAudio monitor sources / PipeWire) and XDG log paths; Windows needs WASAPI loopback. Record per-OS backends, setup deltas, and TEST-PLAN adjustments before any porting work."
+verify = "Headline only (owner 2026-09-16, no work yet): the product core is portable Python plus ffmpeg, but four spots are macOS-only — avfoundation capture backend, system_profiler input filter, ~/Library/Logs log path, and BlackHole loopback."
+covers = []
+after = []
+hitl = false
+risk = "low"

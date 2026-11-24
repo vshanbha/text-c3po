@@ -1,0 +1,104 @@
+# The entries in build order, inside the epic's tickets/ folder.
+# One [[entry]] table per planned story; covers cites the epic's R ids.
+
+[[entry]]
+id = 1
+type = "story"
+title = "setup.sh for clean-machine install"
+description = "Add setup.sh covering Ollama install, model pull, ffmpeg check, and BlackHole guidance; clean-machine run completes in <=15 min with missing BlackHole as guidance per CAP-1."
+verify = "Clean-machine run completes in ≤15 min on broadband; missing BlackHole is guidance, never a failure."
+covers = ["R1"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Extend harness to the full 23-language matrix"
+description = "Extend services/eval_harness from the E1 5x5 gate to sample sentences by all 23 languages by installed models, recording per-language scores and JSON-validity to research.md with comparable rows per CAP-2."
+verify = "Full matrix recorded in `research.md`; re-running with a new model appends a comparable row with no code changes."
+covers = ["R2"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 4
+type = "story"
+title = "Regression tests for VAD parser and whisper health"
+description = "Add tests covering VAD silence-threshold and max-utterance flush paths, JSON parser valid-plus-malformed cases, and whisper-server health; suite passes post-setup.sh per CAP-4."
+verify = "Suite passes on a clean checkout after `setup.sh`; failures name the subsystem and the retry or fix action."
+covers = ["R4"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 5
+type = "story"
+title = "Remove cloud surface and refresh docs"
+description = "Delete all langchain-openai code and secrets.toml, then refresh README and AGENTS.md with the true Flet run, smoke, and harness commands; grep plus absence check both return empty per CAP-5."
+verify = "`grep -ri openai` over product code and `secrets.toml` presence check both return empty; README/AGENTS.md document the wired run and harness commands."
+covers = ["R5"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 6
+type = "story"
+title = "Publish updated docs to GitHub Pages"
+description = "Replace the stub docs/index.html hosting experiment with a real docs landing page reflecting current v2 content (run guide, eval research, architecture); push to master updates the site via the existing static.yml Pages workflow per CAP-6."
+verify = "Push to master updates the Pages site via the existing `static.yml` workflow; the landing page reflects the current v2 README content, not the old stub."
+covers = ["R6"]
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true
+
+[[entry]]
+id = 7
+type = "story"
+title = "Fix unit CI and repair sprint tracking"
+description = "Make the web-serve smoke runnable where uv is absent (invoke the test interpreter directly, install uv, or skip explicitly) and stop masking the empty-collection exit code, so the master unit run is green again; reconcile stories.yaml with sprint-status.yaml and track the Pages story."
+verify = "Make the web-serve smoke runnable where uv is absent (invoke the test interpreter directly, install uv, or skip explicitly) and stop masking the empty-collection exit code, so the master unit run is green again; reconcile stories.yaml with sprint-status.yaml and track the Pages story.."
+covers = []
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 8
+type = "story"
+title = "Refresh stale v1 docs and infra"
+description = "Update the parent workspace AGENTS.md (still describes Streamlit + OpenAI + secrets.toml), fix the .devcontainer (Python 3.11, nonexistent text-c3po/app.py, Streamlit 8501), remove the stale 'no test CI workflow' comment in pyproject.toml, and pin docs/requirements.txt. Include D1-A (ratify commentary cut: fix README.md:4 + E1 SPEC Success signal to formal/informal/origin_language) and D6-B (track uv.lock: remove from .gitignore + stale comment, commit lock)."
+verify = "Update the parent workspace AGENTS.md (still describes Streamlit + OpenAI + secrets.toml), fix the .devcontainer (Python 3.11, nonexistent text-c3po/app.py, Streamlit 8501), remove the stale 'no test CI workflow' comment in pyproject.toml, and pin docs/requirements.txt."
+covers = []
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 9
+type = "story"
+title = "File logging with rotation and per-module diagnostics"
+description = "Give the packaged app a persistent log: _configure_logging keeps the console handler and adds a stdlib RotatingFileHandler at ~/Library/Logs/text-c3po/text-c3po.log (1 MB x 3, TEXT_C3PO_LOG path override, console-only fallback when the dir is unwritable). Wire per-module loggers into the silent zones the 2026-09 audit ranked: process_manager spawn/ready/stop/restart reasons, whisper_client transport cause, asr decode/transcribe causes, live_runner stream-end and transcribe-failure causes, audio_devices enumeration failure, ollama_client probe reason, and the app.py whisper boot thread; gate the translate parse-failure raw-payload dump so translated content never reaches the file log; never log audio bytes or transcripts; keep TEST-PLAN translate_text ok and done_reason lines at their current levels and add a log-file cross-check row per CAP."
+verify = "Give the packaged app a persistent log: _configure_logging keeps the console handler and adds a stdlib RotatingFileHandler at ~/Library/Logs/text-c3po/text-c3po.log (1 MB x 3, TEXT_C3PO_LOG path override, console-only fallback when the dir is unwritable)."
+covers = []
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true
+
+[[entry]]
+id = 10
+type = "story"
+title = "Remediate Dependabot dependency vulnerabilities"
+description = "Clear the 5 open Dependabot alerts on master (2 high, 3 moderate) by raising the two flagged transitive packages to their first-patched versions in uv.lock: oauthlib 3.3.1 -> 4.0.0 (GHSA-hj66-6f7g-4r5v, GHSA-xpv3-w29h-x7cv) and urllib3 2.7.0 -> 2.8.0 (GHSA-8988-9cw3-xx77, GHSA-vxq7-64xx-v4gw, GHSA-gh4c-6fx4-qh6g) per D16-A. oauthlib is a flet dependency (>=3.2.2, no upper bound) and urllib3 a requests dependency; neither is used at runtime by this loopback-only app. No direct-dependency, src/, or tests/ change."
+verify = "Clear the 5 open Dependabot alerts on master (2 high, 3 moderate) by raising the two flagged transitive packages to their first-patched versions in uv.lock: oauthlib 3.3.1 -> 4.0.0 (GHSA-hj66-6f7g-4r5v, GHSA-xpv3-w29h-x7cv) and urllib3 2.7.0 -> 2.8.0 (GHSA-8988-9cw3-xx77, GHSA-vxq7-64xx-v4gw, GHSA-gh4c-6fx4-qh6g) per D16-A."
+covers = []
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true

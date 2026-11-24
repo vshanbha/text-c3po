@@ -1,0 +1,70 @@
+# The entries in build order, inside the epic's tickets/ folder.
+# One [[entry]] table per planned story; covers cites the epic's R ids.
+
+[[entry]]
+id = 1
+type = "story"
+title = "Sounddevice device enumeration and picker source"
+description = "Add runtimes/audio_devices querying sounddevice each launch with no hard-coded names; expose the list for the E3 device picker with BlackHole present-only per CAP-1. Historical (done pre-D7-A): superseded by story 5, which reimplements enumeration on ffmpeg."
+verify = "With BlackHole absent the picker lists remaining devices and live capture still starts on mic; no hard-coded device names."
+covers = ["R1"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 2
+type = "story"
+title = "Port VAD chunker with unit tests"
+description = "Add services/vad re-implementing the PoC RMS-silence plus flush-on-2-silent-frames-or-max-utterance logic emitting immutable 16 kHz mono s16le utterance bytes; cover both flush paths with unit tests per CAP-2."
+verify = "Continuous speech yields ≥1 utterance per sentence cluster, 2s silence forces a flush; unit tests cover silence-threshold and max-utterance paths."
+covers = ["R2"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 3
+type = "story"
+title = "Whisper process manager with health and restart"
+description = "Add runtimes/process_manager plus runtimes/whisper_client owning spawn (ggml-small.bin default), readiness check, restart-on-crash with visible status, and cleanup-on-exit; transcribe-only on 127.0.0.1:9001 per CAP-3."
+verify = "Readiness check passes within ~5s of launch; killing the subprocess triggers a restart attempt with visible status; app exit leaves no orphan process."
+covers = ["R3"]
+after = []
+hitl = false
+risk = "low"
+
+[[entry]]
+id = 4
+type = "story"
+title = "File decode path into the shared ASR entry point"
+description = "Add ffmpeg decode feeding picked audio/video files into the same ASR entry point as live utterances with readable pre-ASR errors for unsupported containers; works with no device and BlackHole absent per CAP-4."
+verify = "File path works with BlackHole absent and no device selected; unsupported containers error readably before any ASR call."
+covers = ["R4"]
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true
+
+[[entry]]
+id = 5
+type = "story"
+title = "Replace sounddevice capture with ffmpeg avfoundation pipeline (D7-A)"
+description = "Rewrite runtimes/audio_devices to enumerate via ffmpeg -f avfoundation -list_devices, and services/live_runner.open_input_stream to spawn ffmpeg -f avfoundation -i ':DEVICE' -ac 1 -ar 16000 -f s16le - piped to the VAD; remove sounddevice from pyproject/requirements/lock and PortAudio from setup.sh; amend AD-9/AD-13/tech-lock; rewrite affected unit tests; verify TEST-PLAN F7 (BlackHole loopback) and F14 (unplug)."
+verify = "Rewrite runtimes/audio_devices to enumerate via ffmpeg -f avfoundation -list_devices, and services/live_runner.open_input_stream to spawn ffmpeg -f avfoundation -i ':DEVICE' -ac 1 -ar 16000 -f s16le - piped to the VAD; remove sounddevice from pyproject/requirements/lock and PortAudio from setup.sh; amend AD-9/AD-13/tech-lock; rewrite affected unit tests; verify TEST-PLAN F7 (BlackHole loopback) and F14 (unplug).."
+covers = []
+after = []
+hitl = false
+risk = "low"
+done_checkpoint = true
+
+[[entry]]
+id = 6
+type = "story"
+title = "Dual capture mic plus loopback for meetings"
+description = "Owner manual test 2026-09-16: meetings want near-end (mic) and far-end (BlackHole) captured together. Run two ffmpeg pipes into one session (mixed or parallel VAD streams with speaker-side labeling), or record the chosen architecture in AD-9 first — dual pipelines touch the session ordering and gap contracts, so this story needs an E2 SPEC amendment before build."
+verify = "Owner manual test 2026-09-16: meetings want near-end (mic) and far-end (BlackHole) captured together."
+covers = []
+after = []
+hitl = false
+risk = "low"

@@ -1,0 +1,39 @@
+# The epics in build order, inside the initiative's tickets/ folder.
+# One [[epic]] table per epic; covers cites the initiative's R ids.
+
+[[epic]]
+id = 1
+slug = "epic-flet-shell-local-text-translation-core"
+title = "Flet Shell + Local Text Translation Core"
+description = "Build scope: this epic only. Exit gate: 5x5 smoke matrix ≥95% JSON-valid per model."
+covers = ["R1", "R2", "R3", "R4", "R5"]
+
+[[epic]]
+id = 2
+slug = "epic-audio-capture-asr"
+title = "Audio Capture + ASR"
+description = "Tracked as planned; not in E1 build scope. Depends on E1 translation service."
+covers = ["R6", "R7", "R8", "R9"]
+after = [{ epic = 1, needs = "the E1 translation service" }]
+
+[[epic]]
+id = 3
+slug = "epic-live-captions-ui-session-state"
+title = "Live Captions UI + Session State"
+description = "Tracked as planned; not in E1 build scope. Composes E1 services and E2"
+covers = ["R10", "R11", "R12"]
+after = [{ epic = 1, needs = "the E1 services" }, { epic = 2, needs = "the E2 runtimes" }]
+
+[[epic]]
+id = 4
+slug = "epic-ops-eval-polish"
+title = "Ops, Eval & Polish"
+description = "(SPEC-e4-ops-eval-polish). Tracked as planned; not in E1 build scope."
+covers = ["R13", "R14", "R16"]
+
+[[epic]]
+id = 5
+slug = "epic-general-release-readiness"
+title = "General Release Readiness"
+description = "Tracked as backlog; not in v2 scope. Opens only when the owner decides"
+covers = ["R15"]
