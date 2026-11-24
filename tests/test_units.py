@@ -535,6 +535,369 @@ def test_streaming_stop_event_returns_cancelled(monkeypatch):
     assert tr._ACTIVE_STREAMS == set()
 
 
+# ---------------------------------------------------------------------------
+# Hybrid thinking ladder (owner-approved 2026-11-24): pure decision,
+# mocked flows, reasoning routing, headless UI surfacing.
+# ---------------------------------------------------------------------------
+
+# >300 chars (ladder-eligible) yet loop-check-safe: repeated prose keeps
+# _looks_looped's zlib ratio >= 0.2 while staying under the 0.9x full bar
+# only for the deliberately short scripted formals below.
+_LONG_INPUT = (
+    "The old lighthouse stood at the edge of the cliff, its lamp long "
+    "extinguished, and the keeper climbed the steps every morning to "
+    "polish the great lens. "
+) * 3
+
+
+def _ladder_fake_llm(responses, record):
+    """ChatOllama stand-in: one scripted chunk list per constructed call.
+
+    ``record`` accumulates each instance's kwargs so tests can assert
+    which rung built which llm (reasoning flag, timeout).
+    """
+
+    class FakeStream:
+        def __init__(self, chunks):
+            self._it = iter(chunks)
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            return next(self._it)
+
+        def close(self):
+            pass
+
+    class FakeLLM:
+        def __init__(self, *args, **kwargs):
+            record.append(kwargs)
+            self._chunks = responses[min(len(record) - 1, len(responses) - 1)]
+
+        def stream(self, messages):
+            return FakeStream(self._chunks)
+
+    return FakeLLM
+
+
+def _json_chunks(formal, reasoning=None):
+    """One complete-JSON chunk (optionally carrying reasoning deltas)."""
+    import json
+
+    class Chunk:
+        def __init__(self, content, extra=None):
+            self.content = content
+            if extra is not None:
+                self.additional_kwargs = extra
+
+    payload = json.dumps(
+        {"formal": formal, "informal": "du-variant", "origin_language": "English"}
+    )
+    if reasoning is None:
+        return [Chunk(payload)]
+    return [Chunk("", {"reasoning_content": reasoning}), Chunk(payload)]
+
+
+def test_ladder_next_action_boundaries():
+    from text_c3po.services.translation import next_ladder_action
+
+    # Shorts (<= 300 input chars) never ladder, whatever the result.
+    assert next_ladder_action(300, 0, 1) == "done"
+    assert next_ladder_action(200, 5, 1) == "done"
+    assert next_ladder_action(1, 0, 1) == "done"
+    # One char over the gate: an empty formal is partial.
+    assert next_ladder_action(301, 0, 1) == "retry"
+    # 0.9 ratio edge on the 776-char reference: partial iff < 698.4.
+    assert next_ladder_action(776, 698, 1) == "retry"
+    assert next_ladder_action(776, 699, 1) == "done"
+    assert next_ladder_action(776, 0, 1) == "retry"
+    # Rung progression 1 -> 2 -> 3; rung 3 is terminal even when partial.
+    assert next_ladder_action(776, 100, 2) == "think"
+    assert next_ladder_action(776, 100, 3) == "done"
+    assert next_ladder_action(776, 5000, 3) == "done"
+    # Junk arguments never raise.
+    assert next_ladder_action(None, "x", "y") == "done"
+
+
+def test_ladder_full_on_rung_one_single_call(monkeypatch):
+    import text_c3po.services.translation as tr
+
+    assert len(_LONG_INPUT) > 300
+    assert len(_LONG_INPUT) * tr.LADDER_PARTIAL_RATIO < len(_LONG_INPUT)
+    record = []
+    statuses = []
+    monkeypatch.setattr(
+        tr, "ChatOllama", _ladder_fake_llm([_json_chunks(_LONG_INPUT)], record)
+    )
+    result = tr.translate_text(_LONG_INPUT, "German", "m", on_status=statuses.append)
+    assert result.get("formal") == _LONG_INPUT
+    assert len(record) == 1  # full on rung 1: no retry, no thinking build
+    assert statuses == []
+    assert record[0]["reasoning"] is False
+    assert record[0]["sync_client_kwargs"]["timeout"] == tr.TRANSLATION_TIMEOUT_S
+
+
+def test_ladder_partial_retries_identically_then_succeeds(monkeypatch):
+    import text_c3po.services.translation as tr
+
+    full = _LONG_INPUT
+    record = []
+    statuses = []
+    monkeypatch.setattr(
+        tr,
+        "ChatOllama",
+        _ladder_fake_llm([_json_chunks("Zu kurz."), _json_chunks(full)], record),
+    )
+    result = tr.translate_text(_LONG_INPUT, "German", "m", on_status=statuses.append)
+    assert result.get("formal") == full
+    assert len(record) == 2  # rung 1 partial -> exactly one identical retry
+    assert statuses == ["Partial result — retrying (2/3)…"]
+    # Rung 2 is IDENTICAL: think-off, same 60s timeout.
+    assert record[0]["reasoning"] is False
+    assert record[1]["reasoning"] is False
+    assert record[1]["sync_client_kwargs"]["timeout"] == tr.TRANSLATION_TIMEOUT_S
+    assert record[0]["model"] == record[1]["model"]
+
+
+def test_ladder_still_partial_uses_thinking_rung_360s(monkeypatch):
+    import text_c3po.services.translation as tr
+
+    full = _LONG_INPUT
+    record = []
+    statuses = []
+    monkeypatch.setattr(
+        tr,
+        "ChatOllama",
+        _ladder_fake_llm(
+            [
+                _json_chunks("Zu kurz."),
+                _json_chunks("Immer noch kurz."),
+                _json_chunks(full),
+            ],
+            record,
+        ),
+    )
+    result = tr.translate_text(_LONG_INPUT, "German", "m", on_status=statuses.append)
+    assert result.get("formal") == full
+    assert len(record) == 3
+    assert record[0]["reasoning"] is False
+    assert record[1]["reasoning"] is False
+    assert record[0]["sync_client_kwargs"]["timeout"] == tr.TRANSLATION_TIMEOUT_S
+    assert record[1]["sync_client_kwargs"]["timeout"] == tr.TRANSLATION_TIMEOUT_S
+    # Rung 3: thinking ON and the 360s per-call timeout, separate instance.
+    assert record[2]["reasoning"] is True
+    assert record[2]["sync_client_kwargs"]["timeout"] == tr.THINKING_TIMEOUT_S
+    assert tr.THINKING_TIMEOUT_S == 360.0
+    assert statuses == ["Partial result — retrying (2/3)…", "Thinking…"]
+
+
+def test_ladder_rung_three_terminal_returns_longest(monkeypatch):
+    import text_c3po.services.translation as tr
+
+    record = []
+    statuses = []
+    monkeypatch.setattr(
+        tr,
+        "ChatOllama",
+        _ladder_fake_llm(
+            [
+                _json_chunks("A" * 10),
+                _json_chunks("B" * 40),
+                _json_chunks("C" * 30),
+            ],
+            record,
+        ),
+    )
+    result = tr.translate_text(_LONG_INPUT, "German", "m", on_status=statuses.append)
+    # Rung 3 is terminal even though 30 chars is still partial: the
+    # LONGEST result obtained wins — deliberately the MIDDLE attempt
+    # (40), so returning the last attempt unconditionally would fail.
+    assert len(record) == 3
+    assert result.get("formal") == "B" * 40
+    assert statuses == ["Partial result — retrying (2/3)…", "Thinking…"]
+
+
+def test_ladder_short_input_never_ladders(monkeypatch):
+    import text_c3po.services.translation as tr
+
+    record = []
+    statuses = []
+    monkeypatch.setattr(
+        tr, "ChatOllama", _ladder_fake_llm([_json_chunks("Zu")], record)
+    )
+    result = tr.translate_text("Hello", "German", "m", on_status=statuses.append)
+    assert result.get("formal") == "Zu"
+    assert len(record) == 1  # short inputs stay on the single fast call
+    assert statuses == []
+
+
+def test_reasoning_chunk_routes_to_on_thinking_never_pieces(monkeypatch):
+    import json
+
+    import text_c3po.services.translation as tr
+
+    class Chunk:
+        def __init__(self, content, extra=None):
+            self.content = content
+            if extra is not None:
+                self.additional_kwargs = extra
+
+    parts = [
+        Chunk("", {"reasoning_content": "Ich überlege die Übersetzung."}),
+        Chunk('{"formal": "Hal'),
+        Chunk(
+            'lo", "informal": "Hi", "origin_language": "English"}',
+            {"reasoning_content": " weiter denken"},
+        ),
+    ]
+    record = []
+    monkeypatch.setattr(tr, "ChatOllama", _ladder_fake_llm([parts], record))
+    tokens = []
+    thinking = []
+    result = tr.translate_text(
+        "Hello",
+        "German",
+        "m",
+        on_token=lambda piece, total: tokens.append(piece),
+        on_thinking=thinking.append,
+    )
+    # Reasoning reached on_thinking only…
+    assert thinking == ["Ich überlege die Übersetzung.", " weiter denken"]
+    # …and never the JSON pieces: the token stream is pure payload.
+    joined = "".join(tokens)
+    assert joined == json.dumps(
+        {"formal": "Hallo", "informal": "Hi", "origin_language": "English"}
+    )
+    assert "Übersetzung" not in joined
+    assert result.get("formal") == "Hallo"
+    assert len(record) == 1  # short input: no ladder
+
+
+def test_ladder_status_and_thinking_states_headless():
+    from text_c3po.app import _set_translating, _ui_update
+    from text_c3po.ui.text_view import build_text_view
+
+    class FakePage:
+        def __init__(self):
+            self.updated = 0
+
+        def update(self):
+            self.updated += 1
+
+    view = build_text_view()
+    refs = view.data
+    page = FakePage()
+    # Rung 1 state.
+    _set_translating(refs, page, True, "Translating…")
+    assert refs["status_text"].value == "Translating…"
+    # Rung 2 state: worker writes the value, update marshaled (AD-4).
+    refs["status_text"].value = "Partial result — retrying (2/3)…"
+    _ui_update(page)
+    # Rung 3 state: thinking line built from the REAL tail helper (the
+    # 500-char cap itself is pinned by test_thinking_tail_caps_real_helper;
+    # the throttle + generation-guard closures inside main() remain
+    # inspection-audited only — noted as a coverage limitation in review).
+    from text_c3po.app import _thinking_tail
+
+    refs["status_text"].value = "Thinking… " + _thinking_tail(
+        "", "Ich denke nach. " * 100
+    )
+    _ui_update(page)
+    assert refs["status_text"].value.startswith("Thinking… ")
+    assert len(refs["status_text"].value) <= len("Thinking… ") + 500
+    # Terminal state overwrites the ladder status.
+    _set_translating(refs, page, False, "done")
+    assert refs["status_text"].value == "done"
+    assert page.updated >= 4
+
+
+def test_thinking_tail_caps_real_helper():
+    from text_c3po.app import THINKING_TAIL_CAP, _thinking_tail
+
+    assert THINKING_TAIL_CAP == 500
+    # Empty start grows with the stream.
+    assert _thinking_tail("", "abc") == "abc"
+    # Hard cap: exactly the last 500 chars of one huge delta survive.
+    assert len(_thinking_tail("", "x" * 2000)) == THINKING_TAIL_CAP
+    # Rolling window across successive deltas stays bounded.
+    buf = ""
+    for i in range(120):
+        buf = _thinking_tail(buf, "%04d" % i)
+    assert len(buf) <= THINKING_TAIL_CAP
+    assert buf.endswith("0119")
+    # Never raises on junk; always returns str.
+    assert isinstance(_thinking_tail(None, 5), str)
+    assert isinstance(_thinking_tail("ok", object()), str)
+
+
+def test_ladder_transport_error_does_not_ladder(monkeypatch):
+    import text_c3po.services.translation as tr
+
+    record = []
+    statuses = []
+
+    class BoomLLM:
+        def __init__(self, *args, **kwargs):
+            record.append(kwargs)
+
+        def stream(self, messages):
+            raise ConnectionError("simulated transport failure")
+
+    monkeypatch.setattr(tr, "ChatOllama", BoomLLM)
+    result = tr.translate_text(_LONG_INPUT, "German", "m", on_status=statuses.append)
+    # Existing error contract stands (retryable card is the affordance)…
+    assert result.get("error")
+    assert result.get("retryable") is True
+    # …and the ladder never opens a second call or fires a status.
+    assert len(record) == 1
+    assert statuses == []
+
+
+def test_ladder_stop_between_rungs_opens_no_second_call(monkeypatch):
+    import threading
+
+    import text_c3po.services.translation as tr
+
+    stop = threading.Event()
+    record = []
+    statuses = []
+
+    class ExhaustStream:
+        def __init__(self, chunks):
+            self._it = iter(chunks)
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            try:
+                return next(self._it)
+            except StopIteration:
+                # Stop pressed the instant rung 1's stream ends: the
+                # ladder must return cancelled WITHOUT opening rung 2.
+                stop.set()
+                raise
+
+        def close(self):
+            pass
+
+    class FakeLLM:
+        def __init__(self, *args, **kwargs):
+            record.append(kwargs)
+
+        def stream(self, messages):
+            return ExhaustStream(_json_chunks("Zu kurz."))
+
+    monkeypatch.setattr(tr, "ChatOllama", FakeLLM)
+    result = tr.translate_text(
+        _LONG_INPUT, "German", "m", on_status=statuses.append, stop_event=stop
+    )
+    assert result == {"cancelled": True}
+    assert len(record) == 1  # no rung-2 call was ever opened
+    assert statuses == []
+
+
 def test_text_view_refs_and_char_count():
     from text_c3po.ui.text_view import build_text_view
 

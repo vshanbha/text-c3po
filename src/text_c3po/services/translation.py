@@ -64,6 +64,27 @@ def _debug_payloads() -> bool:
 # translate off the Flet UI thread (see app.on_translate).
 TRANSLATION_TIMEOUT_S = 60.0
 
+# Rung 3 of the ladder (thinking ON) gets its own, much longer per-call
+# timeout: observed 7/7 complete on the German long reference at 70-340s.
+# Rungs 1-2 keep TRANSLATION_TIMEOUT_S untouched.
+THINKING_TIMEOUT_S = 360.0
+
+# Hybrid thinking ladder (owner-approved 2026-11-24). Evidence: lfm3 at
+# reasoning=False stochastically stops mid-JSON on LONG inputs only
+# (~10-20% partial on the 776-char reference, reproduced by raw /api/chat
+# with no app code involved; shorts never flake — gate 115/115). The
+# ladder is length-based only, deliberately model-agnostic:
+#   rung 1  normal think-off call (today's behavior);
+#   rung 2  immediate identical think-off retry when the parsed formal is
+#           below 0.9x the input length (~8s, recovers ~2/3);
+#   rung 3  still partial -> one thinking-on call at THINKING_TIMEOUT_S
+#           (7/7 complete).
+# Shorts (<= LADDER_MIN_INPUT_CHARS) never ladder: they must stay on the
+# fast path. The 0.9 ratio separates cleanly on the measured data
+# (partials <= 602/776 = 78%, fulls >= 830/776 = 107%).
+LADDER_MIN_INPUT_CHARS = 300
+LADDER_PARTIAL_RATIO = 0.9
+
 # Stop support: every live ChatOllama registers here so Stop can close its
 # underlying HTTP client mid-request. Python threads can't be killed, so this
 # is the real abort — the blocked stream fails fast instead of running to
@@ -129,43 +150,62 @@ class Translation(BaseModel):
     )
 
 
-# lfm3 long-input fix (evidence 2026-11-23): at reasoning=False with long
-# input (~776 chars), lfm3 stopped after the first sentence (~89 chars,
-# done_reason='stop'). A direct Ollama prompt matrix found TWO triggers:
-# (1) langchain's verbose pydantic instruction block bound at
-# {format_instructions}, and (2) the template line "Respond strictly with
-# the translation of the complete input text in {language}" — with that
-# line the model returned first-sentence-only in 9/9 runs across every
-# instruction wording, without it 5/5+ full (its output-language intent is
-# already covered by the ENTIRE-output line above). The compact wording
-# replaces langchain's block and must state the full contract itself —
-# single JSON object, all three fields, COMPLETE input — because
-# JsonOutputParser does NOT validate in installed langchain_core 1.6.2
-# (.parse() only extracts JSON; missing/extra keys pass through), so the
-# prompt contract plus _normalize() are the sole enforcers. Keep in sync
-# with the Translation schema.
-_SYSTEM_TEMPLATE = """You are a translator. Translate the input text below into {language}.
-This input is one part of a longer document; translate only this part, preserving its full meaning.
-The ENTIRE output must be written in {language} — every sentence, no exceptions, no English paraphrase.
-Where possible provide both formal and informal versions.
-Translated output must follow the JSON schema per the below instructions.
-{format_instructions}"""
+# lfm3 long-input first-sentence stop (evidence 2026-11-23; direct
+# /api/chat differential matrix at think=false, temperature 0.2,
+# format=json, 776-char input): lfm3 stopped after the first sentence
+# (formal ~79 chars, done_reason='stop'), deterministic. da799e2 pinned
+# TWO triggers — (1) langchain's verbose pydantic instruction block bound
+# at {format_instructions}, and (2) the line "Respond strictly with the
+# translation of the complete input text in {language}" (9/9 short with
+# it, 5/5+ full without). The German-long matrix found the THIRD
+# trigger class: ANY framing around a single self-contained instruction.
+# Interactions are NON-ADDITIVE — recombining framings (notably the
+# "ENTIRE output ... no exceptions" line) caused 300s non-terminating
+# hangs in raw probes; treat each framing add-on as independently
+# re-proven, never assume linear accumulation. The differential matrix
+# pins the flips, not the mechanism — WHY framing triggers the stop
+# remains unpinned.
+# Raw flips, same model/settings, system role unless noted: plain
+# instruction alone full (877/784); + "This input is one part of a
+# longer document; translate only this part" -> 79 short; a bare role
+# preamble ("You are a translator." / "You are a helpful assistant.")
+# before the same contract line -> 79/84 short vs contract line alone
+# 890/856 full; the whole instruction in the user message instead of the
+# system message -> 74 short (3/3) vs 849-877 formal full in system;
+# per-field "...of the COMPLETE input" parentheticals added to the plain
+# instruction -> 79 short vs 845/770 full. The old multi-line template +
+# compact contract gave German long 79 short (5/5 at the app path) while
+# Spanish long stayed full (843-865) — so the fix is ONE self-contained
+# system instruction, proven full dual on long input for German (856/768,
+# 845/770, 843/701) and Spanish (861/728, 818/724), shorts dual-present
+# for both. The
+# instruction states the full contract itself — single JSON object, all
+# three fields — because JsonOutputParser does NOT validate in installed
+# langchain_core 1.6.2 (.parse() only extracts JSON; missing/extra keys
+# pass through), so the prompt contract plus _normalize() are the sole
+# enforcers. Keep in sync with the Translation schema. Output-language
+# intent ("Translate the following English text into {language}") lives
+# in the instruction itself; the ENTIRE-output and longer-document lines
+# went with the template.
+_SYSTEM_TEMPLATE = "{format_instructions}"
 
 
 def _compact_format_instructions(language: str) -> str:
-    """One-line JSON contract naming the three ``Translation`` fields.
+    """The whole system message: plain lead plus the three-field contract.
 
-    Follows the proven T1 wording (compact 3-field instruction that returned
-    the full translation at reasoning=False with long input); see the
-    evidence comment on ``_SYSTEM_TEMPLATE``. Not
-    ``parser.get_format_instructions()``: langchain's verbose pydantic block
-    is one of the two proven lfm3 first-sentence-stop triggers.
+    One self-contained instruction, no framing — role preambles, the old
+    multi-line template, and per-field "...of the COMPLETE input"
+    parentheticals are each proven first-sentence-stop triggers (see the
+    evidence comment on ``_SYSTEM_TEMPLATE``), as is langchain's verbose
+    pydantic block (``parser.get_format_instructions()``). States the
+    full contract (single JSON object, all three ``Translation`` fields)
+    because JsonOutputParser does not validate. Keep in sync with the
+    Translation schema.
     """
     return (
-        f'Respond ONLY as JSON with keys: "formal" (formal {language} translation '
-        f'of the COMPLETE input), "informal" (informal {language} translation of '
-        f'the COMPLETE input), "origin_language" (language of the input). '
-        f"Translate every sentence of the input."
+        f"Translate the following English text into {language}. Give two "
+        f"versions: a formal one and an informal one. Output ONLY a JSON "
+        f'object with keys "formal", "informal", "origin_language".'
     )
 
 
@@ -374,13 +414,113 @@ def _chunk_text(chunk) -> str:
         return ""
 
 
+def _chunk_thinking(chunk) -> str:
+    """Extract the reasoning delta from a stream chunk; never raises.
+
+    Installed langchain_ollama (chat_models.py, ``_iterate_over_stream``)
+    copies ``stream_resp["message"]["thinking"]`` into
+    ``AIMessageChunk.additional_kwargs["reasoning_content"]`` when
+    reasoning is enabled — ``.content`` stays empty during the thinking
+    phase, so this is the ONLY place thinking text lives. The delta is
+    routed to ``on_thinking`` and must never enter the JSON ``pieces``.
+    """
+    try:
+        extra = getattr(chunk, "additional_kwargs", None)
+        if not isinstance(extra, dict):
+            return ""
+        value = extra.get("reasoning_content", "")
+    except Exception:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            try:
+                parts.append(item if isinstance(item, str) else str(item or ""))
+            except Exception:
+                pass
+        return "".join(parts)
+    try:
+        return str(value or "")
+    except Exception:
+        return ""
+
+
+def _fire(callback, *args) -> None:
+    """Invoke an optional progress callback; never raises."""
+    if not callable(callback):
+        return
+    try:
+        callback(*args)
+    except Exception:
+        pass
+
+
+def _stop_requested(stop_event) -> bool:
+    """True when the caller's Stop flag is set; never raises."""
+    try:
+        return bool(stop_event is not None and stop_event.is_set())
+    except Exception:
+        return False
+
+
+def _formal_len(result) -> int:
+    """Length of a parsed ``formal`` field, or -1 when absent/not a string."""
+    try:
+        value = result.get("formal") if isinstance(result, dict) else None
+        return len(value) if isinstance(value, str) else -1
+    except Exception:
+        return -1
+
+
+def next_ladder_action(input_len, formal_len, attempt):
+    """Pure hybrid-ladder decision: what to do after ``attempt`` finished.
+
+    ``attempt`` is the rung just completed (1-based). Returns ``"done"``
+    (keep the result), ``"retry"`` (run the identical think-off call again
+    — rung 2) or ``"think"`` (run the thinking-on call — rung 3).
+
+    Inputs of ``LADDER_MIN_INPUT_CHARS`` chars or fewer never ladder:
+    they never flake and must stay on the fast path. For longer inputs a
+    result is partial below ``LADDER_PARTIAL_RATIO`` x input length.
+    Rung 3 (``attempt >= 3``) is terminal. Pure and total: never
+    raises — uncoercible junk yields ``"done"``, numeric junk coerces
+    via ``int`` like any call-site value.
+    """
+    try:
+        input_len = int(input_len)
+        formal_len = int(formal_len)
+        attempt = int(attempt)
+    except Exception:
+        return "done"
+    if attempt >= 3 or input_len <= LADDER_MIN_INPUT_CHARS:
+        return "done"
+    if formal_len >= LADDER_PARTIAL_RATIO * input_len:
+        return "done"
+    return "retry" if attempt <= 1 else "think"
+
+
 def _translate_single(
-    text, target_language, model, parser, on_token=None, stop_event=None
+    text,
+    target_language,
+    model,
+    parser,
+    on_token=None,
+    stop_event=None,
+    on_thinking=None,
+    reasoning=False,
+    timeout_s=None,
 ):
     """One streaming LLM round trip; same single prompt, JSON parsed at end.
 
     Tokens accumulate into one string; ``on_token(piece, total_chars)`` fires
-    per chunk for progress (never allowed to raise). If ``stop_event`` is set
+    per chunk for progress (never allowed to raise). Reasoning deltas (only
+    present when ``reasoning=True``) fire ``on_thinking(delta)`` instead and
+    never enter the accumulated JSON string. ``timeout_s`` overrides the
+    per-call sync timeout (rung 3 of the ladder passes THINKING_TIMEOUT_S);
+    ``reasoning`` selects the thinking-on build — both ladder knobs, both
+    defaulting to today's behavior. If ``stop_event`` is set
     mid-stream the iterator is closed — the server sees the disconnect and
     aborts — and ``{"cancelled": True}`` returns. Otherwise the full string
     parses through the unchanged JSON contract.
@@ -391,16 +531,20 @@ def _translate_single(
             format="json",
             base_url=OLLAMA_BASE_URL,
             temperature=TRANSLATION_TEMPERATURE,
-            # No thinking phase: translation is a direct rewrite, and the
-            # reasoning trace costs ~10s per call with zero quality gain.
-            reasoning=False,
+            # No thinking phase by default: translation is a direct rewrite,
+            # and the reasoning trace costs ~10s per call with zero quality
+            # gain. The ladder's rung 3 flips this on as a last resort for
+            # long inputs (see LADDER_* constants).
+            reasoning=reasoning,
             # Prophylactic, not a cutoff fix: the server default caps
             # output at 128 tokens (per the installed langchain_ollama
             # docstring), so request infinite generation. Live F4 evidence
             # showed the Spanish cutoff stopping clean (done_reason='stop',
             # cap never engaged) — retry remains the affordance there.
             num_predict=-1,
-            sync_client_kwargs={"timeout": TRANSLATION_TIMEOUT_S},
+            sync_client_kwargs={
+                "timeout": TRANSLATION_TIMEOUT_S if timeout_s is None else timeout_s
+            },
         )
         messages = _build_request(text, target_language, parser)
     except Exception as exc:
@@ -447,6 +591,15 @@ def _translate_single(
                     piece = _chunk_text(chunk)
                 except Exception:
                     piece = ""
+                # Reasoning deltas (rung 3, think-on) route to on_thinking
+                # only: they must never join the JSON pieces accumulation
+                # (unit-tested) or pollute the parse.
+                try:
+                    thinking = _chunk_thinking(chunk)
+                except Exception:
+                    thinking = ""
+                if thinking:
+                    _fire(on_thinking, thinking)
                 # Keep the latest response metadata: done_reason="length"
                 # tells a length-limit stop apart from a clean "stop" when
                 # diagnosing cut-off translations (see the end-of-stream
@@ -605,15 +758,31 @@ def _translate_single(
     return normalized
 
 
-def translate_text(text, target_language, model, on_token=None, stop_event=None):
+def translate_text(
+    text,
+    target_language,
+    model,
+    on_token=None,
+    stop_event=None,
+    on_thinking=None,
+    on_status=None,
+):
     """Translate ``text`` into ``target_language`` with the given Ollama ``model``.
 
-    Exactly one prompt, one streamed call, whatever the length: tokens stream
-    in — ``on_token(piece, total_chars)`` per piece for live progress — and
-    the accumulated string parses once through the unchanged JSON schema.
-    (An earlier revision split long input into one call per paragraph; live
-    measurement showed the per-call first-token wait dominating, and a single
-    call translates cleanly, so the splitter was removed.)
+    One prompt, one streamed call — tokens stream in via ``on_token(piece,
+    total_chars)`` for live progress, the accumulated string parses once
+    through the unchanged JSON schema — with ONE owner-approved exception:
+    the hybrid thinking ladder for long inputs (see LADDER_* constants).
+    Inputs of ``LADDER_MIN_INPUT_CHARS`` chars or fewer always take the
+    single fast call; longer inputs whose parsed ``formal`` comes back
+    below ``LADDER_PARTIAL_RATIO`` of the input length get up to two extra
+    attempts: first an identical think-off retry (``on_status`` fires
+    "Partial result — retrying (2/3)…"), then one thinking-on call at
+    ``THINKING_TIMEOUT_S`` whose reasoning deltas stream through
+    ``on_thinking`` ("Thinking…"). Every ladder transition is logged; the
+    longest real result obtained is returned (partial content beats an
+    error), while cancelled and transport/parse errors keep their existing
+    contract untouched.
 
     Returns a parsed ``{formal, informal, origin_language}`` dict on
     success, ``{error, retryable}`` on any transport/parse failure, or
@@ -639,16 +808,111 @@ def translate_text(text, target_language, model, on_token=None, stop_event=None)
         logger.error("translate_text setup failure: %r", exc)
         return {"error": RETRY_MESSAGE, "retryable": True}
 
+    try:
+        stripped = text.strip()
+    except Exception:
+        stripped = text
     result = _translate_single(
-        text.strip(),
+        stripped,
         target_language,
         model,
         parser,
         on_token=on_token,
         stop_event=stop_event,
+        on_thinking=on_thinking,
     )
     if not isinstance(result, dict):
         return {"error": RETRY_MESSAGE, "retryable": True}
+
+    # ---- hybrid thinking ladder (long inputs only; LADDER_* constants) ----
+    # Pure decision (next_ladder_action) drives at most two extra calls.
+    # Terminal cases: short input, full-on-this-rung, rung 3 reached,
+    # cancelled (existing contract), or a transport/parse error (the
+    # retryable error card — or the best partial already obtained —
+    # stands; errors do not ladder).
+    ladder_used = False
+    attempt = 1
+    best = result
+    try:
+        while True:
+            if result.get("cancelled"):
+                return result
+            current_len = _formal_len(result)
+            if current_len < 0:
+                break
+            action = next_ladder_action(len(stripped), current_len, attempt)
+            if action == "done":
+                break
+            if _stop_requested(stop_event):
+                return {"cancelled": True}
+            ladder_used = True
+            if action == "retry":
+                logger.warning(
+                    "translation ladder: partial rung %d (in=%d formal=%d) "
+                    "-> rung 2 think-off retry model=%s target=%s",
+                    attempt,
+                    len(stripped),
+                    current_len,
+                    model,
+                    target_language,
+                )
+                _fire(on_status, "Partial result — retrying (2/3)…")
+                result = _translate_single(
+                    stripped,
+                    target_language,
+                    model,
+                    parser,
+                    on_token=on_token,
+                    stop_event=stop_event,
+                    on_thinking=on_thinking,
+                )
+            else:  # "think": rung 3, thinking ON, long per-call timeout
+                logger.warning(
+                    "translation ladder: partial rung %d (in=%d formal=%d) "
+                    "-> rung 3 think-on timeout=%ss model=%s target=%s",
+                    attempt,
+                    len(stripped),
+                    current_len,
+                    THINKING_TIMEOUT_S,
+                    model,
+                    target_language,
+                )
+                _fire(on_status, "Thinking…")
+                result = _translate_single(
+                    stripped,
+                    target_language,
+                    model,
+                    parser,
+                    on_token=on_token,
+                    stop_event=stop_event,
+                    on_thinking=on_thinking,
+                    reasoning=True,
+                    timeout_s=THINKING_TIMEOUT_S,
+                )
+            attempt += 1
+            if not isinstance(result, dict):
+                result = {"error": RETRY_MESSAGE, "retryable": True}
+            if _formal_len(result) > _formal_len(best):
+                best = result
+    except Exception:
+        # Never raise beyond the existing contract: fall through with the
+        # best real content obtained so far.
+        pass
+    if ladder_used:
+        try:
+            logger.warning(
+                "translation ladder outcome: rungs=%d in=%d best_formal=%d "
+                "model=%s target=%s",
+                attempt,
+                len(stripped),
+                max(0, _formal_len(best)),
+                model,
+                target_language,
+            )
+        except Exception:
+            pass
+        if _formal_len(best) >= 0:
+            result = best
     try:
         if isinstance(result.get("formal"), str):
             logger.info(

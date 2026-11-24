@@ -219,6 +219,25 @@ def is_current_request(captured, current) -> bool:
         return False
 
 
+THINKING_TAIL_CAP = 500
+
+
+def _thinking_tail(buffer: str, piece, cap: int = THINKING_TAIL_CAP) -> str:
+    """Keep the last ``cap`` chars of the streamed thinking text.
+
+    Pure and total: coerces both sides to ``str``, never raises. The
+    rung-3 status line shows only this tail so reasoning text cannot
+    grow the UI without bound.
+    """
+    try:
+        return (str(buffer) + str(piece))[-cap:]
+    except Exception:
+        try:
+            return str(buffer)
+        except Exception:
+            return ""
+
+
 def _set_translating(refs, page, busy: bool, status: str = "") -> None:
     """Toggle Translate/Stop/progress/status in one place; never raises."""
     try:
@@ -915,6 +934,67 @@ def main(page: ft.Page) -> None:
             try:
                 text, target, model = snapshot
                 progress = {"chars": 0, "at": 0.0, "raw": []}
+                thinking = {"text": "", "at": 0.0}
+                # Current progress label; the ladder's on_status updates it
+                # so live token updates keep showing which rung is running.
+                stage = {"label": "Translating…"}
+
+                def _status_line(message: str) -> None:
+                    # Worker-thread status (ladder transitions): same
+                    # marshaling as on_token — value on the worker, page
+                    # update through _ui_update (AD-4), dropped when a
+                    # newer Translate/Stop owns the generation.
+                    if not is_current_request(my_seq, translate_seq["current"]):
+                        return
+                    try:
+                        status_text = refs.get("status_text")
+                        if status_text is not None:
+                            status_text.value = message
+                    except Exception:
+                        pass
+                    _ui_update(page)
+
+                def on_status(message) -> None:
+                    try:
+                        stage["label"] = str(message)
+                    except Exception:
+                        pass
+                    # A ladder event means a NEW stream is starting: reset
+                    # the preview accumulator so on_token previews the
+                    # current rung's JSON, not the stale rung's prefix.
+                    try:
+                        progress["raw"] = []
+                        progress["chars"] = 0
+                        progress["at"] = 0.0
+                    except Exception:
+                        pass
+                    try:
+                        _status_line(stage["label"])
+                    except Exception:
+                        pass
+
+                def on_thinking(text_piece) -> None:
+                    # Thinking stream (ladder rung 3): keep the last ~500
+                    # chars of reasoning in the status line so the user
+                    # sees something happening during the long think-on
+                    # call. Reasoning never enters the formal preview.
+                    if not is_current_request(my_seq, translate_seq["current"]):
+                        return
+                    try:
+                        thinking["text"] = _thinking_tail(thinking["text"], text_piece)
+                    except Exception:
+                        pass
+                    now = time.monotonic()
+                    if now - thinking["at"] < 0.25:
+                        return
+                    thinking["at"] = now
+                    try:
+                        status_text = refs.get("status_text")
+                        if status_text is not None:
+                            status_text.value = "Thinking… " + thinking["text"]
+                    except Exception:
+                        pass
+                    _ui_update(page)
 
                 def on_token(piece, total) -> None:
                     # Live words, not a char count: the formal value prefix
@@ -938,10 +1018,11 @@ def main(page: ft.Page) -> None:
                     try:
                         status_text = refs.get("status_text")
                         if status_text is not None:
+                            label = stage["label"]
                             status_text.value = (
-                                "Translating…"
+                                label
                                 if not preview
-                                else "Translating… {} chars".format(total)
+                                else "{} {} chars".format(label, total)
                             )
                     except Exception:
                         pass
@@ -965,6 +1046,8 @@ def main(page: ft.Page) -> None:
                         model,
                         on_token=on_token,
                         stop_event=stop_event,
+                        on_status=on_status,
+                        on_thinking=on_thinking,
                     )
                 except Exception:
                     result = {"error": RETRY_CARD_HINT, "retryable": True}
