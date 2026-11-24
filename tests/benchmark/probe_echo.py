@@ -15,7 +15,7 @@ failure.
 import sys
 
 
-def main(model="ornith-1.5:9b"):
+def main(model="lfm3"):
     from text_c3po.services.eval_harness import normalize_text
     from text_c3po.services.translation import translate_text
 
@@ -41,4 +41,4 @@ def main(model="ornith-1.5:9b"):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "ornith-1.5:9b"))
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else "lfm3"))

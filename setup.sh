@@ -81,27 +81,14 @@ if [ "$HAVE_MEDIUM" = "1" ]; then
   fetch_model ggml-medium.bin
 fi
 
-# Two models, two roles: lfm3 is the product default (the app preselects
-# it on a clean machine); ornith-1.5:9b is kept only because the
-# integration tests (tests/test_integration.py, ornith-first serial
-# policy) need it installed on a clean machine.
+# lfm3 is the product default (the app preselects it on a clean machine)
+# and the model for every live check.
 if ollama list 2>/dev/null | grep -q "^lfm3"; then
   echo "setup.sh: lfm3 present, skipping."
 else
   echo "setup.sh: ollama pull lfm3 (needs 'ollama serve' running) ..."
   if ollama pull lfm3; then
     echo "setup.sh: lfm3 ready."
-  else
-    echo "setup.sh: warning: ollama pull failed — start 'ollama serve' and re-run './setup.sh'."
-  fi
-fi
-
-if ollama list 2>/dev/null | grep -q "^ornith"; then
-  echo "setup.sh: ornith present, skipping."
-else
-  echo "setup.sh: ollama pull ornith-1.5:9b (needs 'ollama serve' running) ..."
-  if ollama pull ornith-1.5:9b; then
-    echo "setup.sh: ornith-1.5:9b ready."
   else
     echo "setup.sh: warning: ollama pull failed — start 'ollama serve' and re-run './setup.sh'."
   fi
