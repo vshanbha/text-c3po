@@ -3,7 +3,7 @@
 
 ## text-c3po
 
-Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama plus whisper-server transcribe-only. Planning lives in `_bmad-output/planning-artifacts/`, implementation in `_bmad-output/implementation-artifacts/`, long-term knowledge in `docs/`.
+Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama plus whisper-server transcribe-only. Planning and implementation live in the v7 initiative/ticket tree `_bmad-output/initiative-text-c3po/` (BMAD v7 migration 2026-11-24; v6 `epics.md`/`sprint-status.yaml` archived under `archive-v6/`), long-term knowledge in `docs/`.
 
 ## Policy
 
@@ -13,7 +13,7 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 
 ## Where things are
 
-- Product direction: `blueprint.md`, consumed via bmad-product-brief and bmad-spec.
+- Product direction: `blueprint.md`, consumed through the BMAD v7 flow (`bmad-agent-po`/Sofia turns direction into initiative tickets; v6 `bmad-product-brief`/`bmad-spec` skills were retired in the migration).
 - App entry: `src/text_c3po/app.py` (Flet; Streamlit removed in E1). All run commands assume the repo root with `PYTHONPATH=src`.
 - Long-term knowledge: `docs/`; BMAD outputs in `_bmad-output/`.
 
@@ -24,6 +24,26 @@ Local-first desktop translator per blueprint.md. Flet GUI plus Ollama ChatOllama
 - Ollama-backed tests are manual-only and serial (`pytest -m integration`, lfm3-first); the eval gate is `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm3`. Never run Ollama tests in CI.
 - Human-run checklist lives in `TEST-PLAN.md` (windows, dialogs, snackbars, hardware, subprocess timing, real speech) — run it top to bottom after any epic lands.
 - No lint or typecheck configured in this repo.
+
+## Quality pipeline (owner-mandated order — every change follows this)
+
+architecture/design → test-first unit tests → code → run unit & other
+tests → fresh-context review → **loop: code, unit tests and review
+continue until all tests pass and review comments are reasonably
+addressed** → **eval harness gate** → human review.
+
+Nothing may be flagged for human testing or review until the eval
+harness passes. The eval run, after every major change:
+
+1. **Conformance:** `PYTHONPATH=src python -m text_c3po.services.eval_harness --models lfm3,ornith-1.5:9b` (5×5; `--languages all` for breadth) — JSON contract only, never a quality verdict.
+2. **Language consistency:** `formal` AND `informal` must render in the target language across the matrix (wired by the informal-language ticket — the informal field previously had zero automated coverage).
+3. **Probes:** `probe_echo` (script rendering), `probe_collapse` (long-input completeness, Spanish + the explicit German-long ladder check).
+4. **Quality judge:** `probe_quality_pairs` scored by `tev1` via Ollama `/v1/systemone` (tier-1, milliseconds, local; agent/human tier-2 on low margin — see `research/quality-eval-2026-11-23/gate-report.md`).
+
+Unit tests (`pytest`) stay structural: they cannot catch NLP issues by
+design, which is why the eval harness is a separate mandatory gate.
+`TEST-PLAN.md` rows are the final human layer and never precede a green
+eval run.
 
 ### Browser testing (BrowserOS neo)
 
@@ -43,7 +63,7 @@ Notes:
 
 - Pin `flet==exact` in `requirements.txt` until 1.0 ships; read the changelog before any upgrade.
 - Talk to Ollama via langchain-ollama ChatOllama with JSON format enforced; list runtime models from `/api/tags`, suggested default lfm3 (1.7 GB — switched from ornith-1.5:9b 6.6 GB on 2026-11-23 for VRAM reasons; lfm3 passed the 5x5 gate 25/25).
-- Run translation with thinking disabled (`reasoning=False` in the service): the reasoning trace costs ~10s per call with zero translation gain. Do not override `num_ctx` — the server default applies; pinning a smaller value forces a model reload whenever it differs from the loaded context. Never add either back without re-running the gate.
+- Run translation with thinking disabled on the fast path (`reasoning=False`, rungs 1–2 of the ladder): the reasoning trace costs ~10–18s per call with zero translation gain on short inputs. The hybrid ladder in `translation.py` enables thinking ONLY for rung 3 (long-input partial fallback, 360s per-call timeout). Do not override `num_ctx` — the server default applies; pinning a smaller value forces a model reload whenever it differs from the loaded context. Never change either policy without re-running the gate.
 - The translation contract is language names ("German"), never picker codes ("de"); UI layers convert via `languages.name_for_code` at call time so manual use matches the gated test path.
 - Ship the 23-language code and name constant from blueprint section 2.1; keep the backend model-agnostic.
 - Spawn `whisper-server` as a subprocess on 127.0.0.1:9001 with transcribe only; do the translation in the LLM.

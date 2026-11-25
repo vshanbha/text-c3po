@@ -5,3 +5,27 @@
 #
 # [agents.bmad-agent-pm]
 # description = "Prefers short, bulleted PRDs over narrative drafts."
+
+# Owner/project answers preserved across the v6→v7 cleanup
+# (migrate_v6 --clean strips these from base config.toml and
+# custom/config.user.toml as stale-to-setup keys; resolve_config.py
+# still reads them — proven by a pre-clean baseline run).
+# Artifact paths point at the post-migration initiative layout:
+# v6 planning-artifacts/ + implementation-artifacts/ → initiative-text-c3po/.
+# NOTE: added AFTER migrate_v6 --clean (the clean strips these key names
+# everywhere, including here — pre-seeding before it does not survive).
+# Status does not inspect key staleness; values remain in git history
+# (fccf3c8..59d2154) and in both .v6-v7-migration-backup-* folders.
+
+[core]
+user_name = "vshanbha"
+communication_language = "English"
+document_output_language = "English"
+
+[modules.bmm]
+user_skill_level = "intermediate"
+planning_artifacts = "{project-root}/_bmad-output/initiative-text-c3po"
+implementation_artifacts = "{project-root}/_bmad-output/initiative-text-c3po"
+project_knowledge = "{project-root}/docs"
+
+
