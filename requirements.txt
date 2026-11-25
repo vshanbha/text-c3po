@@ -2,4 +2,9 @@
 # is `uv sync` against pyproject.toml [project] dependencies — keep the
 # two files identical; test_dependency_pins_agree enforces it.
 flet==0.86.5
+# flet-web 0.86.5 auto-installs at runtime with fastapi unbounded above;
+# fastapi >=0.142 removed the openapi_prefix argument flet-web passes
+# (TypeError: web mode never serves — caught by test_web_smoke in CI).
+# 0.141.1 is the last version proven on that test; re-pin deliberately.
+fastapi==0.141.1
 langchain-ollama==1.1.0
