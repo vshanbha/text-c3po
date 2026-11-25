@@ -1,4 +1,4 @@
 # Docs-site dependencies only (MkDocs Material). App deps stay in
 # requirements.txt. CI installs this to build the Pages site.
 # Pinned exact 2026-09-13 (verified latest on PyPI); re-pin deliberately.
-mkdocs-material==9.7.7
+mkdocs-material==9.8.2
