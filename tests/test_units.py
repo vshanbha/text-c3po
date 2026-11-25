@@ -115,11 +115,13 @@ def test_format_table_custom_languages():
         "de",
         "fr",
         "Valid",
+        "Lang",
         "Score",
         "Gate",
     ]
     assert separator.count("---") == len(header.split("|")) - 2
     assert "5/5" in row and "FAIL" in row
+    assert "| - |" in row  # summaries without the language dimension
 
 
 def test_is_supported_echo_detection():
@@ -132,6 +134,357 @@ def test_is_supported_echo_detection():
     assert is_supported({"error": "x"}, "Good morning") is False
     assert is_supported({"formal": ""}, "Good morning") is False
     assert is_supported("nope", "Good morning") is False
+
+
+def test_classify_language_latin_and_scripts():
+    """Function-word/script heuristic: confident languages, None when not."""
+    from text_c3po.services.eval_harness import classify_language
+
+    assert classify_language("Where is the train station?") == "English"
+    assert classify_language("Wo ist der Bahnhof?") == "German"
+    assert classify_language("Il est dans la maison avec ses amis.") == "French"
+    assert classify_language("El tren está en la estación por la mañana.") == (
+        "Spanish"
+    )
+    assert classify_language("नमस्ते दोस्तों, कैसे हो आप") == "Devanagari"
+    assert classify_language("你好，世界") == "Han"
+    # Undetermined: blank, letterless, or below the confidence threshold.
+    assert classify_language("") is None
+    assert classify_language(None) is None
+    assert classify_language("12345 !!!") is None
+    assert classify_language("OK") is None
+
+
+def test_is_target_language_is_target_relative():
+    """The gate's language check: mismatch only when confidently wrong."""
+    from text_c3po.services.eval_harness import is_target_language
+
+    # English render for a German target = the 2026-11-24 bug cell.
+    assert is_target_language("Thank you very much for your help.", "German") is False
+    assert is_target_language("Danke sehr für deine Hilfe.", "German") is True
+    # Same text flips verdict with the target (relative, not hardcoded).
+    assert is_target_language("Where is the train station?", "English") is True
+    assert is_target_language("Wo ist der Bahnhof?", "English") is False
+    # Script mismatch: Latin vs Devanagari/Han either way round.
+    assert is_target_language("Hello my friend", "Hindi") is False
+    assert is_target_language("नमस्ते दोस्तों", "Hindi") is True
+    assert is_target_language("Hello world", "Chinese") is False
+    assert is_target_language("你好，世界", "Chinese") is True
+    assert is_target_language("नमस्ते दोस्तों", "German") is False
+    # Cross-Latin confident mismatch (French render, German target).
+    assert is_target_language("Il est dans la maison.", "German") is False
+    # Conservative passes: blank, letterless, undetermined, unknown target.
+    assert is_target_language("", "German") is True
+    assert is_target_language("   ", "German") is True
+    assert is_target_language("OK", "German") is True
+    assert is_target_language("Where is it?", "Klingon") is True
+
+
+def test_run_matrix_flags_wrong_language_informal():
+    """Red-state cell: English informal under a German target is flagged.
+
+    The informal field previously had zero coverage — this is the
+    structural replacement for that blind spot (gate math untouched).
+    """
+    from text_c3po.services.eval_harness import run_matrix
+
+    def stub(text, target, model):
+        return {
+            "formal": "Wo ist der Bahnhof?",
+            "informal": "Where is the train station?",
+            "origin_language": "English",
+        }
+
+    results = run_matrix(models=["m"], translate_fn=stub, languages=["German"])
+    summary = results["m"]
+    assert summary["valid"] == 5  # JSON-validity gate untouched
+    assert summary["lang_total"] == 5
+    assert summary["lang_ok"] == 0
+    assert len(summary["lang_failures"]) == 5
+    assert {lf["field"] for lf in summary["lang_failures"]} == {"informal"}
+    assert {lf["language"] for lf in summary["lang_failures"]} == {"German"}
+    assert passes_gate(summary["valid"], summary["total"]) is True
+
+
+def test_run_matrix_language_ok_when_target_consistent():
+    """Green-state: both fields in the target language pass the dimension."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    def stub(text, target, model):
+        return {
+            "formal": "Wo ist der Bahnhof?",
+            "informal": "Wo ist der Bahnhof?",
+            "origin_language": "English",
+        }
+
+    results = run_matrix(models=["m"], translate_fn=stub, languages=["German"])
+    summary = results["m"]
+    assert summary["lang_total"] == 5
+    assert summary["lang_ok"] == 5
+    assert summary["lang_failures"] == []
+
+
+def test_identity_english_target_language_ok():
+    """English target + English output (identity) matches by the same rule."""
+    from text_c3po.services.eval_harness import run_matrix
+
+    def stub(text, target, model):
+        return {"formal": text, "informal": text, "origin_language": "English"}
+
+    results = run_matrix(
+        models=["m"],
+        translate_fn=stub,
+        languages=["English", "Kannada"],
+    )
+    summary = results["m"]
+    assert summary["lang_total"] == 5  # English cells only; Kannada echoes skip
+    assert summary["lang_ok"] == 5
+    assert summary["lang_failures"] == []
+    assert {e["language"] for e in summary["echoes"]} == {"Kannada"}
+
+
+def test_main_gate_fails_on_language_mismatch(monkeypatch, tmp_path):
+    """Exit code flips red->green on the language dimension alone."""
+    import text_c3po.services.eval_harness as harness
+
+    monkeypatch.setattr(harness, "check_ollama", lambda: (True, ["m"]))
+    monkeypatch.setattr(harness, "list_models", lambda: ["m"])
+
+    def drift_stub(text, target, model):
+        return {
+            "formal": "Wo ist der Bahnhof?",
+            "informal": "Where is the train station?",
+            "origin_language": "English",
+        }
+
+    research = tmp_path / "red.md"
+    code = harness.main(
+        ["--models", "m", "--languages", "German", "--research-path", str(research)],
+        translate_fn=drift_stub,
+    )
+    assert code == harness.EXIT_GATE_FAIL
+    body = research.read_text()
+    assert "LANG-FAIL" in body
+    assert "| 0/5 |" in body  # Lang column shows the mismatch
+
+    def good_stub(text, target, model):
+        return {
+            "formal": "Wo ist der Bahnhof?",
+            "informal": "Wo ist der Bahnhof?",
+            "origin_language": "English",
+        }
+
+    research2 = tmp_path / "green.md"
+    code = harness.main(
+        ["--models", "m", "--languages", "German", "--research-path", str(research2)],
+        translate_fn=good_stub,
+    )
+    assert code == harness.EXIT_PASS
+    assert "LANG-FAIL" not in research2.read_text()
+
+
+def test_format_table_gate_fails_on_lang_mismatch():
+    """A fully JSON-valid model OVER the Lang threshold renders FAIL.
+
+    The threshold floor is 1 mismatch on a 25-cell run, so the red
+    fixture needs 2 mismatches to still fail (2/25 is over
+    ``max(1, 25 // 100) == 1``).
+    """
+    from text_c3po.services.eval_harness import format_table
+
+    def mismatch(index):
+        return {
+            "model": "m",
+            "language": "German",
+            "sentence_index": index,
+            "field": "informal",
+        }
+
+    results = {
+        "m": {
+            "valid": 25,
+            "total": 25,
+            "per_language": {lang: 5 for lang in MATRIX_LANGUAGES},
+            "failures": [],
+            "lang_ok": 23,
+            "lang_total": 25,
+            "lang_failures": [mismatch(0), mismatch(1)],
+        }
+    }
+    table = format_table(results)
+    assert "| 23/25 |" in table
+    assert "FAIL" in table
+    assert "within threshold" not in table
+    assert "100%" in table  # score column unchanged — Lang drives the FAIL
+
+
+def test_lang_threshold_allowed_formula():
+    """allowed = max(1, total // 100): the owner's >=99% one-cell floor."""
+    from text_c3po.services.eval_harness import allowed_lang_failures
+
+    assert allowed_lang_failures(25) == 1  # small matrix never starves
+    assert allowed_lang_failures(115) == 1  # observed 115-cell batteries
+    assert allowed_lang_failures(100) == 1
+    assert allowed_lang_failures(199) == 1
+    assert allowed_lang_failures(200) == 2  # scales proportionally
+    assert allowed_lang_failures(1000) == 10
+    assert allowed_lang_failures(0) == 1  # no rendered cells -> nothing to allow
+
+
+def test_lang_threshold_mismatch_boundaries():
+    """Lang passes iff mismatches <= allowed: 1 passes, 2 fails, 0 total passes."""
+    from text_c3po.services.eval_harness import lang_gate_ok
+
+    assert lang_gate_ok(25, 0) is True  # green run
+    assert lang_gate_ok(25, 1) is True  # 1/25 within threshold (24/25-equiv)
+    assert lang_gate_ok(25, 2) is False  # 2/25 over threshold
+    assert lang_gate_ok(115, 1) is True  # 114/115 = 99.1% passes
+    assert lang_gate_ok(115, 2) is False  # 113/115 = 98.3% fails
+    assert lang_gate_ok(0, 0) is True  # total==0 -> pass (no rendered cells)
+
+
+def _lang_summary(mismatches, lang_total=25, valid=None, total=None):
+    """Build a run summary with ``mismatches`` confident lang failures."""
+    if valid is None:
+        valid = 25 if lang_total == 25 else lang_total
+    if total is None:
+        total = valid
+    return {
+        "valid": valid,
+        "total": total,
+        "per_language": {lang: 5 for lang in MATRIX_LANGUAGES},
+        "failures": [],
+        "lang_ok": lang_total - mismatches,
+        "lang_total": lang_total,
+        "lang_failures": [
+            {
+                "model": "m",
+                "language": "German",
+                "sentence_index": index,
+                "field": "informal",
+            }
+            for index in range(mismatches)
+        ],
+    }
+
+
+def test_format_table_lang_threshold_rows():
+    """1/25 and 1/115 render PASS (within threshold); 2 mismatches render FAIL."""
+    from text_c3po.services.eval_harness import format_table
+
+    one_of_25 = format_table({"m": _lang_summary(1)})
+    assert "| 24/25 |" in one_of_25
+    assert "PASS (within threshold)" in one_of_25
+    assert "FAIL" not in one_of_25
+
+    two_of_25 = format_table({"m": _lang_summary(2)})
+    assert "| 23/25 |" in two_of_25
+    assert "FAIL" in two_of_25
+    assert "within threshold" not in two_of_25
+
+    one_of_115 = format_table({"m": _lang_summary(1, lang_total=115, valid=115)})
+    assert "| 114/115 |" in one_of_115
+    assert "PASS (within threshold)" in one_of_115
+
+    two_of_115 = format_table({"m": _lang_summary(2, lang_total=115, valid=115)})
+    assert "| 113/115 |" in two_of_115
+    assert "FAIL" in two_of_115
+
+    # total==0: no rendered cells -> Lang passes, plain PASS (no label).
+    none = format_table({"m": _lang_summary(0, lang_total=0, valid=25)})
+    assert "| 0/0 |" in none
+    assert "PASS" in none
+    assert "within threshold" not in none
+
+
+def test_main_gate_lang_threshold_exit_codes(monkeypatch, tmp_path, capsys):
+    """Forced 1 mismatch on 25 cells exits 0 (printed); forced 2 exits 1."""
+    import text_c3po.services.eval_harness as harness
+
+    monkeypatch.setattr(harness, "check_ollama", lambda: (True, ["m"]))
+    monkeypatch.setattr(harness, "list_models", lambda: ["m"])
+
+    # Confident target-language renders per matrix language, so only the
+    # forced informal drift creates mismatches (nothing else trips the
+    # heuristic on this stub).
+    good = {
+        "German": ("Wo ist der Bahnhof?", "Wo ist der Bahnhof?"),
+        "French": ("Où est la gare ?", "Où est la gare ?"),
+        "Spanish": ("¿Dónde está la estación?", "¿Dónde está la estación?"),
+        "Hindi": ("स्टेशन कहाँ है?", "स्टेशन कहाँ है?"),
+        "Chinese": ("火车站在哪里？", "火车站在哪里？"),
+    }
+
+    def make_stub(drift_cells):
+        state = {"left": drift_cells}
+
+        def stub(text, target, model):
+            formal, informal = good[target]
+            if state["left"] > 0:
+                state["left"] -= 1
+                informal = "Where is the train station?"  # confident English
+            return {
+                "formal": formal,
+                "informal": informal,
+                "origin_language": "English",
+            }
+
+        return stub
+
+    # Exactly 1 mismatch on the 25-cell run: within threshold -> PASS 0.
+    research1 = tmp_path / "one.md"
+    code = harness.main(
+        ["--models", "m", "--research-path", str(research1)],
+        translate_fn=make_stub(1),
+    )
+    assert code == harness.EXIT_PASS
+    out1 = capsys.readouterr().out
+    assert "LANG-FAIL" in out1  # the mismatch still prints
+    assert "Gate PASS" in out1
+    body1 = research1.read_text()
+    assert "LANG-FAIL" in body1  # ...and still lands in the research block
+    assert "PASS (within threshold)" in body1
+    assert "| 24/25 |" in body1
+
+    # Exactly 2 mismatches: over threshold -> FAIL, non-zero exit.
+    research2 = tmp_path / "two.md"
+    code = harness.main(
+        ["--models", "m", "--research-path", str(research2)],
+        translate_fn=make_stub(2),
+    )
+    assert code == harness.EXIT_GATE_FAIL
+    out2 = capsys.readouterr().out
+    assert "LANG-FAIL" in out2
+    assert "Gate FAIL" in out2
+    body2 = research2.read_text()
+    assert "LANG-FAIL" in body2
+    assert "| 23/25 |" in body2
+    assert "FAIL" in body2
+
+
+def test_build_request_keeps_system_pole_and_adds_user_language_tail():
+    """Informal-language fix (2026-11-25): the versions' language is stated
+    in the USER message tail; the system instruction stays byte-identical
+    to the proven single-self-contained-instruction framing pole (every
+    system-side wording tried failed the raw acceptance matrix)."""
+    from text_c3po.services.translation import (
+        _build_request,
+        _compact_format_instructions,
+    )
+
+    messages = _build_request("Hello there", "German", parser=None)
+    assert len(messages) == 2
+    system, user = messages
+    assert system.content == _compact_format_instructions("German")
+    assert system.content == (
+        "Translate the following English text into German. Give two "
+        "versions: a formal one and an informal one. Output ONLY a JSON "
+        'object with keys "formal", "informal", "origin_language".'
+    )
+    assert (
+        user.content
+        == "Hello there\n\nBoth versions must be written entirely in German."
+    )
 
 
 def test_run_matrix_records_echoes_without_moving_gate():
@@ -4362,7 +4715,9 @@ def test_capability_cli_writes_support_section(monkeypatch, tmp_path):
 
     def stub(text, target, model):
         if target == "German":
-            return {"formal": "echt: " + text}
+            # A rendered (non-echo) German cell: must satisfy the
+            # target-language check or the gate fails on lang, not echo.
+            return {"formal": "Das ist ein Test, freundlich und nett."}
         if target == "French":
             return {"formal": ""}
         return {"formal": text}
@@ -4397,7 +4752,7 @@ def test_capability_cli_label_tags_sections(monkeypatch, tmp_path):
     monkeypatch.setattr(harness, "list_models", lambda: ["m"])
 
     def stub(text, target, model):
-        return {"formal": "echt: " + text}
+        return {"formal": "Das ist ein Test, freundlich und nett."}
 
     research = tmp_path / "lab.md"
     code = harness.main(

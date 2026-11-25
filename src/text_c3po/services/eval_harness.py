@@ -21,6 +21,20 @@ verdict. Meaning-equivalence between input and output cannot be checked
 deterministically: it needs a judge model (fuzzy, model-dependent) or a
 human (TEST-PLAN §B rows). Do not read a gate PASS as "translates well".
 
+Extension (2026-11-25): the gate additionally checks TARGET-LANGUAGE
+consistency on both ``formal`` and ``informal`` of every rendered cell —
+a deterministic function-word/script heuristic (see the design note above
+:func:`is_target_language`), not a quality judgment. It exists because the
+2026-11-24 informal-language bug (``informal`` stochastically rendering in
+English) had zero automated coverage. Lang-threshold policy (owner
+decision, 2026-11-25): the dimension passes when confident mismatches
+<= allowed = max(1, lang_total // 100), i.e. >=99% language consistency
+with a one-cell floor (25 cells -> 1 allowed; 115 -> 1; 200 -> 2; and
+lang_total == 0 passes because there are no rendered cells to check).
+Every mismatch still prints as a ``LANG-FAIL`` line and still lands in
+the research block — only the verdict is softened, never the reporting.
+Undetermined heuristic cases pass as before.
+
 Headless-runnable: ``PYTHONPATH=src python -m text_c3po.services.eval_harness`` with
 ``--models`` and ``--research-path`` overrides. Importing this module has no
 side effects and issues no LLM calls. Stdlib plus installed
@@ -47,7 +61,9 @@ Execution policy (hardware-bound, do not relax):
 import argparse
 import datetime
 import os
+import re
 import sys
+import unicodedata
 
 
 # src layout: every product import here is absolute (``text_c3po.*``).
@@ -180,10 +196,9 @@ EXIT_ABORT = 2
 _DEFAULT_RESEARCH_PATH = os.path.join(
     _PROJECT_ROOT,
     "_bmad-output",
-    "planning-artifacts",
-    "research",
+    "initiative-text-c3po",
     "technical-model-quality-2026-09-08",
-    "research.md",
+    "technical-model-quality-2026-09-08.md",
 )
 
 
@@ -237,6 +252,914 @@ def passes_gate(valid, total):
         return False
 
 
+# ---------------------------------------------------------------------------
+# Target-relative language-consistency check (formal AND informal).
+#
+# Why (open bug 2026-11-24): the instruction never states the LANGUAGE of
+# the two rendered versions, so on EN->DE the ``informal`` field
+# stochastically renders in English while ``formal`` stays correct (owner
+# manual hit on a long input; 1/3 fresh sample on shorts). The gate used
+# to validate JSON-validity + formal non-echo only — ``informal`` had
+# ZERO automated coverage anywhere (the integration test never read it
+# either). This deterministic heuristic closes that blind spot.
+#
+# Design — conservative: it may only FAIL a cell it is sure of.
+# 1. Script families (Devanagari, Han, Cyrillic, ...) compare against the
+#    target's script first: a Latin result for a Hindi target (or
+#    Devanagari for a German target) is a mismatch regardless of words.
+# 2. Latin-script text is scored against per-language function-word
+#    marker sets (all 10 Latin-script targets of the 23-language constant
+#    have one, so a proper render always scores its own language). A
+#    confident best match that differs from the target is a mismatch;
+#    "confident" means >= _MIN_MARKER_HITS hits AND at least
+#    _MARKER_MARGIN ahead of the runner-up. Anything else (short text,
+#    heavy cross-language overlap, unknown target, no letters) is
+#    undetermined and passes — the check never guesses, so a heuristic
+#    miss can only under-flag, never break a legitimate gate run.
+#
+# Identity/English-target cells follow the same target-relative rule:
+# English output for an English target matches; the echo/blank/malformed
+# kinds keep their existing meaning and stay OUT of this dimension (a
+# cell that did not render the target is already scored by its kind).
+# ---------------------------------------------------------------------------
+_WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)
+
+# High-precision function words (plus a few discourse markers) per Latin
+# target language. Tokens shared across languages are deliberate: they
+# score for every language that uses them and stay neutral in the margin.
+_FUNCTION_MARKERS = {
+    "English": {
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "am",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "of",
+        "to",
+        "in",
+        "on",
+        "at",
+        "for",
+        "with",
+        "as",
+        "by",
+        "from",
+        "or",
+        "and",
+        "but",
+        "if",
+        "then",
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "its",
+        "they",
+        "their",
+        "them",
+        "we",
+        "our",
+        "us",
+        "you",
+        "your",
+        "he",
+        "she",
+        "his",
+        "her",
+        "i",
+        "my",
+        "me",
+        "who",
+        "whom",
+        "whose",
+        "which",
+        "what",
+        "when",
+        "where",
+        "how",
+        "why",
+        "not",
+        "no",
+        "yes",
+        "very",
+        "too",
+        "just",
+        "also",
+        "than",
+        "more",
+        "most",
+        "some",
+        "any",
+        "all",
+        "every",
+        "each",
+        "both",
+        "such",
+        "own",
+        "same",
+        "other",
+        "another",
+        "only",
+        "into",
+        "over",
+        "under",
+        "after",
+        "before",
+        "between",
+        "through",
+        "during",
+        "while",
+        "because",
+        "though",
+        "although",
+        "about",
+        "up",
+        "down",
+        "out",
+        "off",
+        "there",
+        "here",
+        "so",
+        "can",
+        "could",
+        "will",
+        "would",
+        "shall",
+        "should",
+        "may",
+        "might",
+        "must",
+        "man",
+        "war",
+        "thanks",
+        "please",
+        "hello",
+        "hi",
+        "bye",
+        "welcome",
+        "good",
+        "morning",
+        "evening",
+        "today",
+        "tomorrow",
+        "yesterday",
+    },
+    "German": {
+        "der",
+        "die",
+        "das",
+        "den",
+        "dem",
+        "des",
+        "ein",
+        "eine",
+        "einer",
+        "eines",
+        "einem",
+        "kein",
+        "keine",
+        "keinen",
+        "und",
+        "oder",
+        "aber",
+        "denn",
+        "weil",
+        "dass",
+        "nicht",
+        "ist",
+        "sind",
+        "war",
+        "waren",
+        "wird",
+        "werden",
+        "wurde",
+        "wurden",
+        "bei",
+        "aus",
+        "nach",
+        "über",
+        "unter",
+        "vor",
+        "für",
+        "mit",
+        "von",
+        "zu",
+        "zum",
+        "zur",
+        "im",
+        "am",
+        "an",
+        "auf",
+        "um",
+        "auch",
+        "noch",
+        "schon",
+        "sehr",
+        "wie",
+        "wo",
+        "wer",
+        "was",
+        "wir",
+        "ich",
+        "du",
+        "sie",
+        "es",
+        "man",
+        "so",
+        "in",
+        "mir",
+        "mich",
+        "dir",
+        "dich",
+        "sich",
+        "mein",
+        "meine",
+        "dein",
+        "deine",
+        "sein",
+        "seine",
+        "seinen",
+        "ihr",
+        "ihre",
+        "ihren",
+        "unser",
+        "unsere",
+        "habe",
+        "hat",
+        "haben",
+        "hatte",
+        "kann",
+        "können",
+        "muss",
+        "müssen",
+        "möchte",
+        "möchten",
+        "heute",
+        "morgen",
+        "abend",
+        "dort",
+        "hier",
+        "ja",
+        "nein",
+        "danke",
+        "bitte",
+        "leider",
+        "dieser",
+        "diese",
+        "dieses",
+        "diesen",
+        "diesem",
+    },
+    "Spanish": {
+        "el",
+        "la",
+        "los",
+        "las",
+        "un",
+        "una",
+        "unos",
+        "unas",
+        "de",
+        "del",
+        "al",
+        "que",
+        "y",
+        "en",
+        "es",
+        "son",
+        "está",
+        "están",
+        "estoy",
+        "estamos",
+        "era",
+        "eran",
+        "fue",
+        "fueron",
+        "ser",
+        "estar",
+        "soy",
+        "por",
+        "para",
+        "con",
+        "sin",
+        "sobre",
+        "entre",
+        "hacia",
+        "como",
+        "pero",
+        "más",
+        "muy",
+        "también",
+        "ya",
+        "no",
+        "sí",
+        "mal",
+        "bien",
+        "porque",
+        "cuando",
+        "dónde",
+        "quién",
+        "qué",
+        "este",
+        "esta",
+        "estos",
+        "estas",
+        "ese",
+        "esa",
+        "esos",
+        "esas",
+        "yo",
+        "tú",
+        "usted",
+        "ustedes",
+        "nosotros",
+        "nosotras",
+        "vosotros",
+        "ellos",
+        "ellas",
+        "le",
+        "les",
+        "lo",
+        "me",
+        "te",
+        "se",
+        "si",
+        "mi",
+        "mis",
+        "tu",
+        "tus",
+        "su",
+        "sus",
+        "a",
+        "hay",
+        "hoy",
+        "gracias",
+        "siempre",
+        "nunca",
+        "gusta",
+        "gustaría",
+    },
+    "French": {
+        "le",
+        "la",
+        "les",
+        "des",
+        "une",
+        "un",
+        "du",
+        "au",
+        "aux",
+        "de",
+        "et",
+        "ou",
+        "est",
+        "sont",
+        "étais",
+        "était",
+        "étaient",
+        "être",
+        "suis",
+        "sommes",
+        "êtes",
+        "ai",
+        "a",
+        "as",
+        "ont",
+        "mais",
+        "donc",
+        "or",
+        "ni",
+        "car",
+        "que",
+        "qui",
+        "quoi",
+        "où",
+        "ne",
+        "pas",
+        "je",
+        "tu",
+        "il",
+        "elle",
+        "nous",
+        "vous",
+        "ils",
+        "elles",
+        "mon",
+        "ma",
+        "mes",
+        "ton",
+        "ta",
+        "tes",
+        "son",
+        "sa",
+        "ses",
+        "notre",
+        "nos",
+        "votre",
+        "vos",
+        "leur",
+        "leurs",
+        "ce",
+        "cet",
+        "cette",
+        "ces",
+        "en",
+        "on",
+        "sur",
+        "par",
+        "pour",
+        "avec",
+        "dans",
+        "chez",
+        "sans",
+        "entre",
+        "sous",
+        "vers",
+        "plus",
+        "moins",
+        "très",
+        "bien",
+        "mal",
+        "si",
+        "y",
+        "me",
+        "te",
+        "se",
+        "lui",
+        "eux",
+        "tout",
+        "tous",
+        "toute",
+        "toutes",
+        "chaque",
+        "ici",
+        "là",
+        "quand",
+        "comme",
+        "comment",
+        "oui",
+        "non",
+    },
+    "Portuguese": {
+        "não",
+        "você",
+        "vocês",
+        "isto",
+        "isso",
+        "estão",
+        "estamos",
+        "têm",
+        "também",
+        "muito",
+        "muita",
+        "muitos",
+        "muitas",
+        "então",
+        "ainda",
+        "sempre",
+        "onde",
+        "quando",
+        "através",
+        "embora",
+        "portanto",
+        "pela",
+        "pelo",
+        "num",
+        "numa",
+        "está",
+        "já",
+        "até",
+        "porém",
+        "obrigado",
+        "obrigada",
+        "a",
+        "em",
+        "mais",
+    },
+    "Dutch": {
+        "het",
+        "een",
+        "van",
+        "en",
+        "is",
+        "met",
+        "voor",
+        "op",
+        "te",
+        "dat",
+        "niet",
+        "ook",
+        "maar",
+        "zijn",
+        "wordt",
+        "kan",
+        "als",
+        "door",
+        "bij",
+        "uit",
+        "naar",
+        "over",
+        "tot",
+        "dan",
+        "hun",
+        "zich",
+        "dit",
+        "deze",
+        "die",
+        "geen",
+        "wel",
+        "wat",
+        "wie",
+        "waar",
+        "toen",
+        "omdat",
+        "altijd",
+        "hier",
+        "man",
+        "in",
+    },
+    "Danish": {
+        "det",
+        "den",
+        "de",
+        "og",
+        "ikke",
+        "med",
+        "for",
+        "er",
+        "en",
+        "et",
+        "på",
+        "til",
+        "i",
+        "som",
+        "vil",
+        "kan",
+        "har",
+        "være",
+        "denne",
+        "disse",
+        "hvor",
+        "når",
+        "hvis",
+        "der",
+        "her",
+        "nu",
+        "også",
+        "meget",
+        "tak",
+        "ja",
+        "man",
+    },
+    "Swedish": {
+        "det",
+        "den",
+        "de",
+        "och",
+        "inte",
+        "att",
+        "en",
+        "ett",
+        "på",
+        "till",
+        "i",
+        "som",
+        "är",
+        "har",
+        "kan",
+        "vill",
+        "vara",
+        "denna",
+        "dessa",
+        "var",
+        "när",
+        "om",
+        "där",
+        "här",
+        "nu",
+        "också",
+        "mycket",
+        "tack",
+        "ja",
+        "man",
+    },
+    "Afrikaans": {
+        "die",
+        "en",
+        "is",
+        "van",
+        "vir",
+        "met",
+        "op",
+        "in",
+        "te",
+        "dat",
+        "nie",
+        "ook",
+        "maar",
+        "wat",
+        "wie",
+        "waar",
+        "hier",
+        "dit",
+        "hierdie",
+        "hy",
+        "sy",
+        "ons",
+        "julle",
+        "hulle",
+        "kan",
+        "sal",
+        "moet",
+        "wees",
+        "goed",
+        "dankie",
+        "het",
+    },
+    "Vietnamese": {
+        "của",
+        "và",
+        "là",
+        "không",
+        "có",
+        "người",
+        "những",
+        "các",
+        "cho",
+        "với",
+        "này",
+        "được",
+        "một",
+        "tôi",
+        "bạn",
+        "nó",
+        "họ",
+        "sẽ",
+        "từ",
+        "đến",
+        "trong",
+        "trên",
+        "về",
+        "khi",
+        "nhưng",
+        "vì",
+        "đã",
+        "đang",
+        "rất",
+        "nhiều",
+        "hơn",
+        "hay",
+        "nào",
+        "đó",
+        "phải",
+        "như",
+        "ở",
+        "ra",
+        "vào",
+        "lại",
+        "cũng",
+        "thì",
+        "mà",
+    },
+}
+
+# Confidence thresholds for the Latin word check: a classification must
+# accumulate this many marker hits AND beat the runner-up by this much,
+# or the text is treated as undetermined (pass).
+_MIN_MARKER_HITS = 2
+_MARKER_MARGIN = 2
+
+# Character ranges per script family (the 23-language constant needs
+# exactly these; Latin includes the Vietnamese precomposed block).
+_SCRIPT_RANGES = (
+    ("Han", ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF))),
+    ("Devanagari", ((0x0900, 0x097F),)),
+    ("Bengali", ((0x0980, 0x09FF),)),
+    ("Gujarati", ((0x0A80, 0x0AFF),)),
+    ("Tamil", ((0x0B80, 0x0BFF),)),
+    ("Telugu", ((0x0C00, 0x0C7F),)),
+    ("Kannada", ((0x0C80, 0x0CFF),)),
+    (
+        "Arabic",
+        (
+            (0x0600, 0x06FF),
+            (0x0750, 0x077F),
+            (0x08A0, 0x08FF),
+            (0xFB50, 0xFDFF),
+            (0xFE70, 0xFEFF),
+        ),
+    ),
+    ("Greek", ((0x0370, 0x03FF), (0x1F00, 0x1FFF))),
+    ("Cyrillic", ((0x0400, 0x04FF), (0x0500, 0x052F))),
+    ("Latin", ((0x0041, 0x024F), (0x1E00, 0x1EFF), (0x2C60, 0x2C7F))),
+)
+
+# Every language of the 23-language constant maps to its script; all
+# Latin-script targets additionally have a _FUNCTION_MARKERS entry.
+_TARGET_SCRIPT = {
+    "Afrikaans": "Latin",
+    "Arabic": "Arabic",
+    "Bangla": "Bengali",
+    "Chinese": "Han",
+    "Danish": "Latin",
+    "Dutch": "Latin",
+    "English": "Latin",
+    "French": "Latin",
+    "German": "Latin",
+    "Greek": "Greek",
+    "Gujarati": "Gujarati",
+    "Hindi": "Devanagari",
+    "Kannada": "Kannada",
+    "Marathi": "Devanagari",
+    "Persian": "Arabic",
+    "Portuguese": "Latin",
+    "Russian": "Cyrillic",
+    "Spanish": "Latin",
+    "Swedish": "Latin",
+    "Tamil": "Tamil",
+    "Telugu": "Telugu",
+    "Urdu": "Arabic",
+    "Vietnamese": "Latin",
+}
+
+
+def _char_family(char) -> "str | None":
+    """Return the script family name for a character, or None when unlisted."""
+    try:
+        code = ord(char)
+        for family, ranges in _SCRIPT_RANGES:
+            for low, high in ranges:
+                if low <= code <= high:
+                    return family
+        return None
+    except Exception:
+        return None
+
+
+def _dominant_script(text) -> "str | None":
+    """Script family with the most letters, or None when no letter maps."""
+    counts = {}
+    for char in text:
+        try:
+            if not char.isalpha():
+                continue
+            family = _char_family(char)
+        except Exception:
+            continue
+        if family:
+            counts[family] = counts.get(family, 0) + 1
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+
+def _classify_latin(text) -> "str | None":
+    """Best Latin-language match for ``text``, or None when undetermined.
+
+    Scores every marker set; a winner must reach _MIN_MARKER_HITS and
+    beat the runner-up by _MARKER_MARGIN or the text stays undetermined.
+    Never raises.
+    """
+    try:
+        tokens = _WORD_RE.findall(text.casefold())
+        if not tokens:
+            return None
+        ranked = sorted(
+            (
+                (language, sum(1 for tok in tokens if tok in markers))
+                for language, markers in _FUNCTION_MARKERS.items()
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        if ranked[0][1] < _MIN_MARKER_HITS:
+            return None
+        if len(ranked) > 1 and ranked[0][1] - ranked[1][1] < _MARKER_MARGIN:
+            return None
+        return ranked[0][0]
+    except Exception:
+        return None
+
+
+def classify_language(text) -> "str | None":
+    """Best-effort language of ``text`` for reporting, or None.
+
+    Returns a language name for Latin-script text (via the function-word
+    marker check) and the script-family name (e.g. ``"Han"``,
+    ``"Devanagari"``) for non-Latin text; None for blank, letterless, or
+    undetermined input. Pure; never raises. The gate itself uses
+    :func:`is_target_language`, not this report helper.
+    """
+    try:
+        if not isinstance(text, str) or not text:
+            return None
+        normalized = unicodedata.normalize("NFC", text.casefold())
+        family = _dominant_script(normalized)
+        if family is None:
+            return None
+        if family != "Latin":
+            return family
+        return _classify_latin(normalized)
+    except Exception:
+        return None
+
+
+def is_target_language(text, language) -> bool:
+    """Return True when ``text`` is in (or indistinguishable from) ``language``.
+
+    The target-relative language-consistency check (see the design note
+    above): script comparison first, then the Latin function-word check;
+    undetermined cases pass. Blank/letterless text passes (blank/malformed
+    cells are scored by their own kinds in run_matrix). Never raises.
+    """
+    try:
+        if not isinstance(text, str) or not text.strip():
+            return True
+        normalized = unicodedata.normalize("NFC", text.casefold())
+        family = _dominant_script(normalized)
+        if family is None:
+            return True
+        target_script = _TARGET_SCRIPT.get(language)
+        if target_script is None:
+            # Unknown target: nothing to compare against — never guess.
+            return True
+        if family != target_script:
+            return False
+        if family != "Latin":
+            return True
+        guess = _classify_latin(normalized)
+        return guess is None or guess == language
+    except Exception:
+        return True
+
+
+def allowed_lang_failures(lang_total) -> int:
+    """Allowed language mismatches for a run of ``lang_total`` cells.
+
+    Owner threshold policy (2026-11-25): Lang passes at >=99% consistency
+    with a one-cell floor — ``max(1, lang_total // 100)``. The exact
+    consequences the gate implements:
+
+    - 25 cells -> 1 allowed: a literal ">=99%" rule on a small matrix
+      would be zero-tolerance in disguise (24/25 = 96% must not fail);
+    - 115 cells -> 1 allowed: 114/115 = 99.1% passes, 113/115 = 98.3%
+      fails;
+    - larger matrices scale proportionally (200 -> 2, 300 -> 3, ...);
+    - ``lang_total == 0`` -> allowed 1 with zero mismatches, so a run
+      with no rendered cells passes (same as before the threshold).
+
+    Pure; never raises.
+    """
+    try:
+        return max(1, int(lang_total) // 100)
+    except Exception:
+        return 1
+
+
+def lang_gate_ok(lang_total, mismatches) -> bool:
+    """Return True when ``mismatches`` is within the Lang threshold.
+
+    Lang passes iff ``mismatches <= allowed_lang_failures(lang_total)``
+    where ``mismatches`` is the count of confident target-language
+    mismatches (the ``lang_failures`` entries of a run summary, counted
+    per failing field). Mismatches are printed/reported either way —
+    this only decides the gate verdict. Pure; never raises.
+    """
+    try:
+        return int(mismatches) <= allowed_lang_failures(lang_total)
+    except Exception:
+        return True
+
+
+def _lang_mismatch_count(summary) -> int:
+    """Mismatch count for a run summary.
+
+    Prefers ``len(lang_failures)`` (the exact count the threshold rule
+    keys on); falls back to ``lang_total - lang_ok`` for summaries that
+    carry only the cell counts. Never raises.
+    """
+    try:
+        failures = summary.get("lang_failures")
+        if failures is not None:
+            return len(failures)
+        lang_total = int(summary.get("lang_total") or 0)
+        lang_ok = int(summary.get("lang_ok") or 0)
+        return max(0, lang_total - lang_ok)
+    except Exception:
+        return 0
+
+
 def run_matrix(models=None, translate_fn=translate_text, languages=None):
     """Run the 5-sentence x N-language matrix per model; never aborts mid-matrix.
 
@@ -249,7 +1172,8 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
     that cell invalid and is recorded in the model's ``failures`` detail;
     the matrix always runs to completion.
 
-    Returns ``{model: {valid, total, per_language, failures, echoes}}`` where
+    Returns ``{model: {valid, total, per_language, failures, echoes,
+    lang_ok, lang_total, lang_failures}}`` where
     ``per_language`` maps each language name to its valid count,
     ``failures`` holds one ``{model, language, sentence_index}`` dict per
     invalid cell (sentence_index is 0-based), and ``echoes`` holds the same
@@ -258,6 +1182,19 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
     formal string), or ``"malformed"`` (missing/non-string formal).
     All kinds count valid for the gate; all are unsupported for
     capability. Gate math is untouched.
+
+    The language dimension (2026-11-25, informal-language blind spot):
+    every JSON-valid cell whose ``kind`` is ``""`` (it rendered a usable,
+    non-echo formal) is checked target-relatively on BOTH ``formal`` and
+    ``informal`` via :func:`is_target_language`. ``lang_total`` counts
+    those checked cells, ``lang_ok`` the ones where both fields pass, and
+    ``lang_failures`` holds ``{model, language, sentence_index, field}``
+    per failing field. Echo/blank/malformed cells stay out of the
+    dimension (their kind already scores them); undetermined heuristic
+    cases pass. Mismatches are scored against the Lang threshold in
+    :func:`main` (``lang_failures <= max(1, lang_total // 100)`` — see
+    :func:`allowed_lang_failures`); every mismatch is recorded here for
+    reporting regardless of the verdict.
     """
     if models is None:
         models = list_models()
@@ -272,8 +1209,11 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
         per_language = {language: 0 for language in languages}
         failures = []
         echoes = []
+        lang_failures = []
         valid = 0
         total = 0
+        lang_ok = 0
+        lang_total = 0
         for language in languages:
             for index, sentence in enumerate(SENTENCES):
                 total += 1
@@ -311,6 +1251,42 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
                                 "kind": kind,
                             }
                         )
+                    else:
+                        # Rendered cell: both text fields are checked
+                        # against the target language (target-relative
+                        # check — the informal-EN blind spot this closes).
+                        # Mismatches are recorded per field and scored
+                        # against the Lang threshold in main, not here.
+                        lang_total += 1
+                        try:
+                            informal = result.get("informal")
+                        except Exception:
+                            informal = None
+                        if not isinstance(informal, str):
+                            informal = ""
+                        cell_ok = True
+                        if not is_target_language(formal, language):
+                            cell_ok = False
+                            lang_failures.append(
+                                {
+                                    "model": model,
+                                    "language": language,
+                                    "sentence_index": index,
+                                    "field": "formal",
+                                }
+                            )
+                        if not is_target_language(informal, language):
+                            cell_ok = False
+                            lang_failures.append(
+                                {
+                                    "model": model,
+                                    "language": language,
+                                    "sentence_index": index,
+                                    "field": "informal",
+                                }
+                            )
+                        if cell_ok:
+                            lang_ok += 1
                 else:
                     failures.append(
                         {
@@ -325,6 +1301,9 @@ def run_matrix(models=None, translate_fn=translate_text, languages=None):
             "per_language": per_language,
             "failures": failures,
             "echoes": echoes,
+            "lang_ok": lang_ok,
+            "lang_total": lang_total,
+            "lang_failures": lang_failures,
         }
     return results
 
@@ -338,7 +1317,24 @@ def _code_for(language: str) -> str:
 
 
 def format_table(results, languages=None):
-    """Return the gate table as markdown rows (header + one row per model)."""
+    """Return the gate table as markdown rows (header + one row per model).
+
+    Columns: per-language valid cells, Valid, Lang (the target-language
+    check: passed/checked rendered cells — ``-`` for summaries without
+    the dimension), Score, Gate. Gate is FAIL when the JSON-valid math
+    fails OR the Lang dimension exceeds its threshold (mismatches >
+    ``max(1, lang_total // 100)`` — see :func:`allowed_lang_failures`).
+    A row that passes overall with a non-zero (but within-threshold)
+    mismatch count renders ``PASS (within threshold)`` so the softened
+    verdict is unambiguous in logs; mismatches themselves always print
+    as ``LANG-FAIL`` lines elsewhere regardless of the verdict.
+    Counting bases deliberately differ: the Lang column counts CELLS
+    (passed/checked) while the verdict counts failing FIELDS
+    (``len(lang_failures)``), so a cell failing both fields can render
+    ``24/25`` alongside a FAIL — per-field counting is the stricter
+    basis and can only ever over-flag a fully broken cell, never hide
+    one behind the one-cell floor.
+    """
     if languages is None:
         languages = MATRIX_LANGUAGES
     else:
@@ -346,9 +1342,9 @@ def format_table(results, languages=None):
     header = (
         "| Model | "
         + " | ".join(_code_for(language) for language in languages)
-        + " | Valid | Score | Gate |"
+        + " | Valid | Lang | Score | Gate |"
     )
-    separator = "|" + "---|" * (len(languages) + 4)
+    separator = "|" + "---|" * (len(languages) + 5)
     lines = [header, separator]
     for model, summary in results.items():
         try:
@@ -361,14 +1357,29 @@ def format_table(results, languages=None):
         ]
         valid = summary.get("valid", 0)
         total = summary.get("total", 0)
+        lang_total = summary.get("lang_total")
+        lang_ok = summary.get("lang_ok")
+        if lang_total is None:
+            lang_cell = "-"
+            lang_fail = False
+            lang_within = False
+        else:
+            lang_cell = "{}/{}".format(lang_ok, lang_total)
+            mismatches = _lang_mismatch_count(summary)
+            lang_fail = not lang_gate_ok(lang_total, mismatches)
+            lang_within = not lang_fail and mismatches > 0
         try:
             score = "{}%".format(round(100 * valid / total)) if total else "0%"
         except Exception:
             score = "0%"
-        gate = "PASS" if passes_gate(valid, total) else "FAIL"
+        gate = "PASS" if passes_gate(valid, total) and not lang_fail else "FAIL"
+        if gate == "PASS" and lang_within:
+            # Mismatches present but within threshold: label the verdict
+            # so logs cannot be misread as a zero-mismatch run.
+            gate = "PASS (within threshold)"
         lines.append(
-            "| {} | {} | {}/{} | {} | {} |".format(
-                model, " | ".join(cells), valid, total, score, gate
+            "| {} | {} | {}/{} | {} | {} | {} |".format(
+                model, " | ".join(cells), valid, total, lang_cell, score, gate
             )
         )
     return "\n".join(lines)
@@ -503,9 +1514,13 @@ def record_results(results, path, date=None, languages=None, label=None):
 
     Append-only: existing content is never read or rewritten. Adds the
     per-model table plus a one-line failure detail per invalid cell
-    (model, language, sentence index). Defaults preserve the exact E1
-    section shape; pass ``languages`` plus ``label`` for wider gates.
-    Returns the path written.
+    (model, language, sentence index) and, when the run produced any, a
+    language-mismatch detail per failing field (the Lang dimension —
+    section shape is unchanged for clean runs). Mismatches are appended
+    even when they sit within the Lang threshold: reporting never depends
+    on the verdict (see :func:`allowed_lang_failures`). Defaults preserve
+    the exact E1 section shape; pass ``languages`` plus ``label`` for
+    wider gates. Returns the path written.
     """
     if date is None:
         date = datetime.date.today().isoformat()
@@ -545,6 +1560,28 @@ def record_results(results, path, date=None, languages=None, label=None):
         lines.append("")
     else:
         lines.append("No invalid cells — every cell JSON-valid.")
+        lines.append("")
+    lang_failures = [
+        mismatch
+        for summary in results.values()
+        for mismatch in summary.get("lang_failures", [])
+    ]
+    if lang_failures:
+        lines.append(
+            "Language mismatches (target-relative check on formal+informal "
+            "— reported always; the gate fails only over the Lang "
+            "threshold):"
+        )
+        lines.append("")
+        for mismatch in lang_failures:
+            lines.append(
+                "- LANG-FAIL {} | {} | {} | sentence {}".format(
+                    mismatch.get("model"),
+                    mismatch.get("language"),
+                    mismatch.get("field"),
+                    mismatch.get("sentence_index", 0) + 1,
+                )
+            )
         lines.append("")
     parent = os.path.dirname(os.path.abspath(path))
     if parent and not os.path.isdir(parent):
@@ -611,6 +1648,14 @@ def main(argv=None, translate_fn=None):
 
     ``translate_fn`` is injectable for offline tests (same signature as
     ``translate_text``); the CLI path always uses the live service.
+
+    Exit gate = >=95% JSON-valid AND target-language mismatches within
+    threshold (the Lang column passes iff ``lang_failures <= max(1,
+    lang_total // 100)`` — see :func:`allowed_lang_failures`; an
+    over-threshold model fails the run with ``EXIT_GATE_FAIL``). Every
+    mismatch still prints as a ``LANG-FAIL`` line and is appended to the
+    research block either way; a within-threshold run reports PASS with
+    its table row labeled ``(within threshold)``.
     """
     args = _parse_args(argv)
     if args.models:
@@ -691,6 +1736,16 @@ def main(argv=None, translate_fn=None):
                     failure.get("sentence_index", 0) + 1,
                 )
             )
+    for summary in results.values():
+        for mismatch in summary.get("lang_failures", []):
+            print(
+                "LANG-FAIL {} | {} | {} | sentence {}".format(
+                    mismatch.get("model"),
+                    mismatch.get("language"),
+                    mismatch.get("field"),
+                    mismatch.get("sentence_index", 0) + 1,
+                )
+            )
     record_results(results, args.research_path, languages=languages, label=label)
     print("")
     print("Appended gate section to {}".format(args.research_path))
@@ -708,11 +1763,18 @@ def main(argv=None, translate_fn=None):
         model
         for model, summary in results.items()
         if not passes_gate(summary.get("valid", 0), summary.get("total", 0))
+        or not lang_gate_ok(summary.get("lang_total", 0), _lang_mismatch_count(summary))
     ]
     if failed:
-        print("Gate FAIL (<95% JSON-valid): {}".format(", ".join(failed)))
+        print(
+            "Gate FAIL (<95% JSON-valid or target-language mismatches over "
+            "the Lang threshold): {}".format(", ".join(failed))
+        )
         return EXIT_GATE_FAIL
-    print("Gate PASS (>=95% JSON-valid) for every model.")
+    print(
+        "Gate PASS (>=95% JSON-valid and target-language mismatches within "
+        "the Lang threshold) for every model."
+    )
     return EXIT_PASS
 
 

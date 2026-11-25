@@ -187,6 +187,25 @@ class Translation(BaseModel):
 # intent ("Translate the following English text into {language}") lives
 # in the instruction itself; the ENTIRE-output and longer-document lines
 # went with the template.
+#
+# Informal-language fix (2026-11-25, raw-first acceptance matrix): the
+# contract above never stated the LANGUAGE of the two versions, so the
+# `informal` field stochastically rendered in English (Phase-1 app-path:
+# EN->DE longs 4/5 English informal, shorts 1/23 — the owner's manual
+# hit was a long input). Every SYSTEM-side add-on re-triggered the
+# framing class and was rejected on the acceptance gate: trailing
+# standalone line "Both versions must be in {language}." -> German long
+# 79-85 x5 (deterministic); inline ", both in {language}" wording ->
+# German long 79 + Spanish 183 partials; the earlier ", both written
+# entirely in German" amendment -> 79-85 x3. The WINNER keeps this
+# system instruction byte-identical (the proven framing pole) and states
+# the language in the USER message tail instead — raw acceptance: German
+# long 5/5 formal 840-867 AND informal German 5/5, Spanish long 5/5,
+# EN->DE shorts 12/12 informal German, DE->EN 3/3 informal English.
+# The gate now enforces both fields target-relatively (eval_harness
+# Lang dimension; red run before this fix: 4 informal-EN cells on the
+# 5x5). Evidence logs: raw candidate matrices + red/green runs
+# 2026-11-25 (orchestrator-held).
 _SYSTEM_TEMPLATE = "{format_instructions}"
 
 
@@ -201,6 +220,11 @@ def _compact_format_instructions(language: str) -> str:
     full contract (single JSON object, all three ``Translation`` fields)
     because JsonOutputParser does not validate. Keep in sync with the
     Translation schema.
+
+    Deliberately says NOTHING about the versions' language: that
+    statement lives in the USER message tail (see ``_build_request``) —
+    every system-side wording tried there re-triggered the framing-class
+    first-sentence stop (evidence on ``_SYSTEM_TEMPLATE``).
     """
     return (
         f"Translate the following English text into {language}. Give two "
@@ -209,17 +233,39 @@ def _compact_format_instructions(language: str) -> str:
     )
 
 
+# User-message tail (informal-language fix, 2026-11-25): states the
+# language of BOTH versions without touching the proven system pole.
+# Round 4 (raw-first, owner-mandated): the round-3 tail ("Both versions
+# must be in {language}.") left a stochastic ~1% wrong-language informal
+# (Lang gate caught Tamil informal sentence 1 in a 23x5 matrix, 1/115;
+# direct reproduction 6/6 clean). Red baseline at round-4 settings on the
+# round-3 tail: 0/115 twice (230 clean cells — lucky draws sizing the
+# residual below ~1%). WINNER is the strengthened trailing wording:
+# German long 5/5 formal 839-859 with informal German 5/5, Spanish long
+# 5/5 formal 839-864, EN->DE shorts 12/12, DE->EN 3/3, full 23x5 matrix
+# 0 mismatches/115 — plus a second independent 115-cell sweep for
+# confirmation. Rejected candidates: none failed — the first candidate
+# cleared the full gate (later candidates untested, per the stop-at-
+# winner rule). System-side equivalents failed the same gate (see
+# _SYSTEM_TEMPLATE evidence). Two blank lines mirror the raw-probe
+# payload that was acceptance-tested.
+_HUMAN_TEMPLATE = "{text}\n\nBoth versions must be written entirely in {language}."
+
+
 def _build_request(text, target_language, parser):
-    """Return the v1 system+human message list with format instructions bound.
+    """Return the v1 system+user message list with format instructions bound.
 
     ``parser`` stays in the signature for the callers/tests; the bound
     instructions are the compact contract above, not
-    ``parser.get_format_instructions()`` (see the comment on the template).
+    ``parser.get_format_instructions()`` (see the comment on the
+    template). The user message carries the versions-language tail
+    (``_HUMAN_TEMPLATE``) — the 2026-11-25 informal-language fix; the
+    system message stays the proven single self-contained instruction.
     """
     prompt = ChatPromptTemplate.from_messages(
         [
             SystemMessagePromptTemplate.from_template(_SYSTEM_TEMPLATE),
-            HumanMessagePromptTemplate.from_template("{text}"),
+            HumanMessagePromptTemplate.from_template(_HUMAN_TEMPLATE),
         ]
     )
     return prompt.format_prompt(

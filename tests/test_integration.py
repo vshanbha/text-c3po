@@ -90,6 +90,7 @@ def test_ollama_probe_live():
 
 def test_translate_live_lfm3():
     _require_model()
+    from text_c3po.services.eval_harness import is_target_language
     from text_c3po.services.translation import translate_text
 
     out = translate_text("Good morning", "German", MODEL)
@@ -99,6 +100,14 @@ def test_translate_live_lfm3():
     # A translation must differ from the input: an English echo would
     # prove the target-language contract broken while staying JSON-valid.
     assert formal != "Good morning"
+    # The informal variant must be present AND render in the target
+    # language (2026-11-24 bug: it stochastically came back in English —
+    # zero automated coverage before this check, same target-relative
+    # heuristic the eval gate now enforces).
+    informal = out.get("informal")
+    assert isinstance(informal, str) and informal.strip(), out
+    assert is_target_language(formal, "German"), formal
+    assert is_target_language(informal, "German"), informal
 
 
 def test_whisper_lifecycle_live(whisper_server):
