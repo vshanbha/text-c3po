@@ -12,7 +12,7 @@ version = "2.0.0"
 description = "Local-first desktop translator (Flet + Ollama + whisper-server)"
 requires-python = ">=3.12"
 dependencies = [
-    "flet==0.86.5",
+    "flet==1.1.2",
     # See requirements.txt: last fastapi accepted by flet-web 0.86.5's
     # openapi_prefix call (>=0.142 removed it; web mode breaks).
     "fastapi==0.141.1",
