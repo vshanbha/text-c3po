@@ -272,3 +272,86 @@ Supported = JSON-valid with a usable formal that differs from the input sentence
 | lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
 
 No unsupported cells — every valid cell rendered the target.
+
+
+## Post-migration gate sections (merged from the ghost default-path file, 2026-11-25 — see _DEFAULT_RESEARCH_PATH fix)
+
+## E1 gate — 5x5 smoke 13:14 (2026-11-25)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Lang | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 25/25 | 100% | PASS |
+| ornith-1.5:9b | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 25/25 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E4 gate — 23x5 full matrix 13:16 (2026-11-25)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Valid | Lang | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115/115 | 114/115 | 100% | FAIL |
+
+No invalid cells — every cell JSON-valid.
+
+Language mismatches (target-relative check on formal+informal):
+
+- LANG-FAIL lfm3 | Tamil | informal | sentence 1
+
+## E4 gate — 23x5 full matrix 13:16 — capability (2026-11-25)
+
+Supported = JSON-valid with a usable formal that differs from the input sentence (echo/blank/malformed cells prove the model did not render the target). Rescored from the gate run above — no extra calls.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Supported |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
+
+No unsupported cells — every valid cell rendered the target.
+
+## E1 gate — 5x5 smoke 14:56 (2026-11-25)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Lang | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 25/25 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E1 gate — 5x5 smoke 16:17 (2026-11-25)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 5 languages.
+
+| Model | de | fr | es | hi | zh | Valid | Lang | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 25/25 | 100% | PASS |
+| ornith-1.5:9b | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 25/25 | 25/25 | 100% | PASS |
+
+No invalid cells — every cell JSON-valid.
+
+## E4 gate — 23x5 full matrix 16:19 (2026-11-25)
+
+Target: http://127.0.0.1:11434 (loopback only). Matrix: 5 sentences x 23 languages.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Valid | Lang | Score | Gate |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115/115 | 114/115 | 100% | PASS (within threshold) |
+
+No invalid cells — every cell JSON-valid.
+
+Language mismatches (target-relative check on formal+informal — reported always; the gate fails only over the Lang threshold):
+
+- LANG-FAIL lfm3 | Danish | formal | sentence 1
+
+## E4 gate — 23x5 full matrix 16:19 — capability (2026-11-25)
+
+Supported = JSON-valid with a usable formal that differs from the input sentence (echo/blank/malformed cells prove the model did not render the target). Rescored from the gate run above — no extra calls.
+
+| Model | af | ar | bn | zh | da | nl | en | fr | de | el | gu | hi | kn | mr | fa | pt | ru | es | sv | ta | te | ur | vi | Supported |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| lfm3 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 115 |
+
+No unsupported cells — every valid cell rendered the target.

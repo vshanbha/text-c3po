@@ -160,6 +160,19 @@ Needs: `ollama serve` with `lfm3` (the default) plus `lfm2.5:latest` (B6/B7 take
     (529→618→874); probe_collapse 5/5 (822–852); gate 25/25 both
     models; 23×5 115/115; 218 unit. Rung-3 live proof: 8,662 thinking
     deltas streamed, JSON clean, 180.5s.
+  - **Informal-language drift FIXED (closed 2026-11-25, [R] `dbc2857`):**
+    the informal field stochastically rendered in ENGLISH (long inputs
+    6/7; ~16% pre-fix) — no version-language statement in the prompt and
+    zero automated coverage of the informal field. Fixed across two
+    reviewed rounds (user-tail C1 → c4 `written entirely in {language}`;
+    system instruction kept the byte-identical framing pole), with the
+    structural fix: the harness Lang dimension now scores target-language
+    consistency on formal AND informal across all 23 languages (red
+    proven live on the old prompt: 4 informal-EN cells → green), and the
+    gate runs a threshold policy (mismatches ≤ max(1, total//100); one
+    stochastic draw absorbs, always printed). **Battery 2026-11-25:**
+    gate 25/25 ×2 Valid+Lang; 23×5 114/115 → PASS (within threshold,
+    Danish draw printed); German long 3/3 lang-checked; 230 unit.
 - **B7 — unsupported target language (accepted limitation, lfm2.5-only).**
   Select model `lfm2.5:latest`, pick Kannada or Marathi, Translate
   "Good morning. How are you today?".
