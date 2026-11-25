@@ -1,0 +1,40 @@
+# Dependabot version updates for text-c3po.
+# Ecosystems cover this repo's actual manifests: uv (lock + pyproject),
+# pip (root requirements.txt and the pinned docs/requirements.txt),
+# npm (.opencode plugin), and GitHub Actions workflows.
+# Note: skills-lock.json (BMAD skills tree) has no Dependabot ecosystem —
+# its advisories surface via the dependency graph but are remediated by
+# `npx skills update` / manual bumps, not by PRs from this file.
+
+version: 2
+updates:
+  # uv.lock + pyproject.toml — the product's real dependency set
+  # (flet pin policy lives in AGENTS.md: bumps are conscious decisions).
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Root requirements.txt (exact pins, e.g. flet==0.86.5)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # docs/requirements.txt (MkDocs Material pins for the Pages build)
+  - package-ecosystem: "pip"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+
+  # .opencode/package.json (OpenCode plugin)
+  - package-ecosystem: "npm"
+    directory: "/.opencode"
+    schedule:
+      interval: "weekly"
+
+  # .github/workflows (actions/checkout etc. — static.yml, tests.yml)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
