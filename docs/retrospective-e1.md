@@ -1,1 +1,1 @@
-../_bmad-output/specs/spec-e1-shell-core/RETROSPECTIVE.md
+../_bmad-output/initiative-text-c3po/tickets/epic-flet-shell-local-text-translation-core/epic-flet-shell-local-text-translation-core-retrospective.md

@@ -1,1 +1,1 @@
-../_bmad-output/specs/spec-e3-live-ui/RETROSPECTIVE.md
+../_bmad-output/initiative-text-c3po/tickets/epic-live-captions-ui-session-state/epic-live-captions-ui-session-state-retrospective.md

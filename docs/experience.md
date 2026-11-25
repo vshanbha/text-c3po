@@ -1,1 +1,1 @@
-../_bmad-output/planning-artifacts/ux-designs/ux-text-c3po-2026-09-08/EXPERIENCE.md
+../_bmad-output/initiative-text-c3po/ux-text-c3po-2026-09-08/EXPERIENCE.md

@@ -1,1 +1,1 @@
-../_bmad-output/specs/spec-e4-ops-eval-polish/RETROSPECTIVE.md
+../_bmad-output/initiative-text-c3po/tickets/epic-ops-eval-polish/epic-ops-eval-polish-retrospective.md

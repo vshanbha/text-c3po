@@ -1,1 +1,1 @@
-../_bmad-output/planning-artifacts/research/technical-model-quality-2026-09-08/research.md
+../_bmad-output/initiative-text-c3po/technical-model-quality-2026-09-08/technical-model-quality-2026-09-08.md

@@ -1,1 +1,1 @@
-../_bmad-output/planning-artifacts/research/technical-flet-sounddevice-2026-09-08/research.md
+../_bmad-output/initiative-text-c3po/technical-flet-sounddevice-2026-09-08/technical-flet-sounddevice-2026-09-08.md

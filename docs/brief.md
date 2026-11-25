@@ -1,1 +1,1 @@
-../_bmad-output/planning-artifacts/briefs/brief-text-c3po-2026-09-08/brief.md
+../_bmad-output/initiative-text-c3po/brief-text-c3po-2026-09-08/brief-text-c3po-2026-09-08.md

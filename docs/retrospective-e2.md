@@ -1,1 +1,1 @@
-../_bmad-output/specs/spec-e2-audio-asr/RETROSPECTIVE.md
+../_bmad-output/initiative-text-c3po/tickets/epic-audio-capture-asr/epic-audio-capture-asr-retrospective.md
