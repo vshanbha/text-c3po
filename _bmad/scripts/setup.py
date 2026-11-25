@@ -38,15 +38,17 @@ CUSTOM_GITIGNORE = "*.user.toml\n"
 # Rendered skills are regenerated on demand, so only this ignore file is committed, and a fresh clone
 # that renders before running setup still has a clean tree.
 RENDER_GITIGNORE = "*\n!.gitignore\n"
-GITIGNORE_COVERS_USER_CONFIG = frozenset({"*.user.toml", "config.user.toml", "*.toml", "*"})
+GITIGNORE_COVERS_USER_CONFIG = frozenset(
+    {"*.user.toml", "config.user.toml", "*.toml", "*"}
+)
 
 SEMVER = re.compile(
     r"(?P<major>0|[1-9][0-9]*)\."
     r"(?P<minor>0|[1-9][0-9]*)\."
     r"(?P<patch>0|[1-9][0-9]*)"
     r"(?:-(?P<prerelease>"
-    r"(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
-    r"(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*"
+    r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*"
     r"))?"
     r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?\Z"
 )
@@ -166,7 +168,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--project-root", type=Path, required=True)
     parser.add_argument("--skill", type=Path, required=True)
-    parser.add_argument("--module", help="limit the run to one module, by code or by bmod-<code>")
+    parser.add_argument(
+        "--module", help="limit the run to one module, by code or by bmod-<code>"
+    )
     parser.add_argument(
         "--root",
         type=Path,
@@ -226,21 +230,37 @@ def main(argv: list[str] | None = None) -> int:
             or args.module_answers is not None
             or (args.remove_retired is not None and args.remove_copies is not None)
         ):
-            parser.error("--remove-retired and --remove-copies cannot be combined with other modes")
+            parser.error(
+                "--remove-retired and --remove-copies cannot be combined with other modes"
+            )
         if args.remove_copies is not None:
-            print_json(remove_copies(project_root, skill_root, args.remove_copies, roots=roots))
+            print_json(
+                remove_copies(project_root, skill_root, args.remove_copies, roots=roots)
+            )
         else:
-            print_json(remove_retired(project_root, skill_root, args.remove_retired, module=args.module, roots=roots))
+            print_json(
+                remove_retired(
+                    project_root,
+                    skill_root,
+                    args.remove_retired,
+                    module=args.module,
+                    roots=roots,
+                )
+            )
         return 0
     if args.status:
         if args.list_config_questions or args.module_answers is not None:
             parser.error("--status cannot be combined with questions or answers")
-        print_json(status_report(project_root, skill_root, module=args.module, roots=roots))
+        print_json(
+            status_report(project_root, skill_root, module=args.module, roots=roots)
+        )
         return 0
     if args.list_config_questions:
         if args.module_answers is not None:
             parser.error("--list-config-questions cannot be combined with answer files")
-        listing = list_config_questions(project_root, skill_root, module=args.module, roots=roots)
+        listing = list_config_questions(
+            project_root, skill_root, module=args.module, roots=roots
+        )
         print_json(listing)
         return 0
     report = setup(
@@ -248,7 +268,11 @@ def main(argv: list[str] | None = None) -> int:
         skill_root,
         module=args.module,
         roots=roots,
-        module_answers=(load_module_answers(args.module_answers) if args.module_answers is not None else None),
+        module_answers=(
+            load_module_answers(args.module_answers)
+            if args.module_answers is not None
+            else None
+        ),
         module_answers_source=args.module_answers,
     )
     print_json(report)
@@ -283,7 +307,9 @@ def setup(
     user_merged = copy.deepcopy(user_existing)
 
     pending = find_pending_questions(scoped, merged, user_existing, project_root)
-    answers = validate_module_answers(module_answers, pending, source=module_answers_source)
+    answers = validate_module_answers(
+        module_answers, pending, source=module_answers_source
+    )
     team_added: list[tuple[tuple[str, ...], str]] = []
     user_added: list[tuple[tuple[str, ...], str]] = []
     for question in pending:
@@ -293,26 +319,44 @@ def setup(
             set_missing_value(user_merged, path, value, user_config_path(project_root))
             user_added.append((path, value))
         else:
-            set_missing_value(merged, path, value, project_root / "_bmad" / "config.toml")
+            set_missing_value(
+                merged, path, value, project_root / "_bmad" / "config.toml"
+            )
             team_added.append((path, value))
     # base_text is the file's own text only when the template adds nothing to it.
     team_text = base_text if base_text == existing_text else None
-    config_text = text_with_answers(team_text, team_added, merged) if team_added else base_text
-    user_text = text_with_answers(user_existing_text, user_added, user_merged) if user_added else None
+    config_text = (
+        text_with_answers(team_text, team_added, merged) if team_added else base_text
+    )
+    user_text = (
+        text_with_answers(user_existing_text, user_added, user_merged)
+        if user_added
+        else None
+    )
     if user_added:
         reject_unwritable_user_config(project_root)
 
-    retirement = retirement_report(project_root, skill_root, installation, retired_skills(scoped, installation.modules))
+    retirement = retirement_report(
+        project_root,
+        skill_root,
+        installation,
+        retired_skills(scoped, installation.modules),
+    )
 
     module_trees: dict[str, PlainTree] = {}
     for installed in scoped:
         reject_unusable_module_root(bmad / installed.module)
-        module_trees[installed.module] = declared_scripts_tree(read_module_scripts(installed))
+        module_trees[installed.module] = declared_scripts_tree(
+            read_module_scripts(installed)
+        )
 
     created = not bmad.exists()
     done = {"missing": "created", "stale": "repaired", "current": "current"}
     shared_state = done[tree_state(bmad / "scripts", shared_scripts_tree(scripts_src))]
-    module_states = {code: done[tree_state(bmad / code / "scripts", tree)] for code, tree in module_trees.items()}
+    module_states = {
+        code: done[tree_state(bmad / code / "scripts", tree)]
+        for code, tree in module_trees.items()
+    }
     config_state = team_config_state(project_root, existing_text, config_text)
     gitignore_state = custom_gitignore_state(project_root)
     custom = bmad / "custom"
@@ -341,10 +385,18 @@ def setup(
         changed = True
     ensure_dir(output)
 
-    unmet = unmet_requirements(installation, skill_root, module=None if selected is None else selected.module)
-    recommended = unmet_recommendations(installation, skill_root, module=None if selected is None else selected.module)
-    remaining = find_pending_questions(installation.modules, merged, user_merged, project_root)
-    next_command = next_step(installation.missing_records, unmet, setup_owed=bool(remaining))
+    unmet = unmet_requirements(
+        installation, skill_root, module=None if selected is None else selected.module
+    )
+    recommended = unmet_recommendations(
+        installation, skill_root, module=None if selected is None else selected.module
+    )
+    remaining = find_pending_questions(
+        installation.modules, merged, user_merged, project_root
+    )
+    next_command = next_step(
+        installation.missing_records, unmet, setup_owed=bool(remaining)
+    )
     problems = [*installation.problems, *custom_gitignore_problems(gitignore_state)]
     return {
         "mode": "setup",
@@ -354,12 +406,16 @@ def setup(
         "bmad": bmad_report(installation, skill_root),
         "shared_scripts": shared_state,
         "config": config_state,
-        "custom_gitignore": "created" if gitignore_state == "missing" else gitignore_state,
+        "custom_gitignore": "created"
+        if gitignore_state == "missing"
+        else gitignore_state,
         "modules": [
             {
                 **module_summary(installed, project_root),
                 "scripts": module_states[installed.module],
-                **message_json("post_install_message", installed.parsed.post_install_message),
+                **message_json(
+                    "post_install_message", installed.parsed.post_install_message
+                ),
             }
             for installed in scoped
         ],
@@ -380,7 +436,12 @@ def setup(
         "duplicate_skills": duplicates_json(installation.duplicates, project_root),
         "problems": problems,
         **retirement_json(retirement),
-        "current": (next_command is None and not unmet and not problems and not installation.missing_records),
+        "current": (
+            next_command is None
+            and not unmet
+            and not problems
+            and not installation.missing_records
+        ),
         "next": next_command,
     }
 
@@ -399,19 +460,31 @@ def payload(skill_root: Path) -> tuple[Path, Path]:
     return (scripts_src, config_src)
 
 
-def team_config_plan(project_root: Path, config_src: Path) -> tuple[str | None, dict, str]:
+def team_config_plan(
+    project_root: Path, config_src: Path
+) -> tuple[str | None, dict, str]:
     """The team file's text, its values with the template's new keys filled in, and the text setup would write."""
-    template_text = fill_team_config(config_src.read_text(encoding="utf-8"), project_root)
+    template_text = fill_team_config(
+        config_src.read_text(encoding="utf-8"), project_root
+    )
     template = parse_toml(template_text, config_src)
     existing_text, existing = existing_team_config(project_root)
     merged = fill_keep(template, existing)
     if not isinstance(merged, dict):
-        raise Exception(f"invalid team config: {project_root / '_bmad' / 'config.toml'}")
-    base_text = existing_text if existing_text is not None and merged == existing else render_toml(merged)
+        raise Exception(
+            f"invalid team config: {project_root / '_bmad' / 'config.toml'}"
+        )
+    base_text = (
+        existing_text
+        if existing_text is not None and merged == existing
+        else render_toml(merged)
+    )
     return existing_text, merged, base_text
 
 
-def team_config_state(project_root: Path, existing_text: str | None, config_text: str) -> str:
+def team_config_state(
+    project_root: Path, existing_text: str | None, config_text: str
+) -> str:
     if existing_text is None:
         return "created"
     path = project_root / "_bmad" / "config.toml"
@@ -437,16 +510,25 @@ def pending_config_questions(
 
 
 def list_config_questions(
-    project_root: Path, skill_root: Path, *, module: str | None = None, roots: tuple[Path, ...] = ()
+    project_root: Path,
+    skill_root: Path,
+    *,
+    module: str | None = None,
+    roots: tuple[Path, ...] = (),
 ) -> object:
     """The pending questions as a JSON list, or the unknown-module report."""
     reject_unusable_bmad(project_root)
     installation = discover_installation(skill_root, roots)
-    selected, unknown = select_module(installation, module, mode="list-config-questions")
+    selected, unknown = select_module(
+        installation, module, mode="list-config-questions"
+    )
     if unknown is not None:
         return unknown
     scoped = installation.modules if selected is None else (selected,)
-    return [question_json(question) for question in pending_config_questions(project_root, skill_root, scoped)]
+    return [
+        question_json(question)
+        for question in pending_config_questions(project_root, skill_root, scoped)
+    ]
 
 
 def question_json(question: ConfigQuestion) -> dict[str, str]:
@@ -473,7 +555,9 @@ def current_answers(
         entries: list[dict[str, object]] = []
         for question in installed.questions:
             config = user if question.scope == "user" else team
-            value = lookup(config, ("modules", question.module, *question.key.split(".")))
+            value = lookup(
+                config, ("modules", question.module, *question.key.split("."))
+            )
             if value is _MISSING:
                 continue
             entries.append(
@@ -546,7 +630,9 @@ def custom_gitignore_state(project_root: Path) -> str:
     if not gitignore.exists() and not gitignore.is_symlink():
         return "missing"
     try:
-        lines = {line.strip() for line in gitignore.read_text(encoding="utf-8").splitlines()}
+        lines = {
+            line.strip() for line in gitignore.read_text(encoding="utf-8").splitlines()
+        }
     except (OSError, UnicodeError):
         return "unprotected"
     return "current" if lines & GITIGNORE_COVERS_USER_CONFIG else "unprotected"
@@ -579,13 +665,17 @@ def retired_skills(
     installed: tuple[InstalledModule, ...],
 ) -> tuple[Retired, ...]:
     """Old names the modules renamed or removed. A name an installed module still lists is not retired."""
-    current = {name for module in installed for name in (*module.skills, *module.absent_skills)}
+    current = {
+        name for module in installed for name in (*module.skills, *module.absent_skills)
+    }
     retired: list[Retired] = []
     for module in scoped:
         entries = [(rename.old, rename.new) for rename in module.retired.renamed]
         entries += [(name, None) for name in module.retired.removed]
         retired.extend(
-            Retired(name, module.module, new, module.parsed.update_source, module.source)
+            Retired(
+                name, module.module, new, module.parsed.update_source, module.source
+            )
             for name, new in entries
             if name not in current
         )
@@ -650,7 +740,10 @@ def present(path: Path) -> bool:
 
 
 def retirement_report(
-    project_root: Path, skill_root: Path, installation: Installation, retired: tuple[Retired, ...]
+    project_root: Path,
+    skill_root: Path,
+    installation: Installation,
+    retired: tuple[Retired, ...],
 ) -> Retirement:
     """Where the retired skills are still installed or customized, and what setup does about it."""
     folders = skill_folders(project_root, installation)
@@ -662,7 +755,9 @@ def retirement_report(
     unused: list[tuple[str, str]] = []
     used: set[str] = set()
     for skill in retired:
-        paths = [folder / skill.name for folder in folders if present(folder / skill.name)]
+        paths = [
+            folder / skill.name for folder in folders if present(folder / skill.name)
+        ]
         if paths:
             used.add(skill.name)
             in_use.append(
@@ -685,22 +780,37 @@ def retirement_report(
                 unused.append((skill.name, old))
                 continue
             new = f"{skill.renamed_to}{suffix}"
-            taken = present(custom / new) or any(target == new for _old, target in renames)
+            taken = present(custom / new) or any(
+                target == new for _old, target in renames
+            )
             (unmoved if taken else renames).append((old, new))
     offers: dict[str, dict[str, object]] = {}
     for skill in retired:
         new = skill.renamed_to
-        if new is None or skill.name not in used or new in offers or new in installation.folders:
+        if (
+            new is None
+            or skill.name not in used
+            or new in offers
+            or new in installation.folders
+        ):
             continue
         offers[new] = {
             "skill": new,
             "replaces": skill.name,
             "module": skill.module,
             "install": install_command(
-                skill.update_source, new, global_install=is_global(skill.record_folder, project_root)
+                skill.update_source,
+                new,
+                global_install=is_global(skill.record_folder, project_root),
             ),
         }
-    return Retirement(tuple(in_use), tuple(renames), tuple(unmoved), tuple(unused), tuple(offers.values()))
+    return Retirement(
+        tuple(in_use),
+        tuple(renames),
+        tuple(unmoved),
+        tuple(unused),
+        tuple(offers.values()),
+    )
 
 
 def retirement_json(retirement: Retirement) -> dict[str, object]:
@@ -709,9 +819,15 @@ def retirement_json(retirement: Retirement) -> dict[str, object]:
 
     return {
         "retired_skills": list(retirement.in_use),
-        "custom_renames": [{"from": custom(old), "to": custom(new)} for old, new in retirement.renames],
-        "custom_not_renamed": [{"from": custom(old), "to": custom(new)} for old, new in retirement.unmoved],
-        "custom_unused": [{"skill": skill, "file": custom(name)} for skill, name in retirement.unused],
+        "custom_renames": [
+            {"from": custom(old), "to": custom(new)} for old, new in retirement.renames
+        ],
+        "custom_not_renamed": [
+            {"from": custom(old), "to": custom(new)} for old, new in retirement.unmoved
+        ],
+        "custom_unused": [
+            {"skill": skill, "file": custom(name)} for skill, name in retirement.unused
+        ],
         "install_offers": list(retirement.install_offers),
     }
 
@@ -734,10 +850,20 @@ def remove_retired(
     names = list(dict.fromkeys(names))
     for name in names:
         if name not in retired:
-            raise Exception(f"{name!r} is not a renamed or removed skill of an installed module")
+            raise Exception(
+                f"{name!r} is not a renamed or removed skill of an installed module"
+            )
     folders = skill_folders(project_root, installation)
-    targets = [(name, folder / name) for folder in folders for name in names if present(folder / name)]
-    return {"mode": "remove-retired", **remove_skill_paths(project_root, folders, targets)}
+    targets = [
+        (name, folder / name)
+        for folder in folders
+        for name in names
+        if present(folder / name)
+    ]
+    return {
+        "mode": "remove-retired",
+        **remove_skill_paths(project_root, folders, targets),
+    }
 
 
 def remove_copies(
@@ -764,11 +890,15 @@ def remove_copies(
             raise Exception(f"{path!r} is not a copy listed in duplicate_skills")
     for skill, shown in listed:
         if all(path in paths for path in shown):
-            raise Exception(f"removing every copy of {skill!r} is not a duplicate cleanup")
+            raise Exception(
+                f"removing every copy of {skill!r} is not a duplicate cleanup"
+            )
     targets = [copies[path] for path in paths]
     return {
         "mode": "remove-copies",
-        **remove_skill_paths(project_root, skill_folders(project_root, installation), targets),
+        **remove_skill_paths(
+            project_root, skill_folders(project_root, installation), targets
+        ),
     }
 
 
@@ -799,19 +929,30 @@ def remove_skill_paths(
     for lock_file, lock in locks.items():
         if lock is None:
             continue
-        scope_folders = [folder for folder in folders if lock_path(project_root, folder) == lock_file]
+        scope_folders = [
+            folder for folder in folders if lock_path(project_root, folder) == lock_file
+        ]
         dropped = [
             name
-            for name in dict.fromkeys(name for name, path in targets if lock_path(project_root, path) == lock_file)
-            if name in lock["skills"] and not any(present(folder / name) for folder in scope_folders)
+            for name in dict.fromkeys(
+                name
+                for name, path in targets
+                if lock_path(project_root, path) == lock_file
+            )
+            if name in lock["skills"]
+            and not any(present(folder / name) for folder in scope_folders)
         ]
         if not dropped:
             continue
         for name in dropped:
             del lock["skills"][name]
         ending = "\n" if lock_file.read_text(encoding="utf-8").endswith("\n") else ""
-        lock_file.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + ending, encoding="utf-8")
-        changed.append({"file": shown_path(lock_file, project_root), "entries_removed": dropped})
+        lock_file.write_text(
+            json.dumps(lock, indent=2, ensure_ascii=False) + ending, encoding="utf-8"
+        )
+        changed.append(
+            {"file": shown_path(lock_file, project_root), "entries_removed": dropped}
+        )
     return {"removed": removed, "locks": changed}
 
 
@@ -852,7 +993,11 @@ def select_module(
         "changed": False,
         "module": name,
         "installed_modules": [installed.module for installed in installation.modules],
-        "missing_module_records": [record for record in installation.missing_records if record["bmod"] in wanted],
+        "missing_module_records": [
+            record
+            for record in installation.missing_records
+            if record["bmod"] in wanted
+        ],
     }
 
 
@@ -867,21 +1012,31 @@ def module_summary(installed: InstalledModule, project_root: Path) -> dict[str, 
         "scope": "global" if global_install else "project",
         "absent_skills": list(installed.absent_skills),
         "absent_install": install_command(
-            installed.parsed.update_source, *installed.absent_skills, global_install=global_install
+            installed.parsed.update_source,
+            *installed.absent_skills,
+            global_install=global_install,
         ),
     }
 
 
 def bmad_report(installation: Installation, skill_root: Path) -> dict[str, object]:
     """The bmad skill in use. Its version is its module's, and unknown when that record is absent."""
-    report: dict[str, object] = {"skill": skill_root.name, "version": None, "module": None}
+    report: dict[str, object] = {
+        "skill": skill_root.name,
+        "version": None,
+        "module": None,
+    }
     resolved = skill_root.resolve()
     by_folder = {installed.folder: installed for installed in installation.files}
     for installed in installation.files:
         if installed.source.resolve() != resolved:
             continue
         record = installed.parsed.bmod
-        if record is None and installed.parsed.skill is not None and installed.parsed.skill.bmod is not None:
+        if (
+            record is None
+            and installed.parsed.skill is not None
+            and installed.parsed.skill.bmod is not None
+        ):
             other = by_folder.get(installed.parsed.skill.bmod)
             record = other.parsed.bmod if other is not None else None
         if record is not None:
@@ -921,7 +1076,14 @@ def unmet_entries(
     declared: list[tuple[str, str | None, str, Requirement]] = []
     for installed in installation.modules:
         for requirement in getattr(installed.parsed, field):
-            declared.append((installed.folder, installed.module, installed.parsed.update_source, requirement))
+            declared.append(
+                (
+                    installed.folder,
+                    installed.module,
+                    installed.parsed.update_source,
+                    requirement,
+                )
+            )
     for installed in installation.files:
         skill = installed.parsed.skill
         if skill is None:
@@ -929,9 +1091,22 @@ def unmet_entries(
         record = installed.parsed.bmod
         if record is None and skill.bmod is not None and skill.bmod in by_folder:
             record = by_folder[skill.bmod].parsed.bmod
-        default_source = skill.source if skill.source is not None else record.update_source if record else None
+        default_source = (
+            skill.source
+            if skill.source is not None
+            else record.update_source
+            if record
+            else None
+        )
         for requirement in getattr(skill, field):
-            declared.append((installed.folder, record.code if record else None, default_source or "", requirement))
+            declared.append(
+                (
+                    installed.folder,
+                    record.code if record else None,
+                    default_source or "",
+                    requirement,
+                )
+            )
 
     unmet: list[dict[str, object]] = []
     for folder, code, default_source, requirement in declared:
@@ -940,7 +1115,9 @@ def unmet_entries(
         state, present = requirement_check(installation.folders, requirement)
         if state is None:
             continue
-        source = requirement.source if requirement.source is not None else default_source
+        source = (
+            requirement.source if requirement.source is not None else default_source
+        )
         unmet.append(
             {
                 "skill": folder,
@@ -965,7 +1142,9 @@ def skill_path(skills: Path | dict[str, Path], name: str) -> Path | None:
     return path if path.is_dir() else None
 
 
-def requirement_check(skills: Path | dict[str, Path], requirement: Requirement) -> tuple[str | None, str | None]:
+def requirement_check(
+    skills: Path | dict[str, Path], requirement: Requirement
+) -> tuple[str | None, str | None]:
     """Why a requirement is unmet, with the version found. The state is None when it is met."""
     if skill_path(skills, requirement.skill) is None:
         return "missing", None
@@ -988,7 +1167,11 @@ def names_a_module_record(skills: Path | dict[str, Path], skill: str) -> bool:
         parsed = read_bmod_file(folder / MANIFEST_NAME) if folder is not None else None
     except Exception:
         return False
-    return parsed is not None and parsed.skill is not None and parsed.skill.bmod is not None
+    return (
+        parsed is not None
+        and parsed.skill is not None
+        and parsed.skill.bmod is not None
+    )
 
 
 def skill_module_version(skills: Path | dict[str, Path], skill: str) -> str | None:
@@ -1043,7 +1226,13 @@ def requirement_state(installed: str | None, minimum: str) -> str | None:
         return None
     have = parse_orderable_semver(installed)
     want = parse_orderable_semver(minimum)
-    if have is not None and want is not None and have[0] == want[0] and want[1] is None and have[1] == ("next",):
+    if (
+        have is not None
+        and want is not None
+        and have[0] == want[0]
+        and want[1] is None
+        and have[1] == ("next",)
+    ):
         return None
     return "outdated"
 
@@ -1057,13 +1246,17 @@ def requirement_channel(source: str) -> str:
     return "skills-cli"
 
 
-def install_command(source: str, *skills: str, global_install: bool = False, ref: str | None = None) -> str | None:
+def install_command(
+    source: str, *skills: str, global_install: bool = False, ref: str | None = None
+) -> str | None:
     """The `npx skills` command that installs these skills, or None when the source has no such command."""
     if not skills or not source.startswith("github:"):
         return None
     owner, repository, *_tree = source.removeprefix("github:").split("/")
     pin = f"#{ref}" if ref else ""
-    return f"npx skills add {owner}/{repository}{pin} --skill {' '.join(skills)}" + (" -g" if global_install else "")
+    return f"npx skills add {owner}/{repository}{pin} --skill {' '.join(skills)}" + (
+        " -g" if global_install else ""
+    )
 
 
 UPDATE_FIXES = ("outdated", "unknown-version")
@@ -1093,7 +1286,10 @@ def next_step(
     for entry in unmet:
         if entry["state"] == "missing" and entry["install"] is not None:
             return str(entry["install"])
-    outdated = any(entry["state"] in UPDATE_FIXES and entry["channel"] == "skills-cli" for entry in unmet)
+    outdated = any(
+        entry["state"] in UPDATE_FIXES and entry["channel"] == "skills-cli"
+        for entry in unmet
+    )
     if outdated or update_available:
         return "npx skills update"
     if setup_owed:
@@ -1121,7 +1317,9 @@ def parse_toml(text: str, source: Path | str) -> dict:
         raise Exception(f"cannot parse TOML {source}: {error}") from error
 
 
-def discover_installation(skill_root: Path, roots: tuple[Path, ...] = ()) -> Installation:
+def discover_installation(
+    skill_root: Path, roots: tuple[Path, ...] = ()
+) -> Installation:
     """Every bmod.toml in the active roots, sorted into module records, their skills, and problems.
 
     The folder the bmad skill runs from is always a root. The first root holding a skill wins it, so a
@@ -1146,7 +1344,10 @@ def discover_installation(skill_root: Path, roots: tuple[Path, ...] = ()) -> Ins
             member = by_folder.get(name)
             if member is None or member.parsed.skill is None:
                 continue
-            if member is record_file or (member.parsed.bmod is None and member.parsed.skill.bmod == record_file.folder):
+            if member is record_file or (
+                member.parsed.bmod is None
+                and member.parsed.skill.bmod == record_file.folder
+            ):
                 members.append(member)
                 continue
             detail = (
@@ -1165,7 +1366,13 @@ def discover_installation(skill_root: Path, roots: tuple[Path, ...] = ()) -> Ins
         try:
             retired = read_retired_file(record_file.source)
         except Exception as error:
-            problems.append({"kind": "retired-file", "folder": record_file.folder, "message": str(error)})
+            problems.append(
+                {
+                    "kind": "retired-file",
+                    "folder": record_file.folder,
+                    "message": str(error),
+                }
+            )
             retired = ParsedRetired()
         modules.append(
             InstalledModule(
@@ -1185,7 +1392,11 @@ def discover_installation(skill_root: Path, roots: tuple[Path, ...] = ()) -> Ins
     missing_records: list[dict[str, object]] = []
     for installed in files:
         skill = installed.parsed.skill
-        if skill is not None and installed.parsed.bmod is not None and installed.folder not in member_names(installed):
+        if (
+            skill is not None
+            and installed.parsed.bmod is not None
+            and installed.folder not in member_names(installed)
+        ):
             problems.append(
                 {
                     "kind": "membership",
@@ -1220,7 +1431,15 @@ def discover_installation(skill_root: Path, roots: tuple[Path, ...] = ()) -> Ins
                     ),
                 }
             )
-    return Installation(files, tuple(modules), tuple(missing_records), tuple(problems), roots, folders, duplicates)
+    return Installation(
+        files,
+        tuple(modules),
+        tuple(missing_records),
+        tuple(problems),
+        roots,
+        folders,
+        duplicates,
+    )
 
 
 def unique_folders(folders: tuple[Path, ...]) -> tuple[Path, ...]:
@@ -1235,7 +1454,9 @@ def unique_folders(folders: tuple[Path, ...]) -> tuple[Path, ...]:
     return tuple(unique)
 
 
-def locate_skills(roots: tuple[Path, ...], own_folder: Path) -> tuple[dict[str, Path], tuple[dict[str, object], ...]]:
+def locate_skills(
+    roots: tuple[Path, ...], own_folder: Path
+) -> tuple[dict[str, Path], tuple[dict[str, object], ...]]:
     """Each skill's folder in the first root that holds it, and the BMad skills installed in more than one.
 
     The bmad skill's own folder must be readable; an unreadable extra root is skipped.
@@ -1246,7 +1467,9 @@ def locate_skills(roots: tuple[Path, ...], own_folder: Path) -> tuple[dict[str, 
             entries = sorted(root.iterdir(), key=lambda path: path.name)
         except OSError as error:
             if root.resolve() == own_folder.resolve():
-                raise Exception(f"cannot inspect installed skills {root}: {error}") from error
+                raise Exception(
+                    f"cannot inspect installed skills {root}: {error}"
+                ) from error
             continue
         for entry in entries:
             if entry.is_dir():
@@ -1255,7 +1478,9 @@ def locate_skills(roots: tuple[Path, ...], own_folder: Path) -> tuple[dict[str, 
     duplicates: list[dict[str, object]] = []
     for name, paths in sorted(copies.items()):
         distinct = unique_folders(tuple(paths))
-        if len(distinct) > 1 and any((path / MANIFEST_NAME).is_file() for path in distinct):
+        if len(distinct) > 1 and any(
+            (path / MANIFEST_NAME).is_file() for path in distinct
+        ):
             duplicates.append({"skill": name, "folders": distinct})
     return folders, tuple(duplicates)
 
@@ -1273,10 +1498,14 @@ def copy_version(folder: Path) -> str | None:
         record = read_bmod_file(folder.parent / parsed.skill.bmod / MANIFEST_NAME)
     except Exception:
         return None
-    return record.bmod.version if record is not None and record.bmod is not None else None
+    return (
+        record.bmod.version if record is not None and record.bmod is not None else None
+    )
 
 
-def duplicates_json(duplicates: tuple[dict[str, object], ...], project_root: Path) -> list[dict[str, object]]:
+def duplicates_json(
+    duplicates: tuple[dict[str, object], ...], project_root: Path
+) -> list[dict[str, object]]:
     """Each duplicate with the copy in use first, and whether a copy not in use is newer."""
     report: list[dict[str, object]] = []
     for duplicate in duplicates:
@@ -1306,7 +1535,9 @@ def duplicates_json(duplicates: tuple[dict[str, object], ...], project_root: Pat
     return report
 
 
-def discover_installed_files(folders: dict[str, Path], problems: list[dict[str, object]]) -> tuple[InstalledFile, ...]:
+def discover_installed_files(
+    folders: dict[str, Path], problems: list[dict[str, object]]
+) -> tuple[InstalledFile, ...]:
     """One unusable file must not stop the install: it becomes a problem and its folder is skipped."""
     files: list[InstalledFile] = []
     for name in sorted(folders):
@@ -1315,7 +1546,9 @@ def discover_installed_files(folders: dict[str, Path], problems: list[dict[str, 
         try:
             parsed = read_bmod_file(path)
         except Exception as error:
-            problems.append({"kind": "bmod-file", "folder": sibling.name, "message": str(error)})
+            problems.append(
+                {"kind": "bmod-file", "folder": sibling.name, "message": str(error)}
+            )
             continue
         if parsed is not None:
             files.append(InstalledFile(sibling.name, sibling, path, parsed))
@@ -1368,7 +1601,9 @@ def member_names(record_file: InstalledFile) -> tuple[str, ...]:
     return (record_file.folder,) if record_file.parsed.skill is not None else ()
 
 
-def read_module_scripts(installed: InstalledModule) -> tuple[tuple[PurePosixPath, bytes], ...]:
+def read_module_scripts(
+    installed: InstalledModule,
+) -> tuple[tuple[PurePosixPath, bytes], ...]:
     """The scripts a module's installed skills place in `_bmad/<code>/scripts/`."""
     placed: dict[PurePosixPath, tuple[bytes, Path]] = {}
     scripts: list[tuple[PurePosixPath, bytes]] = []
@@ -1403,12 +1638,18 @@ def parse_bmod_file(path: Path, raw: bytes) -> ParsedFile:
     bmod_table = data.get("bmod")
     skill_table = data.get("skill")
     if bmod_table is None and skill_table is None:
-        raise Exception(f"bmod file {path} must hold a [bmod] table, a [skill] table, or both")
+        raise Exception(
+            f"bmod file {path} must hold a [bmod] table, a [skill] table, or both"
+        )
     for name, table in (("bmod", bmod_table), ("skill", skill_table)):
         if table is not None and not isinstance(table, dict):
             raise Exception(f"bmod file {path} field {name!r} must be a table")
     bmod = parse_bmod_table(bmod_table, path) if bmod_table is not None else None
-    skill = parse_skill_table(skill_table, path, standalone=bmod is None) if skill_table is not None else None
+    skill = (
+        parse_skill_table(skill_table, path, standalone=bmod is None)
+        if skill_table is not None
+        else None
+    )
     return ParsedFile(bmod, skill)
 
 
@@ -1428,7 +1669,9 @@ def parse_bmod_table(table: dict, path: Path) -> ParsedBmod:
         parse_knowledge(table.get("knowledge"), path),
         parse_questions(table.get("config_questions"), code, path),
         parse_requirements(table.get("required_skills"), "bmod.required_skills", path),
-        parse_requirements(table.get("recommended_skills"), "bmod.recommended_skills", path),
+        parse_requirements(
+            table.get("recommended_skills"), "bmod.recommended_skills", path
+        ),
         optional_string(table, "bmod", "pre_install_message", path),
         optional_string(table, "bmod", "post_install_message", path),
     )
@@ -1448,7 +1691,9 @@ def read_retired_file(folder: Path) -> ParsedRetired:
     retired = [rename.old for rename in renamed] + list(removed)
     repeated = next((name for name in retired if retired.count(name) > 1), None)
     if repeated is not None:
-        raise Exception(f"bmod file {path} retires {repeated!r} more than once in renamed and removed")
+        raise Exception(
+            f"bmod file {path} retires {repeated!r} more than once in renamed and removed"
+        )
     return ParsedRetired(renamed, removed)
 
 
@@ -1467,10 +1712,14 @@ def parse_renamed(value: object, path: Path) -> tuple[Rename, ...]:
         for key in ("from", "to"):
             name = entry.get(key)
             if not isinstance(name, str) or SKILL_NAME.fullmatch(name) is None:
-                raise Exception(f"bmod file {path} field '{field}.{key}' must be a skill name; found {name!r}")
+                raise Exception(
+                    f"bmod file {path} field '{field}.{key}' must be a skill name; found {name!r}"
+                )
             names.append(name)
         if names[0] == names[1]:
-            raise Exception(f"bmod file {path} field {field} renames {names[0]!r} to itself")
+            raise Exception(
+                f"bmod file {path} field {field} renames {names[0]!r} to itself"
+            )
         renamed.append(Rename(*names))
     return tuple(renamed)
 
@@ -1481,7 +1730,9 @@ def parse_skill_table(table: dict, path: Path, *, standalone: bool) -> ParsedSki
     if standalone:
         bmod = required_string(table, "skill", "bmod", path)
         if SKILL_NAME.fullmatch(bmod) is None:
-            raise Exception(f"bmod file {path} field 'skill.bmod' has unsafe value {bmod!r}")
+            raise Exception(
+                f"bmod file {path} field 'skill.bmod' has unsafe value {bmod!r}"
+            )
         source = required_string(table, "skill", "source", path)
         validate_source(source, "skill.source", path)
     return ParsedSkill(
@@ -1489,13 +1740,19 @@ def parse_skill_table(table: dict, path: Path, *, standalone: bool) -> ParsedSki
         source,
         parse_scripts(table.get("scripts"), path),
         parse_requirements(table.get("required_skills"), "skill.required_skills", path),
-        parse_requirements(table.get("recommended_skills"), "skill.recommended_skills", path),
+        parse_requirements(
+            table.get("recommended_skills"), "skill.recommended_skills", path
+        ),
     )
 
 
 def validate_source(value: str, field: str, path: Path) -> None:
     prefix = next(
-        (candidate for candidate in UPDATE_SOURCE_PREFIXES if value.startswith(candidate)),
+        (
+            candidate
+            for candidate in UPDATE_SOURCE_PREFIXES
+            if value.startswith(candidate)
+        ),
         None,
     )
     if prefix is None or not value.removeprefix(prefix):
@@ -1503,25 +1760,33 @@ def validate_source(value: str, field: str, path: Path) -> None:
     if prefix == "github:":
         github_parts = value.removeprefix(prefix).split("/")
         if len(github_parts) < 2 or any(not part for part in github_parts):
-            raise Exception(f"bmod file {path} field {field!r} github source must name owner/repo")
+            raise Exception(
+                f"bmod file {path} field {field!r} github source must name owner/repo"
+            )
     if prefix == "https://" and any(character.isspace() for character in value):
         raise Exception(f"bmod file {path} field {field!r} must be a valid HTTPS URL")
 
 
 def parse_skill_names(value: object, field: str, path: Path) -> tuple[str, ...]:
     if not isinstance(value, list):
-        raise Exception(f"bmod file {path} field {field!r} must be a list of skill names")
+        raise Exception(
+            f"bmod file {path} field {field!r} must be a list of skill names"
+        )
     names: list[str] = []
     for entry in value:
         if not isinstance(entry, str) or SKILL_NAME.fullmatch(entry) is None:
-            raise Exception(f"bmod file {path} field {field!r} has unsafe skill name {entry!r}")
+            raise Exception(
+                f"bmod file {path} field {field!r} has unsafe skill name {entry!r}"
+            )
         if entry in names:
             raise Exception(f"bmod file {path} field {field!r} repeats {entry!r}")
         names.append(entry)
     return tuple(names)
 
 
-def parse_path(entry: object, field: str, path: Path, seen: list[PurePosixPath]) -> PurePosixPath:
+def parse_path(
+    entry: object, field: str, path: Path, seen: list[PurePosixPath]
+) -> PurePosixPath:
     if not isinstance(entry, str) or not entry:
         raise Exception(f"bmod file {path} field {field!r} has invalid value {entry!r}")
     relative = safe_skill_relative(entry)
@@ -1537,20 +1802,28 @@ def parse_knowledge(value: object, path: Path) -> tuple[KnowledgeEntry, ...]:
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise Exception(f"bmod file {path} field 'bmod.knowledge' must be a list of tables")
+        raise Exception(
+            f"bmod file {path} field 'bmod.knowledge' must be a list of tables"
+        )
     knowledge: list[KnowledgeEntry] = []
     for index, entry in enumerate(value):
         field = f"bmod.knowledge[{index}]"
         if not isinstance(entry, dict):
             raise Exception(f"bmod file {path} field {field} must be a table")
-        relative = parse_path(entry.get("path"), f"{field}.path", path, [item.path for item in knowledge])
+        relative = parse_path(
+            entry.get("path"), f"{field}.path", path, [item.path for item in knowledge]
+        )
         skills = entry.get("skills", "*")
         if skills == "*":
             knowledge.append(KnowledgeEntry(relative, None))
             continue
         if isinstance(skills, str):
-            raise Exception(f"bmod file {path} field '{field}.skills' must be \"*\" or a list of skill names")
-        knowledge.append(KnowledgeEntry(relative, parse_skill_names(skills, f"{field}.skills", path)))
+            raise Exception(
+                f"bmod file {path} field '{field}.skills' must be \"*\" or a list of skill names"
+            )
+        knowledge.append(
+            KnowledgeEntry(relative, parse_skill_names(skills, f"{field}.skills", path))
+        )
     return tuple(knowledge)
 
 
@@ -1571,7 +1844,9 @@ def safe_skill_relative(entry: str) -> PurePosixPath | None:
     return relative
 
 
-def parse_requirements(value: object, field: str, path: Path) -> tuple[Requirement, ...]:
+def parse_requirements(
+    value: object, field: str, path: Path
+) -> tuple[Requirement, ...]:
     """A flat list of skills. A plain name comes from the declaring file's own source."""
     if value is None:
         return ()
@@ -1585,26 +1860,38 @@ def parse_requirements(value: object, field: str, path: Path) -> tuple[Requireme
         elif isinstance(entry, dict):
             skill = entry.get("skill")
             if not isinstance(skill, str):
-                raise Exception(f"bmod file {path} field '{item}.skill' must be a string and is required")
+                raise Exception(
+                    f"bmod file {path} field '{item}.skill' must be a string and is required"
+                )
             source = entry.get("source")
             if not isinstance(source, str):
-                raise Exception(f"bmod file {path} field '{item}.source' must be a string and is required")
+                raise Exception(
+                    f"bmod file {path} field '{item}.source' must be a string and is required"
+                )
             validate_source(source, f"{item}.source", path)
             minimum = entry.get("version")
             if minimum is not None:
                 if not isinstance(minimum, str):
-                    raise Exception(f"bmod file {path} field '{item}.version' must be a string")
+                    raise Exception(
+                        f"bmod file {path} field '{item}.version' must be a string"
+                    )
                 if parse_orderable_semver(minimum) is None:
                     raise Exception(
                         f"bmod file {path} field '{item}.version' must be an orderable version; found {minimum!r}"
                     )
             requirement = Requirement(skill, minimum, source)
         else:
-            raise Exception(f"bmod file {path} field {item!r} must be a skill name or a table")
+            raise Exception(
+                f"bmod file {path} field {item!r} must be a skill name or a table"
+            )
         if SKILL_NAME.fullmatch(requirement.skill) is None:
-            raise Exception(f"bmod file {path} field {item!r} has unsafe skill name {requirement.skill!r}")
+            raise Exception(
+                f"bmod file {path} field {item!r} has unsafe skill name {requirement.skill!r}"
+            )
         if any(requirement.skill == other.skill for other in requirements):
-            raise Exception(f"bmod file {path} field {field!r} repeats {requirement.skill!r}")
+            raise Exception(
+                f"bmod file {path} field {field!r} repeats {requirement.skill!r}"
+            )
         requirements.append(requirement)
     return tuple(requirements)
 
@@ -1612,7 +1899,9 @@ def parse_requirements(value: object, field: str, path: Path) -> tuple[Requireme
 def required_string(table: dict, name: str, field: str, path: Path) -> str:
     value = table.get(field)
     if not isinstance(value, str) or not value.strip():
-        raise Exception(f"bmod file {path} field '{name}.{field}' must be a non-empty string")
+        raise Exception(
+            f"bmod file {path} field '{name}.{field}' must be a non-empty string"
+        )
     return value
 
 
@@ -1623,11 +1912,15 @@ def optional_string(table: dict, name: str, field: str, path: Path | str) -> str
     return value
 
 
-def parse_questions(value: object, module: str, path: Path) -> tuple[ConfigQuestion, ...]:
+def parse_questions(
+    value: object, module: str, path: Path
+) -> tuple[ConfigQuestion, ...]:
     if value is None:
         return ()
     if not isinstance(value, list):
-        raise Exception(f"bmod file {path} field 'bmod.config_questions' must be a list")
+        raise Exception(
+            f"bmod file {path} field 'bmod.config_questions' must be a list"
+        )
     questions: list[ConfigQuestion] = []
     seen: list[str] = []
     for index, question in enumerate(value):
@@ -1635,36 +1928,59 @@ def parse_questions(value: object, module: str, path: Path) -> tuple[ConfigQuest
         if not isinstance(question, dict):
             raise Exception(f"bmod file {path} field {field} must be a mapping")
         keys = set(question)
-        if not QUESTION_KEYS <= keys or not keys <= QUESTION_KEYS | OPTIONAL_QUESTION_KEYS:
+        if (
+            not QUESTION_KEYS <= keys
+            or not keys <= QUESTION_KEYS | OPTIONAL_QUESTION_KEYS
+        ):
             missing = sorted(QUESTION_KEYS - keys)
             unknown = sorted(keys - QUESTION_KEYS - OPTIONAL_QUESTION_KEYS, key=str)
-            detail = f"missing key {missing[0]!r}" if missing else f"unknown key {unknown[0]!r}"
+            detail = (
+                f"missing key {missing[0]!r}"
+                if missing
+                else f"unknown key {unknown[0]!r}"
+            )
             raise Exception(f"bmod file {path} field {field} has {detail}")
         for key in QUESTION_KEYS:
             if not isinstance(question[key], str):
-                raise Exception(f"bmod file {path} field {field}.{key} must be a string")
+                raise Exception(
+                    f"bmod file {path} field {field}.{key} must be a string"
+                )
         scope = question.get("scope", "team")
         if scope not in QUESTION_SCOPES:
-            raise Exception(f'bmod file {path} field {field}.scope must be "team" or "user"; found {scope!r}')
+            raise Exception(
+                f'bmod file {path} field {field}.scope must be "team" or "user"; found {scope!r}'
+            )
         prompt = question["prompt"]
         key = question["key"]
         if not prompt.strip():
             raise Exception(f"bmod file {path} field {field}.prompt must be non-empty")
         if not key or any(not part or part != part.strip() for part in key.split(".")):
-            raise Exception(f"bmod file {path} field {field}.key must be a non-empty dotted key")
+            raise Exception(
+                f"bmod file {path} field {field}.key must be a non-empty dotted key"
+            )
         if key == module or key.startswith(f"{module}."):
-            raise Exception(f"bmod file {path} field {field}.key {key!r} must not start with module {module!r}")
+            raise Exception(
+                f"bmod file {path} field {field}.key {key!r} must not start with module {module!r}"
+            )
         conflict = conflicting_question_key(seen, key)
         if conflict is not None:
-            raise Exception(f"bmod file {path} config question key {key!r} conflicts with {conflict!r}")
+            raise Exception(
+                f"bmod file {path} config question key {key!r} conflicts with {conflict!r}"
+            )
         seen.append(key)
-        questions.append(ConfigQuestion(module, key, prompt, question["default"], scope))
+        questions.append(
+            ConfigQuestion(module, key, prompt, question["default"], scope)
+        )
     return tuple(questions)
 
 
 def conflicting_question_key(keys: list[str], candidate: str) -> str | None:
     for key in keys:
-        if key == candidate or key.startswith(f"{candidate}.") or candidate.startswith(f"{key}."):
+        if (
+            key == candidate
+            or key.startswith(f"{candidate}.")
+            or candidate.startswith(f"{key}.")
+        ):
             return key
     return None
 
@@ -1677,7 +1993,9 @@ def parse_scripts(value: object, path: Path) -> tuple[PurePosixPath, ...]:
     scripts: list[PurePosixPath] = []
     for entry in value:
         if not isinstance(entry, str) or not entry:
-            raise Exception(f"bmod file {path} field 'skill.scripts' has invalid value {entry!r}")
+            raise Exception(
+                f"bmod file {path} field 'skill.scripts' has invalid value {entry!r}"
+            )
         relative = PurePosixPath(entry)
         if (
             relative.is_absolute()
@@ -1687,29 +2005,43 @@ def parse_scripts(value: object, path: Path) -> tuple[PurePosixPath, ...]:
             or ".." in relative.parts
             or "." in relative.parts
         ):
-            raise Exception(f"bmod file {path} field 'skill.scripts' has unsafe value {entry!r}")
+            raise Exception(
+                f"bmod file {path} field 'skill.scripts' has unsafe value {entry!r}"
+            )
         scripts.append(relative)
     return tuple(scripts)
 
 
-def read_declared_script(skill_root: Path, relative: PurePosixPath, file: Path) -> bytes:
+def read_declared_script(
+    skill_root: Path, relative: PurePosixPath, file: Path
+) -> bytes:
     root = skill_root.resolve()
     candidate = root.joinpath(*relative.parts)
     try:
         resolved = candidate.resolve(strict=True)
         resolved.relative_to(root)
     except (OSError, RuntimeError, ValueError) as error:
-        raise Exception(f"bmod file {file} declares unsafe or missing script {relative.as_posix()!r}") from error
+        raise Exception(
+            f"bmod file {file} declares unsafe or missing script {relative.as_posix()!r}"
+        ) from error
     if not resolved.is_file():
-        raise Exception(f"bmod file {file} declared script {relative.as_posix()!r} is not a file")
+        raise Exception(
+            f"bmod file {file} declared script {relative.as_posix()!r} is not a file"
+        )
     try:
         return resolved.read_bytes()
     except OSError as error:
-        raise Exception(f"cannot read script {resolved} declared by {file}: {error}") from error
+        raise Exception(
+            f"cannot read script {resolved} declared by {file}: {error}"
+        ) from error
 
 
 def status_report(
-    project_root: Path, skill_root: Path, *, module: str | None = None, roots: tuple[Path, ...] = ()
+    project_root: Path,
+    skill_root: Path,
+    *,
+    module: str | None = None,
+    roots: tuple[Path, ...] = (),
 ) -> dict[str, object]:
     """Everything `bmad status` says. Reads only; nothing under the project is written."""
     reject_unusable_bmad(project_root)
@@ -1730,11 +2062,14 @@ def status_report(
         try:
             reject_unusable_module_root(bmad / installed.module)
             scripts = tree_state(
-                bmad / installed.module / "scripts", declared_scripts_tree(read_module_scripts(installed))
+                bmad / installed.module / "scripts",
+                declared_scripts_tree(read_module_scripts(installed)),
             )
         except Exception as error:
             scripts = "could-not-check"
-            problems.append({"kind": "scripts", "module": installed.module, "message": str(error)})
+            problems.append(
+                {"kind": "scripts", "module": installed.module, "message": str(error)}
+            )
         modules.append(
             {
                 **module_summary(installed, project_root),
@@ -1752,7 +2087,12 @@ def status_report(
     unmet = unmet_requirements(installation, skill_root, module=code)
     gitignore_state = custom_gitignore_state(project_root)
     problems.extend(custom_gitignore_problems(gitignore_state))
-    retirement = retirement_report(project_root, skill_root, installation, retired_skills(scoped, installation.modules))
+    retirement = retirement_report(
+        project_root,
+        skill_root,
+        installation,
+        retired_skills(scoped, installation.modules),
+    )
     setup_owed = (
         not bmad.is_dir()
         or shared_state != "current"
@@ -1785,7 +2125,9 @@ def status_report(
         "duplicate_skills": duplicates_json(installation.duplicates, project_root),
         "pending_questions": [question_json(question) for question in pending],
         "unmet_requirements": unmet,
-        "unmet_recommendations": unmet_recommendations(installation, skill_root, module=code),
+        "unmet_recommendations": unmet_recommendations(
+            installation, skill_root, module=code
+        ),
         "problems": problems,
         **retirement_json(retirement),
         "current": (
@@ -1799,7 +2141,9 @@ def status_report(
     }
 
 
-def module_update_report(project_root: Path, installed: InstalledModule) -> dict[str, object]:
+def module_update_report(
+    project_root: Path, installed: InstalledModule
+) -> dict[str, object]:
     """How the installed module compares with the `[bmod] version` at its source."""
     update_source = installed.parsed.update_source
     if update_source.startswith("plugin:"):
@@ -1815,7 +2159,9 @@ def module_update_report(project_root: Path, installed: InstalledModule) -> dict
     source = update_source
     try:
         source = source_file_location(project_root, update_source, installed.folder)
-        source_version, pre_message = parse_source_record(source, read_source_file(source, update_source))
+        source_version, pre_message = parse_source_record(
+            source, read_source_file(source, update_source)
+        )
     except Exception as error:
         return {"state": "could-not-check", "source": source, "reason": str(error)}
     state = version_state(installed.parsed.version, source_version)
@@ -1823,7 +2169,11 @@ def module_update_report(project_root: Path, installed: InstalledModule) -> dict
         "state": state,
         "source": source,
         "source_version": source_version,
-        **(message_json("pre_install_message", pre_message) if state == "newer-available" else {}),
+        **(
+            message_json("pre_install_message", pre_message)
+            if state == "newer-available"
+            else {}
+        ),
     }
     pinned = pinned_ref(project_root, installed) if state == "newer-available" else None
     if pinned is not None:
@@ -1832,7 +2182,9 @@ def module_update_report(project_root: Path, installed: InstalledModule) -> dict
         # One command covers one scope: the skills that sit with the module record.
         global_install = is_global(installed.source, project_root)
         beside = (
-            member.folder for member in installed.members if is_global(member.source, project_root) == global_install
+            member.folder
+            for member in installed.members
+            if is_global(member.source, project_root) == global_install
         )
         # The source reads `main`, which carries `X-next` before tag `X` exists.
         released = (parse_orderable_semver(source_version) or (None, ()))[1] is None
@@ -1876,10 +2228,16 @@ def pinned_ref(project_root: Path, installed: InstalledModule) -> str | None:
     except Exception:
         return None
     entry = lock["skills"].get(installed.folder) if lock is not None else None
-    if isinstance(entry, dict) and not same_repository(entry.get("source"), installed.parsed.update_source):
+    if isinstance(entry, dict) and not same_repository(
+        entry.get("source"), installed.parsed.update_source
+    ):
         return None
     ref = entry.get("ref") if isinstance(entry, dict) else None
-    return ref if isinstance(ref, str) and SEMVER.fullmatch(ref.removeprefix("v")) else None
+    return (
+        ref
+        if isinstance(ref, str) and SEMVER.fullmatch(ref.removeprefix("v"))
+        else None
+    )
 
 
 def same_repository(lock_source: object, update_source: str) -> bool:
@@ -1887,13 +2245,25 @@ def same_repository(lock_source: object, update_source: str) -> bool:
     if not isinstance(lock_source, str) or not update_source.startswith("github:"):
         return True
     owner, repository, *_ = update_source.removeprefix("github:").split("/")
-    shown = lock_source.strip().lower().removeprefix("https://github.com/").removesuffix("/").removesuffix(".git")
+    shown = (
+        lock_source.strip()
+        .lower()
+        .removeprefix("https://github.com/")
+        .removesuffix("/")
+        .removesuffix(".git")
+    )
     return shown == f"{owner}/{repository}".lower()
 
 
-def source_record_report(project_root: Path, update_source: str, folder: str) -> dict[str, object]:
+def source_record_report(
+    project_root: Path, update_source: str, folder: str
+) -> dict[str, object]:
     """The version and pre-install message of a module record at its source, before the module is added."""
-    report: dict[str, object] = {"mode": "source-record", "folder": folder, "source": update_source}
+    report: dict[str, object] = {
+        "mode": "source-record",
+        "folder": folder,
+        "source": update_source,
+    }
     try:
         if SKILL_NAME.fullmatch(folder) is None:
             raise Exception(f"unsafe module record folder {folder!r}")
@@ -1902,10 +2272,17 @@ def source_record_report(project_root: Path, update_source: str, folder: str) ->
             raise Exception("a plugin source has no module record to read")
         source = source_file_location(project_root, update_source, folder)
         report["source"] = source
-        version, pre_message = parse_source_record(source, read_source_file(source, update_source))
+        version, pre_message = parse_source_record(
+            source, read_source_file(source, update_source)
+        )
     except Exception as error:
         return {**report, "state": "could-not-check", "reason": str(error)}
-    return {**report, "state": "read", "version": version, **message_json("pre_install_message", pre_message)}
+    return {
+        **report,
+        "state": "read",
+        "version": version,
+        **message_json("pre_install_message", pre_message),
+    }
 
 
 def message_json(key: str, message: str) -> dict[str, str]:
@@ -1926,9 +2303,13 @@ def source_file_location(project_root: Path, update_source: str, folder: str) ->
         try:
             parsed = urllib.parse.urlsplit(update_source)
         except ValueError as error:
-            raise Exception(f"invalid update_source {update_source!r}: {error}") from error
+            raise Exception(
+                f"invalid update_source {update_source!r}: {error}"
+            ) from error
         return urllib.parse.urlunsplit(
-            parsed._replace(path=(parsed.path.rstrip("/") + f"/{quoted_folder}/{quoted_name}"))
+            parsed._replace(
+                path=(parsed.path.rstrip("/") + f"/{quoted_folder}/{quoted_name}")
+            )
         )
     github = update_source.removeprefix("github:")
     owner, repository, *tree = github.split("/")
@@ -1958,7 +2339,9 @@ def read_source_file(source: str, update_source: str) -> bytes:
             with urllib.request.urlopen(request, timeout=10) as response:
                 raw = response.read(SOURCE_READ_LIMIT + 1)
         except (OSError, urllib.error.URLError) as error:
-            raise Exception(f"cannot read source bmod file {source}: {error}") from error
+            raise Exception(
+                f"cannot read source bmod file {source}: {error}"
+            ) from error
     if len(raw) > SOURCE_READ_LIMIT:
         raise Exception(f"source bmod file {source} exceeds {SOURCE_READ_LIMIT} bytes")
     return raw
@@ -1973,7 +2356,9 @@ def parse_source_record(source: str, raw: bytes) -> tuple[str, str]:
     table = parse_toml(text, source).get("bmod")
     version = table.get("version") if isinstance(table, dict) else None
     if not isinstance(version, str) or not version.strip():
-        raise Exception(f"source bmod file {source} field 'bmod.version' must be a non-empty string")
+        raise Exception(
+            f"source bmod file {source} field 'bmod.version' must be a non-empty string"
+        )
     # Lenient: a bad message at the source must not hide a newer version.
     message = table.get("pre_install_message", "")
     return version, message if isinstance(message, str) else ""
@@ -2019,7 +2404,9 @@ def parse_orderable_semver(
     )
 
 
-def compare_prerelease(left: tuple[str, ...] | None, right: tuple[str, ...] | None) -> int:
+def compare_prerelease(
+    left: tuple[str, ...] | None, right: tuple[str, ...] | None
+) -> int:
     if left is None or right is None:
         if left is right:
             return 0
@@ -2039,8 +2426,12 @@ def compare_prerelease(left: tuple[str, ...] | None, right: tuple[str, ...] | No
     return -1 if len(left) < len(right) else 1
 
 
-def declared_scripts_tree(scripts: tuple[tuple[PurePosixPath, bytes], ...]) -> PlainTree:
-    by_path = {PurePosixPath(*relative.parts[1:]): content for relative, content in scripts}
+def declared_scripts_tree(
+    scripts: tuple[tuple[PurePosixPath, bytes], ...],
+) -> PlainTree:
+    by_path = {
+        PurePosixPath(*relative.parts[1:]): content for relative, content in scripts
+    }
     if not by_path:
         # Git drops an empty directory, and a clone without it would report the module's scripts as missing.
         by_path = {PurePosixPath(".gitkeep"): b""}
@@ -2118,10 +2509,16 @@ def find_pending_questions(
             if question.scope == "user":
                 answered = has_path(user_config, path, user_config_path(project_root))
             else:
-                answered = has_path(config, path, project_root / "_bmad" / "config.toml")
+                answered = has_path(
+                    config, path, project_root / "_bmad" / "config.toml"
+                )
             if not answered:
                 pending.append(
-                    question._replace(default=question.default.replace("{directory_name}", project_root.name))
+                    question._replace(
+                        default=question.default.replace(
+                            "{directory_name}", project_root.name
+                        )
+                    )
                 )
     return tuple(pending)
 
@@ -2130,7 +2527,9 @@ def has_path(data: object, path: tuple[str, ...], source: Path) -> bool:
     current = data
     for part in path:
         if not isinstance(current, dict):
-            raise Exception(f"cannot inspect {'.'.join(path)}: parent value in {source} is not a table")
+            raise Exception(
+                f"cannot inspect {'.'.join(path)}: parent value in {source} is not a table"
+            )
         if part not in current:
             return False
         current = current[part]
@@ -2147,7 +2546,9 @@ def load_module_answers(path: Path) -> dict[tuple[str, str], str]:
     if not data:
         return {}
     if set(data) != {"modules"} or not isinstance(data["modules"], dict):
-        raise Exception(f"--module-answers {path} must contain only module answer tables")
+        raise Exception(
+            f"--module-answers {path} must contain only module answer tables"
+        )
     answers: dict[tuple[str, str], str] = {}
     for module, values in data["modules"].items():
         if not isinstance(module, str) or not isinstance(values, dict):
@@ -2170,10 +2571,14 @@ def flatten_module_answers(
             continue
         dotted = ".".join(parts)
         if not isinstance(value, str):
-            raise Exception(f"--module-answers {source} value modules.{module}.{dotted} must be a string")
+            raise Exception(
+                f"--module-answers {source} value modules.{module}.{dotted} must be a string"
+            )
         identifier = (module, dotted)
         if identifier in answers:
-            raise Exception(f"--module-answers {source} defines modules.{module}.{dotted} more than once")
+            raise Exception(
+                f"--module-answers {source} defines modules.{module}.{dotted} more than once"
+            )
         answers[identifier] = value
 
 
@@ -2202,8 +2607,14 @@ def validate_module_answers(
     extra = sorted(set(answers) - expected)
     if extra:
         module, key = extra[0]
-        raise Exception(f"{source_label} contains modules.{module}.{key}, which is not a pending question")
-    missing = [question for question in pending if (question.module, question.key) not in answers]
+        raise Exception(
+            f"{source_label} contains modules.{module}.{key}, which is not a pending question"
+        )
+    missing = [
+        question
+        for question in pending
+        if (question.module, question.key) not in answers
+    ]
     if missing and supplied is None:
         question = missing[0]
         raise Exception(
@@ -2223,7 +2634,9 @@ def validate_module_answers(
 TABLE_HEADER = re.compile(r"\s*\[(?P<array>\[)?(?P<name>[^\[\]]+)\]\]?\s*(?:#.*)?\Z")
 
 
-def text_with_answers(text: str | None, added: list[tuple[tuple[str, ...], str]], expected: dict) -> str:
+def text_with_answers(
+    text: str | None, added: list[tuple[tuple[str, ...], str]], expected: dict
+) -> str:
     """The file's own text with the new answers added, so comments and layout survive.
 
     The result must parse to exactly the expected values. When it does not, or
@@ -2244,20 +2657,34 @@ def insert_answer(text: str, path: tuple[str, ...], value: str) -> str:
     table, leaf = path[:-1], path[-1]
     entry = f"{toml_key(leaf)} = {toml_string(value)}"
     lines = text.split("\n")
-    headers = [(index, header_path(line)) for index, line in enumerate(lines) if TABLE_HEADER.match(line)]
+    headers = [
+        (index, header_path(line))
+        for index, line in enumerate(lines)
+        if TABLE_HEADER.match(line)
+    ]
     for position, (index, name) in enumerate(headers):
         if name != table:
             continue
         end = headers[position + 1][0] if position + 1 < len(headers) else len(lines)
         last = max(
-            (row for row in range(index, end) if lines[row].strip() and not lines[row].lstrip().startswith("#")),
+            (
+                row
+                for row in range(index, end)
+                if lines[row].strip() and not lines[row].lstrip().startswith("#")
+            ),
             default=index,
         )
         return "\n".join([*lines[: last + 1], entry, *lines[last + 1 :]])
     if lookup(tomllib.loads(text), table) is not _MISSING:
         raise ValueError(f"{'.'.join(table)} is not written as a table header")
     header = ".".join(toml_key(part) for part in table)
-    separator = "" if not text or text.endswith("\n\n") else "\n" if text.endswith("\n") else "\n\n"
+    separator = (
+        ""
+        if not text or text.endswith("\n\n")
+        else "\n"
+        if text.endswith("\n")
+        else "\n\n"
+    )
     return f"{text}{separator}[{header}]\n{entry}\n"
 
 
@@ -2290,7 +2717,9 @@ def set_missing_value(
             current[part] = child
         elif not isinstance(child, dict):
             dotted = ".".join(path)
-            raise Exception(f"cannot add {dotted}: parent value in {source} is not a table")
+            raise Exception(
+                f"cannot add {dotted}: parent value in {source} is not a table"
+            )
         current = child
     leaf = path[-1]
     if leaf in current:
@@ -2303,7 +2732,9 @@ def fill_team_config(text: str, project_root: Path) -> str:
 
 
 def output_folder(config_text: str) -> str:
-    folder = tomllib.loads(config_text).get("core", {}).get("output_folder", "_bmad-output")
+    folder = (
+        tomllib.loads(config_text).get("core", {}).get("output_folder", "_bmad-output")
+    )
     prefix = "{project-root}/"
     if folder.startswith(prefix):
         folder = folder[len(prefix) :]
@@ -2481,7 +2912,9 @@ def toml_string(value: str) -> str:
         "\f": "\\f",
         "\r": "\\r",
     }
-    escaped = "".join(replacements.get(character, toml_control(character)) for character in value)
+    escaped = "".join(
+        replacements.get(character, toml_control(character)) for character in value
+    )
     return f'"{escaped}"'
 
 
@@ -2493,7 +2926,12 @@ def toml_control(value: str) -> str:
 
 
 def toml_key(key: str) -> str:
-    if key and key.isascii() and key[0].isalpha() and all(c.isalnum() or c in "-_" for c in key):
+    if (
+        key
+        and key.isascii()
+        and key[0].isalpha()
+        and all(c.isalnum() or c in "-_" for c in key)
+    ):
         return key
     return toml_string(key)
 
@@ -2514,7 +2952,9 @@ def toml_value(value: object) -> str:
     if isinstance(value, list):
         return "[ " + ", ".join(toml_value(item) for item in value) + " ]"
     if isinstance(value, dict):
-        rendered = ", ".join(f"{toml_key(str(key))} = {toml_value(item)}" for key, item in value.items())
+        rendered = ", ".join(
+            f"{toml_key(str(key))} = {toml_value(item)}" for key, item in value.items()
+        )
         return "{ " + rendered + " }"
     return toml_string(str(value))
 
