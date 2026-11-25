@@ -209,7 +209,7 @@ wheels = [
 
 [[package]]
 name = "flet"
-version = "0.86.5"
+version = "1.1.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx", marker = "sys_platform != 'emscripten'" },
@@ -217,9 +217,9 @@ dependencies = [
     { name = "oauthlib", marker = "sys_platform != 'emscripten'" },
     { name = "repath" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/91/173edaffb9135f4a0f2b92061b375f553327c38bbe4973a9b9f50b785f4a/flet-0.86.5.tar.gz", hash = "sha256:2ac87c7150686d64b61f0c014ec3415dc74ca3afe8f2fe1e6039c0a164738f90", size = 543099, upload-time = "2026-08-01T16:51:26.067Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/e0/8005f73c64e54c80459cc81d6a9f3b652241e330c4011889ac49d5a40dfc/flet-1.1.2.tar.gz", hash = "sha256:dd5114b7cb4b5186e647d2b953a1162ee995c5657f78f8e7c63f94a5f24e8449", size = 607841, upload-time = "2026-11-06T23:28:45.308Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/c4/ae44a4b7f70c5010fda86634f15d32e4a57ad19a5663aadd6cc89b419fcb/flet-0.86.5-py3-none-any.whl", hash = "sha256:b0accfe78243611ab71c3a6adb0045a80f81a284d0cf037e38c7825c2fd45282", size = 622504, upload-time = "2026-08-01T16:51:24.563Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/ce/da041e9834bfc2ff238dfcd48d80b05125e8088e25dea5143068904e8b0d/flet-1.1.2-py3-none-any.whl", hash = "sha256:56a29f7d4103cff9da7925e967bac367318dfb69f91db2258befa9ddab0552ff", size = 655574, upload-time = "2026-11-06T23:28:44.058Z" },
 ]
 
 [[package]]
@@ -832,7 +832,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = "==0.141.1" },
-    { name = "flet", specifier = "==0.86.5" },
+    { name = "flet", specifier = "==1.1.2" },
     { name = "langchain-ollama", specifier = "==1.1.0" },
 ]
 
